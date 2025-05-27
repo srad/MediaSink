@@ -153,6 +153,7 @@ FROM builder_base AS app_builder
 
 ARG VERSION
 ARG COMMIT
+ARG API_VERSION
 # TARGETOS and TARGETARCH are inherited from builder_base or can be re-declared
 
 # Install Go app specific CGO dependencies
@@ -191,8 +192,7 @@ ENV GOARCH=${TARGETARCH}
 # RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then apt install gccgo-arm-linux-gnueabihf binutils-arm-linux-gnueabi gcc-aarch64-linux-gnu -y; fi
 # RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then GOARCH='arm' GOHOSTARCH='arm' CC=arm-linux-gnueabihf-gcc GOGCCFLAGS="-march=armv8-a" CXX=arm-linux-gnueabi-g++ go build -gcflags="-l -N" -o ./main; else go build -o /app/main -ldflags="-s -w -X 'main.Version=$VERSION' -X 'main.Commit=$COMMIT'"; fi
 
-RUN go build -o /app/main -ldflags="-s -w -X 'main.Version=$VERSION' -X 'main.Commit=$COMMIT'"
-
+RUN go build -o /app/main -ldflags="-s -w -X 'main.Version=$VERSION' -X 'main.Commit=$COMMIT' -X 'main.ApiVersion=$API_VERSION'"
 
 # -----------------------------------------------------------------------------------
 # Stage: Final Runtime Image

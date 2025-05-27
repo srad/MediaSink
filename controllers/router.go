@@ -1,9 +1,11 @@
 package controllers
 
 import (
+	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/srad/mediasink/app"
 	"github.com/srad/mediasink/conf"
 	"github.com/srad/mediasink/docs"
 	"github.com/srad/mediasink/middlewares"
@@ -29,7 +31,7 @@ import (
 // @BasePath  /api/v1
 
 // Setup InitRouter initialize routing information
-func Setup(version, commit string) http.Handler {
+func Setup(version, commit, apiVersion string) http.Handler {
 	router := gin.New()
 	// r.Use(gin.Logger())
 	router.Use(gin.Recovery())
@@ -57,6 +59,8 @@ func Setup(version, commit string) http.Handler {
 	}))
 
 	apiV1 := router.Group("/api/v1")
+
+	apiV1.Use(CheckClientVersion(apiVersion))
 
 	apiV1.Use()
 	{
@@ -169,4 +173,23 @@ func Setup(version, commit string) http.Handler {
 	}
 
 	return router
+}
+
+func CheckClientVersion(apiVersion string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		appG := app.Gin{C: c}
+
+		var clientVersion = c.GetHeader("X-API-Version")
+		if clientVersion == "" {
+			// WebSocket via get param?
+			if version, exists := c.GetQuery("ApiVersion"); exists {
+				clientVersion = version
+			}
+		}
+		if clientVersion != apiVersion {
+			appG.Error(http.StatusPreconditionFailed, fmt.Errorf("client API version %s incompatible with server API version %s", clientVersion, apiVersion))
+			return
+		}
+		c.Next()
+	}
 }

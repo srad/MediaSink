@@ -17,8 +17,9 @@ import (
 )
 
 var (
-	Version string
-	Commit  string
+	Version    string
+	Commit     string
+	ApiVersion string
 )
 
 func init() {
@@ -52,7 +53,7 @@ func init() {
 }
 
 func main() {
-	log.Infof("Version: %s, Commit: %s", Version, Commit)
+	log.Infof("Version: %s, Commit: %s, Api Version %s", Version, Commit, ApiVersion)
 
 	log.SetFormatter(&log.TextFormatter{
 		FullTimestamp: false,
@@ -81,7 +82,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:           endPoint,
-		Handler:        controllers.Setup(Version, Commit),
+		Handler:        controllers.Setup(Version, Commit, ApiVersion),
 		ReadTimeout:    12 * time.Hour,
 		WriteTimeout:   12 * time.Hour,
 		MaxHeaderBytes: 0,

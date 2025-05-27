@@ -5,6 +5,7 @@ services:
       args:
         - VERSION=${APP_VERSION}
         - COMMIT=${GIT_COMMIT}
+        - API_VERSION=${API_VERSION}
         # TARGETPLATFORM, TARGETOS, TARGETARCH are often auto-detected by Docker
         # but can be specified if needed for precise cross-compilation control.
         # Example for forcing a platform (usually not needed for local builds):
@@ -27,5 +28,6 @@ services:
       - APP_NAME=${APP_NAME}
       - APP_SOCKET_URL=${SOCKET_URL}
       - APP_FILE_URL=${FILE_URL}
+      - APP_API_VERSION=${API_VERSION}
     ports:
       - "8080:80"
