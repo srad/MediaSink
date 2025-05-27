@@ -441,7 +441,7 @@ func startThumbnailWorker(ctx context.Context) {
 		case <-ctx.Done():
 			log.Infoln("[startThumbnailWorker] Context cancelled, stopping worker.")
 			return
-		case <-ticker.C: // Wait for ticker event
+		case <-ticker.C:
 			streamInfoLock.Lock()
 			// Create a copy of StreamInfo structs to process outside the lock.
 			// This is important because info.Screenshot() might be a longer operation.

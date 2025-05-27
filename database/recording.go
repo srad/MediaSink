@@ -70,19 +70,48 @@ func FavRecording(id uint, fav bool) error {
 		Update("bookmark", fav).Error
 }
 
-func SortBy(column, order string, limit int) ([]*Recording, error) {
-	var recordings []*Recording
+func SortBy(column string, order string, skip, take int) ([]*Recording, int64, error) {
+	var count int64 = 0
 
-	err := DB.Model(Recording{}).
-		Order(fmt.Sprintf("recordings.%s %s", column, order)).
-		Limit(limit).
-		Find(&recordings).Error
+	// Create a base query - helps if you add filters later
+	query := DB.Model(&Recording{})
 
-	if err != nil {
-		return nil, err
+	// 1. Get the total count (without offset/limit/order)
+	if err := query.Count(&count).Error; err != nil {
+		// Return error if counting fails
+		return nil, 0, err
 	}
 
-	return recordings, nil
+	// 2. If count is 0, return early with an empty slice.
+	if count == 0 {
+		return make([]*Recording, 0), 0, nil
+	}
+
+	// 3. Initialize 'recordings' as an empty, non-nil slice.
+	recordings := make([]*Recording, 0)
+
+	// 4. Perform the Find query
+	err := query.
+		Order(fmt.Sprintf("%s %s", column, order)).
+		Offset(skip).
+		Limit(take).
+		Find(&recordings).Error
+
+	// 5. Check for errors, but specifically ignore 'ErrRecordNotFound'.
+	if err != nil {
+		// Check if the error is specifically 'Record Not Found'.
+		// As mentioned, this is unlikely with Find + slice, but it's safe to check.
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// We found nothing, which is NOT an error in this context.
+			// Return the initialized empty slice and the count we already got.
+			return recordings, count, nil
+		}
+		// It's some other, real database error, so return it.
+		return nil, 0, err
+	}
+
+	// 6. If no error occurred, return the (potentially populated) slice and count.
+	return recordings, count, nil
 }
 
 func FindRandom(limit int) ([]*Recording, error) {

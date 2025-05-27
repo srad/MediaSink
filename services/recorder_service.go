@@ -202,35 +202,35 @@ func checkStreams(ctx context.Context) {
 	log.Debugln("[checkStreams] Finished all concurrent checks for this cycle.")
 }
 
-// GeneratePosters generates preview posters for all existing recordings.
-func GeneratePosters() error {
-	log.Infoln("[GeneratePosters] Starting to update poster images for all recordings.")
+// GenerateVideoCovers generates preview posters for all existing recordings.
+func GenerateVideoCovers() error {
+	log.Infoln("[GenerateVideoCovers] Starting to update poster images for all recordings.")
 	recordings, err := database.RecordingsList()
 	if err != nil {
-		log.Errorf("[GeneratePosters] Error fetching recordings list: %v", err)
+		log.Errorf("[GenerateVideoCovers] Error fetching recordings list: %v", err)
 		return err
 	}
 
 	if len(recordings) == 0 {
-		log.Infoln("[GeneratePosters] No recordings found to generate posters for.")
+		log.Infoln("[GenerateVideoCovers] No recordings found to generate posters for.")
 		return nil
 	}
 
 	count := len(recordings)
-	log.Infof("[GeneratePosters] Found %d recordings to process.", count)
+	log.Infof("[GenerateVideoCovers] Found %d recordings to process.", count)
 
 	for i, rec := range recordings {
 		filepath := rec.AbsoluteChannelFilepath() // Assuming rec has this method
-		log.Infof("[GeneratePosters] Processing (%d/%d): %s", i+1, count, filepath)
+		log.Infof("[GenerateVideoCovers] Processing (%d/%d): %s", i+1, count, filepath)
 
 		video := &helpers.Video{FilePath: filepath}
 
 		if _, err := video.ExecPreviewCover(rec.DataFolder()); err != nil { // Assuming rec.DataFolder()
-			log.Errorf("[GeneratePosters] Error creating poster for %s: %v", filepath, err)
+			log.Errorf("[GenerateVideoCovers] Error creating poster for %s: %v", filepath, err)
 		}
 	}
 
-	log.Infoln("[GeneratePosters] Finished generating posters for all applicable recordings.")
+	log.Infoln("[GenerateVideoCovers] Finished generating posters for all applicable recordings.")
 	return nil
 }
 

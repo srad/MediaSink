@@ -4,10 +4,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/srad/mediasink/middlewares"
-
 	"github.com/srad/mediasink/conf"
 	"github.com/srad/mediasink/docs"
+	"github.com/srad/mediasink/middlewares"
 	"github.com/srad/mediasink/network"
 
 	"github.com/gin-contrib/cors"
@@ -25,9 +24,8 @@ import (
 // @contact.name   API Support
 // @contact.url    https://github.com/srad
 //
-// @license.name  Dual license, non-commercial, but free for open-source educational uses.
+// @license.name  Dual license, non-commercial, but free for open-source and educational uses.
 //
-// @host      localhost:3000
 // @BasePath  /api/v1
 
 // Setup InitRouter initialize routing information
@@ -39,8 +37,9 @@ func Setup(version, commit string) http.Handler {
 	cfg := conf.Read()
 
 	// This is only for development. User nginx or something to serve the static files.
-	router.Static("/recordings", cfg.RecordingsAbsolutePath)
+	router.Static("/videos", cfg.RecordingsAbsolutePath)
 
+	// API V1
 	docs.SwaggerInfo.BasePath = "/api/v1"
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
@@ -48,11 +47,11 @@ func Setup(version, commit string) http.Handler {
 		AllowOriginFunc: func(origin string) bool {
 			return true
 		},
-		AllowHeaders:     []string{"*", "Authorization"},
+		AllowHeaders:     []string{"*", "Authorization", "Content-Type"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
+		MaxAge:           7 * 24 * time.Hour,
 		AllowWebSockets:  true,
 		AllowWildcard:    true,
 	}))
@@ -61,75 +60,110 @@ func Setup(version, commit string) http.Handler {
 
 	apiV1.Use()
 	{
-		// Auth
-		apiV1.POST("/auth/signup", v1.CreateUser)
-		apiV1.POST("/auth/login", v1.Login)
-		apiV1.GET("/user/profile", middlewares.CheckAuthorizationHeader, v1.GetUserProfile)
+		// Auth Group
+		// ------------------------------------------------------
+		auth := apiV1.Group("/auth")
+		auth.POST("/signup", v1.CreateUser)
+		auth.POST("/login", v1.Login)
+		auth.POST("/logout", middlewares.CheckAuthorizationHeader, v1.Logout)
 
-		// Admin
-		apiV1.GET("/admin/version", middlewares.CheckAuthorizationHeader, v1.GetVersion(version, commit))
-		apiV1.POST("/admin/import", middlewares.CheckAuthorizationHeader, v1.TriggerImport)
-		apiV1.GET("/admin/import", middlewares.CheckAuthorizationHeader, v1.GetImportInfo)
+		// User
+		// ------------------------------------------------------
+		user := apiV1.Group("/user")
+		user.Use(middlewares.CheckAuthorizationHeader)
+		user.GET("/profile", v1.GetUserProfile)
 
-		// Channels
-		apiV1.GET("/channels", middlewares.CheckAuthorizationHeader, v1.GetChannels)
-		apiV1.POST("/channels", middlewares.CheckAuthorizationHeader, v1.CreateChannel)
+		// Admin Group
+		// ------------------------------------------------------
+		admin := apiV1.Group("/admin")
+		admin.Use(middlewares.CheckAuthorizationHeader)
+		admin.GET("/version", v1.GetVersion(version, commit))
+		admin.POST("/import", v1.TriggerImport)
+		admin.GET("/import", v1.GetImportInfo)
 
-		apiV1.GET("/channels/:id", middlewares.CheckAuthorizationHeader, v1.GetChannel)
-		apiV1.DELETE("/channels/:id", middlewares.CheckAuthorizationHeader, v1.DeleteChannel)
-		apiV1.PATCH("/channels/:id", middlewares.CheckAuthorizationHeader, v1.UpdateChannel)
+		// Channels Group
+		// ------------------------------------------------------
+		channels := apiV1.Group("/channels")
+		channels.Use(middlewares.CheckAuthorizationHeader)
 
-		apiV1.POST("/channels/:id/resume", middlewares.CheckAuthorizationHeader, v1.ResumeChannel)
-		apiV1.POST("/channels/:id/pause", middlewares.CheckAuthorizationHeader, v1.PauseChannel)
+		channels.GET("", v1.GetChannels)
+		channels.POST("", v1.CreateChannel)
 
-		apiV1.PATCH("/channels/:id/fav", middlewares.CheckAuthorizationHeader, v1.FavChannel)
-		apiV1.PATCH("/channels/:id/unfav", middlewares.CheckAuthorizationHeader, v1.UnFavChannel)
+		channels.GET("/:id", v1.GetChannel)
+		channels.DELETE("/:id", v1.DeleteChannel)
+		channels.PATCH("/:id", v1.UpdateChannel)
 
-		apiV1.POST("/channels/:id/upload", middlewares.CheckAuthorizationHeader, v1.UploadChannel)
+		channels.POST("/:id/resume", v1.ResumeChannel)
+		channels.POST("/:id/pause", v1.PauseChannel)
 
-		apiV1.PATCH("/channels/:id/tags", middlewares.CheckAuthorizationHeader, v1.TagChannel)
+		channels.PATCH("/:id/fav", v1.FavChannel)
+		channels.PATCH("/:id/unfav", v1.UnFavChannel)
 
-		// Jobs
-		apiV1.POST("/jobs/:id", middlewares.CheckAuthorizationHeader, v1.AddPreviewJobs)
-		apiV1.POST("/jobs/stop/:pid", middlewares.CheckAuthorizationHeader, v1.StopJob)
-		apiV1.DELETE("/jobs/:id", middlewares.CheckAuthorizationHeader, v1.DestroyJob)
-		apiV1.POST("/jobs/list", middlewares.CheckAuthorizationHeader, v1.JobsList)
-		apiV1.POST("/jobs/resume", middlewares.CheckAuthorizationHeader, v1.ResumeJobs)
-		apiV1.POST("/jobs/pause", middlewares.CheckAuthorizationHeader, v1.PauseJobs)
-		apiV1.GET("/jobs/worker", middlewares.CheckAuthorizationHeader, v1.IsProcessing)
+		channels.POST("/:id/upload", v1.UploadChannel)
+		channels.PATCH("/:id/tags", v1.TagChannel)
+		// ------------------------------------------------------
 
-		// recorder
-		apiV1.POST("/recorder/resume", middlewares.CheckAuthorizationHeader, v1.StartRecorder)
-		apiV1.POST("/recorder/pause", middlewares.CheckAuthorizationHeader, v1.StopRecorder)
-		apiV1.GET("/recorder", middlewares.CheckAuthorizationHeader, v1.IsRecording)
+		// Jobs Group
+		// ------------------------------------------------------
+		jobs := apiV1.Group("/jobs")
+		jobs.Use(middlewares.CheckAuthorizationHeader)
 
-		// Channels
-		apiV1.POST("/recordings/updateinfo", middlewares.CheckAuthorizationHeader, v1.UpdateVideoInfo)
-		apiV1.POST("/recordings/isupdating", middlewares.CheckAuthorizationHeader, v1.IsUpdatingVideoInfo)
-		apiV1.POST("/recordings/generate/posters", middlewares.CheckAuthorizationHeader, v1.GeneratePosters)
+		jobs.POST("/:id", v1.AddPreviewJobs)
+		jobs.POST("/stop/:pid", v1.StopJob)
+		jobs.DELETE("/:id", v1.DestroyJob)
+		jobs.POST("/list", v1.JobsList)
+		jobs.POST("/resume", v1.ResumeJobs)
+		jobs.POST("/pause", v1.PauseJobs)
+		jobs.GET("/worker", v1.IsProcessing)
 
-		// recordings
-		apiV1.GET("/recordings", middlewares.CheckAuthorizationHeader, v1.GetRecordings)
-		apiV1.GET("/recordings/filter/:column/:order/:limit", middlewares.CheckAuthorizationHeader, v1.FilterRecordings)
-		apiV1.GET("/recordings/random/:limit", middlewares.CheckAuthorizationHeader, v1.GetRandomRecordings)
-		apiV1.GET("/recordings/bookmarks", middlewares.CheckAuthorizationHeader, v1.GetBookmarks)
-		apiV1.GET("/recordings/:id", middlewares.CheckAuthorizationHeader, v1.GetRecording)
-		apiV1.GET("/recordings/:id/download", middlewares.CheckAuthorizationHeader, v1.DownloadRecording)
+		// Recorder Group
+		// ------------------------------------------------------
+		recorder := apiV1.Group("/recorder")
+		recorder.Use(middlewares.CheckAuthorizationHeader)
 
-		apiV1.PATCH("/recordings/:id/fav", middlewares.CheckAuthorizationHeader, v1.FavRecording)
-		apiV1.PATCH("/recordings/:id/unfav", middlewares.CheckAuthorizationHeader, v1.UnfavRecording)
+		recorder.POST("/resume", v1.StartRecorder)
+		recorder.POST("/pause", v1.StopRecorder)
+		recorder.GET("", v1.IsRecording)
 
-		apiV1.POST("/recordings/:id/:mediaType/convert", middlewares.CheckAuthorizationHeader, v1.Convert)
-		apiV1.POST("/recordings/:id/cut", middlewares.CheckAuthorizationHeader, v1.CutRecording)
-		apiV1.POST("/recordings/:id/preview", middlewares.CheckAuthorizationHeader, v1.GeneratePreviews)
+		// Videos Group
+		// ------------------------------------------------------
+		videos := apiV1.Group("/videos")
+		videos.Use(middlewares.CheckAuthorizationHeader)
 
-		apiV1.DELETE("/recordings/:id", middlewares.CheckAuthorizationHeader, v1.DeleteRecording)
+		videos.POST("/updateinfo", v1.UpdateVideoInfo)
+		videos.POST("/isupdating", v1.IsUpdatingVideoInfo)
+		videos.POST("/generate/posters", v1.GenerateCovers)
 
-		apiV1.GET("/info/:seconds", middlewares.CheckAuthorizationHeader, v1.GetInfo)
-		apiV1.GET("/info/disk", middlewares.CheckAuthorizationHeader, v1.GetDiskInfo)
+		videos.GET("", v1.GetVideos)
+		videos.POST("/filter", v1.FilterVideos)
+		videos.GET("/random/:limit", v1.GetRandomVideos)
+		videos.GET("/bookmarks", v1.GetBookmarkedVideos)
+		videos.GET("/:id", v1.GetVideo)
+		videos.GET("/:id/download", v1.DownloadVideo)
 
+		videos.PATCH("/:id/fav", v1.FavVideo)
+		videos.PATCH("/:id/unfav", v1.UnfavVideo)
+
+		videos.POST("/:id/:mediaType/convert", v1.ConvertVideo)
+		videos.POST("/:id/cut", v1.CutVideo)
+		videos.POST("/:id/preview", v1.GenerateVideoPreviews)
+
+		videos.DELETE("/:id", v1.DeleteVideo)
+
+		// Info Group
+		// ------------------------------------------------------
+		info := apiV1.Group("/info")
+		info.Use(middlewares.CheckAuthorizationHeader)
+
+		info.GET("/:seconds", v1.GetInfo)
+		info.GET("/disk", v1.GetDiskInfo)
+
+		// Processes
+		// ------------------------------------------------------
 		apiV1.GET("/processes", middlewares.CheckAuthorizationHeader, v1.GetProcesses)
 
+		// WebSocket
+		// ------------------------------------------------------
 		go network.WsListen()
 		apiV1.GET("/ws", middlewares.CheckAuthorizationHeader, network.WsHandler)
 	}
