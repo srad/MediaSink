@@ -115,7 +115,7 @@ RUN apt-get update && \
       make \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN git clone --branch release/7.1 --depth 1 https://git.ffmpeg.org/ffmpeg.git /ffmpeg
+RUN git clone --branch release/8.0 --depth 1 https://git.ffmpeg.org/ffmpeg.git /ffmpeg
 WORKDIR /ffmpeg
 
 # Configure for static linking where possible to reduce runtime dependencies
