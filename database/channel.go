@@ -137,7 +137,6 @@ func (channel *Channel) QueryStreamURL() (string, error) {
 		"--force-ipv4",
 		// "--ignore-errors", // Removed for better error handling
 		"--no-warnings",
-		"--youtube-skip-dash-manifest",
 		"-f", "best", // Or "best/bestvideo" if you have a strong reason for that specific fallback
 		"--get-url",
 		channel.URL,
