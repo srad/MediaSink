@@ -178,12 +178,13 @@ func CaptureChannel(id database.ChannelID, url string, skip uint) error {
 					return err
 				}
 			}
-		} else { // Throw away
-			log.Infof("[FinishRecording] Deleting stream '%s/%s' because it is too short (%fmin)", channel.ChannelName, recording.Filename, recDuration.Minutes())
+		}
+	} else {
+		// Recording is too short, delete it
+		log.Infof("[FinishRecording] Deleting stream '%s/%s' because it is too short (%f min < %f min)", channel.ChannelName, recording.Filename, recDuration.Minutes(), channelDuration)
 
-			if err := os.Remove(outputFilePath); err != nil {
-				log.Errorf("[Capture] Error destroying recording: %s", err)
-			}
+		if err := os.Remove(outputFilePath); err != nil {
+			log.Errorf("[Capture] Error destroying recording: %s", err)
 		}
 	}
 	return nil
