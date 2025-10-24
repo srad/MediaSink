@@ -105,6 +105,7 @@ func Setup(version, commit, apiVersion string) http.Handler {
 
 		channels.POST("/:id/upload", v1.UploadChannel)
 		channels.PATCH("/:id/tags", v1.TagChannel)
+		channels.POST("/:id/merge", v1.MergeVideos)
 		// ------------------------------------------------------
 
 		// Jobs Group
@@ -142,6 +143,7 @@ func Setup(version, commit, apiVersion string) http.Handler {
 		videos.POST("/filter", v1.FilterVideos)
 		videos.GET("/random/:limit", v1.GetRandomVideos)
 		videos.GET("/bookmarks", v1.GetBookmarkedVideos)
+		videos.GET("/enhance/descriptions", v1.GetEnhancementDescriptions)
 		videos.GET("/:id", v1.GetVideo)
 		videos.GET("/:id/download", v1.DownloadVideo)
 
@@ -151,6 +153,8 @@ func Setup(version, commit, apiVersion string) http.Handler {
 		videos.POST("/:id/:mediaType/convert", v1.ConvertVideo)
 		videos.POST("/:id/cut", v1.CutVideo)
 		videos.POST("/:id/preview", v1.GenerateVideoPreviews)
+		videos.POST("/:id/enhance", v1.EnhanceVideo)
+		videos.POST("/:id/estimate-enhancement", v1.EstimateEnhancement)
 
 		videos.DELETE("/:id", v1.DeleteVideo)
 

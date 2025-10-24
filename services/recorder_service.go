@@ -173,7 +173,7 @@ func checkStreams(ctx context.Context) {
 				return
 			}
 
-			log.Infof("[checkStreams] Attempting to start stream for channel: %s (ID: %d)", currentChannelState.ChannelName, currentChannelState.ChannelID)
+			//log.Infof("[checkStreams] Attempting to start stream for channel: %s (ID: %d)", currentChannelState.ChannelName, currentChannelState.ChannelID)
 
 			// Preserving the original logic for handling Start() return values and broadcasting.
 			started, startErr := Start(currentChannelState.ChannelID)

@@ -252,11 +252,9 @@ func Start(id database.ChannelID) (bool, error) {
 	streamInfoLock.Unlock()
 
 	if queryErr != nil {
-		log.Warnf("[Start] URL query error for %s: %v. Stream marked as offline.", channel.ChannelName, queryErr)
 		return false, queryErr // Return the queryErr so checkStreams can log it
 	}
 	if url == "" {
-		log.Infof("[Start] No url found for channel: %s. Stream marked as offline.", channel.ChannelName)
 		return false, nil // Not an error, just stream is offline
 	}
 

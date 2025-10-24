@@ -39,6 +39,67 @@ type CutArgs struct {
 	DeleteAfterCompletion bool     `json:"deleteAfterCut"`
 }
 
+type MergeJobArgs struct {
+	RecordingIDs []uint `json:"recordingIds"`
+	ReEncode     bool   `json:"reEncode"`
+}
+
+type ResolutionType string
+
+const (
+	Resolution720p  ResolutionType = "720p"
+	Resolution1080p ResolutionType = "1080p"
+	Resolution1440p ResolutionType = "1440p"
+	Resolution4K    ResolutionType = "4k"
+)
+
+// GetResolutionDimensions returns width and height for a resolution type
+func (r ResolutionType) GetDimensions() (width uint, height uint) {
+	switch r {
+	case Resolution720p:
+		return 1280, 720
+	case Resolution1080p:
+		return 1920, 1080
+	case Resolution1440p:
+		return 2560, 1440
+	case Resolution4K:
+		return 3840, 2160
+	default:
+		return 1920, 1080
+	}
+}
+
+type EncodingPreset string
+
+const (
+	PresetVeryFast  EncodingPreset = "veryfast"
+	PresetFaster    EncodingPreset = "faster"
+	PresetFast      EncodingPreset = "fast"
+	PresetMedium    EncodingPreset = "medium"
+	PresetSlow      EncodingPreset = "slow"
+	PresetSlower    EncodingPreset = "slower"
+	PresetVerySlow  EncodingPreset = "veryslow"
+)
+
+// Validate checks if the preset is valid
+func (p EncodingPreset) Validate() bool {
+	switch p {
+	case PresetVeryFast, PresetFaster, PresetFast, PresetMedium, PresetSlow, PresetSlower, PresetVerySlow:
+		return true
+	default:
+		return false
+	}
+}
+
+type EnhanceArgs struct {
+	TargetResolution ResolutionType `json:"targetResolution"`
+	DenoiseStrength  float64        `json:"denoiseStrength"`
+	SharpenStrength  float64        `json:"sharpenStrength"`
+	ApplyNormalize   bool           `json:"applyNormalize"`
+	EncodingPreset   EncodingPreset `json:"encodingPreset"`
+	CRF              uint           `json:"crf"`
+}
+
 type TaskProgress struct {
 	Current uint64 `json:"current"`
 	Total   uint64 `json:"total"`
@@ -137,6 +198,14 @@ type MergeArgs struct {
 	OnProgress             func(info PipeMessage)
 	OnErr                  func(error)
 	MergeFileAbsolutePath  string
+	AbsoluteOutputFilepath string
+}
+
+type MergeReEncodeArgs struct {
+	OnStart                func(info CommandInfo)
+	OnProgress             func(info PipeMessage)
+	OnErr                  func(error)
+	InputFiles             []string
 	AbsoluteOutputFilepath string
 }
 
@@ -591,7 +660,7 @@ func MergeVideos(args *MergeArgs) error {
 
 	return ExecSync(&ExecArgs{
 		Command:     "ffmpeg",
-		CommandArgs: []string{"-hide_banner", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", args.MergeFileAbsolutePath, "-movflags", "faststart", "-codec", "copy", args.AbsoluteOutputFilepath},
+		CommandArgs: []string{"-y", "-hide_banner", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", args.MergeFileAbsolutePath, "-movflags", "faststart", "-codec", "copy", args.AbsoluteOutputFilepath},
 		OnStart:     args.OnStart,
 		OnPipeErr: func(info PipeMessage) {
 			if args.OnErr != nil {
@@ -600,6 +669,164 @@ func MergeVideos(args *MergeArgs) error {
 		},
 		OnPipeOut: args.OnProgress,
 	})
+}
+
+func MergeVideosReEncoded(args *MergeReEncodeArgs) error {
+	log.Infoln("---------------------------------------------- Re-Encoded Merge Job ------------------------------------------")
+	log.Infof("Merging %d videos with re-encoding to highest quality spec", len(args.InputFiles))
+	log.Infoln("---------------------------------------------------------------------------------------------------------")
+
+	if len(args.InputFiles) == 0 {
+		return errors.New("no input files provided for merge")
+	}
+
+	// Probe all input videos to get their properties
+	videoInfos := make([]*FFProbeInfo, len(args.InputFiles))
+	for i, filepath := range args.InputFiles {
+		video := &Video{FilePath: filepath}
+		info, err := video.GetVideoInfo()
+		if err != nil {
+			return fmt.Errorf("error probing video '%s': %w", filepath, err)
+		}
+		videoInfos[i] = info
+	}
+
+	// Calculate maximum values across all videos
+	maxWidth := uint(0)
+	maxHeight := uint(0)
+	maxFps := 0.0
+	maxBitrate := uint64(0)
+
+	for _, info := range videoInfos {
+		if info.Width > maxWidth {
+			maxWidth = info.Width
+		}
+		if info.Height > maxHeight {
+			maxHeight = info.Height
+		}
+		if info.Fps > maxFps {
+			maxFps = info.Fps
+		}
+		if info.BitRate > maxBitrate {
+			maxBitrate = info.BitRate
+		}
+	}
+
+	log.Infof("Target merge spec - Resolution: %dx%d, FPS: %.2f, Bitrate: %d", maxWidth, maxHeight, maxFps, maxBitrate)
+
+	// Create temporary directory for re-encoded files
+	tempDir := filepath.Dir(args.AbsoluteOutputFilepath)
+	reEncodeExt := fmt.Sprintf("_reencode_%d", time.Now().UnixNano())
+
+	// Re-encode all videos to the maximum spec
+	reEncodedFiles := make([]string, len(args.InputFiles))
+	for i, inputFile := range args.InputFiles {
+		reEncodedFiles[i] = filepath.Join(tempDir, fmt.Sprintf("merge_reencode_%d%s.mp4", i, reEncodeExt))
+
+		fpsStr := fmt.Sprintf("%.2f", maxFps)
+		scaleStr := fmt.Sprintf("%d:%d", maxWidth, maxHeight)
+
+		err := ExecSync(&ExecArgs{
+			Command: "ffmpeg",
+			CommandArgs: []string{
+				"-y",
+				"-hide_banner",
+				"-loglevel", "error",
+				"-i", inputFile,
+				"-vf", fmt.Sprintf("scale=%s:force_original_aspect_ratio=decrease,pad=%s:(ow-iw)/2:(oh-ih)/2,format=yuv420p", scaleStr, scaleStr),
+				"-r", fpsStr,
+				"-c:v", "libx265",
+				"-crf", "18",
+				"-preset", "medium",
+				"-pix_fmt", "yuv420p",
+				"-movflags", "faststart",
+				"-c:a", "aac",
+				reEncodedFiles[i],
+			},
+			OnStart: args.OnStart,
+			OnPipeErr: func(info PipeMessage) {
+				if args.OnErr != nil {
+					args.OnErr(errors.New(info.Output))
+				}
+			},
+			OnPipeOut: args.OnProgress,
+		})
+
+		if err != nil {
+			// Clean up all re-encoded files on error
+			log.Errorf("Error re-encoding video '%s': %v", inputFile, err)
+			for _, file := range reEncodedFiles {
+				if file != "" && file != args.AbsoluteOutputFilepath {
+					if errCleanup := os.Remove(file); errCleanup != nil {
+						log.Warnf("Error deleting partial re-encoded file '%s': %v", file, errCleanup)
+					}
+				}
+			}
+			return fmt.Errorf("error re-encoding video '%s': %w", inputFile, err)
+		}
+	}
+
+	// Create concat demuxer file
+	concatFileContent := make([]string, len(reEncodedFiles))
+	for i, file := range reEncodedFiles {
+		concatFileContent[i] = fmt.Sprintf("file '%s'", file)
+	}
+
+	concatFilePath := filepath.Join(tempDir, fmt.Sprintf("merge_concat_%d%s.txt", time.Now().UnixNano(), reEncodeExt))
+	err := os.WriteFile(concatFilePath, []byte(strings.Join(concatFileContent, "\n")), 0644)
+	if err != nil {
+		log.Errorf("Error writing concat file: %v", err)
+		for _, file := range reEncodedFiles {
+			if errCleanup := os.Remove(file); errCleanup != nil {
+				log.Warnf("Error deleting re-encoded file '%s': %v", file, errCleanup)
+			}
+		}
+		return fmt.Errorf("error writing concat demuxer file: %w", err)
+	}
+
+	// Merge re-encoded videos
+	errMerge := ExecSync(&ExecArgs{
+		Command: "ffmpeg",
+		CommandArgs: []string{
+			"-y",
+			"-hide_banner",
+			"-loglevel", "error",
+			"-f", "concat",
+			"-safe", "0",
+			"-i", concatFilePath,
+			"-movflags", "faststart",
+			"-codec", "copy",
+			args.AbsoluteOutputFilepath,
+		},
+		OnStart: args.OnStart,
+		OnPipeErr: func(info PipeMessage) {
+			if args.OnErr != nil {
+				args.OnErr(errors.New(info.Output))
+			}
+		},
+		OnPipeOut: args.OnProgress,
+	})
+
+	// Clean up re-encoded files and concat file
+	for _, file := range reEncodedFiles {
+		if errCleanup := os.Remove(file); errCleanup != nil {
+			log.Warnf("Error deleting re-encoded file '%s': %v", file, errCleanup)
+		}
+	}
+	if errCleanup := os.Remove(concatFilePath); errCleanup != nil {
+		log.Warnf("Error deleting concat file '%s': %v", concatFilePath, errCleanup)
+	}
+
+	if errMerge != nil {
+		// Clean up output file if merge failed
+		if errCleanup := os.Remove(args.AbsoluteOutputFilepath); errCleanup != nil {
+			log.Warnf("Error deleting failed merge output '%s': %v", args.AbsoluteOutputFilepath, errCleanup)
+		}
+		return fmt.Errorf("error merging re-encoded videos: %w", errMerge)
+	}
+
+	log.Infof("Successfully merged %d videos with re-encoding to %dx%d @ %.2f FPS, %d kbps", len(args.InputFiles), maxWidth, maxHeight, maxFps, maxBitrate/1000)
+	return nil
 }
 
 func CutVideo(args *CuttingJob, absoluteFilepath, absoluteOutputFilepath, startIntervals, endIntervals string) error {
@@ -612,7 +839,7 @@ func CutVideo(args *CuttingJob, absoluteFilepath, absoluteOutputFilepath, startI
 
 	return ExecSync(&ExecArgs{
 		Command:     "ffmpeg",
-		CommandArgs: []string{"-progress", "pipe:1", "-hide_banner", "-loglevel", "error", "-i", absoluteFilepath, "-ss", startIntervals, "-to", endIntervals, "-movflags", "faststart", "-codec", "copy", absoluteOutputFilepath},
+		CommandArgs: []string{"-y", "-progress", "pipe:1", "-hide_banner", "-loglevel", "error", "-i", absoluteFilepath, "-ss", startIntervals, "-to", endIntervals, "-movflags", "faststart", "-codec", "copy", absoluteOutputFilepath},
 		OnStart: func(info CommandInfo) {
 			args.OnStart(&info)
 		},

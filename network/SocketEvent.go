@@ -164,10 +164,15 @@ func WsHandler(c *gin.Context) {
 		for {
 			select {
 			case <-ticker.C:
+				// Lock before writing to avoid concurrent writes
+				connection.mu.Lock()
 				// Set a deadline for the write operation.
 				ws.SetWriteDeadline(time.Now().Add(writeWait))
 				// Send a Ping message.
-				if err := ws.WriteMessage(websocket.PingMessage, nil); err != nil {
+				err := ws.WriteMessage(websocket.PingMessage, nil)
+				connection.mu.Unlock()
+
+				if err != nil {
 					log.Warnf("[WsHandler-Ping] Ping failed: %v. Closing connection.", err)
 					// IMPORTANT: Only call ws.Close(). Do NOT call rmWs.
 					// Closing here will cause ws.ReadJSON() in the main loop to fail,

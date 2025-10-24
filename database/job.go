@@ -20,6 +20,8 @@ const (
 	TaskPreviewStrip   JobTask   = "preview-stripe"
 	TaskPreviewVideo   JobTask   = "preview-video"
 	TaskCut            JobTask   = "cut"
+	TaskMerge          JobTask   = "merge"
+	TaskEnhanceVideo   JobTask   = "enhance-video"
 	StatusJobCompleted JobStatus = "completed"
 	StatusJobOpen      JobStatus = "open"
 	StatusJobError     JobStatus = "error"
@@ -370,5 +372,49 @@ func EnqueueCuttingJob(id uint, args *helpers.CutArgs) (*Job, error) {
 		} else {
 			return job, nil
 		}
+	}
+}
+
+func EnqueueMergeJob(channelID ChannelID, recordingIDs []uint, reEncode bool) (*Job, error) {
+	if len(recordingIDs) == 0 {
+		return nil, errors.New("no recording IDs provided for merge")
+	}
+
+	// Get first recording's channel to validate they all belong to same channel
+	firstRec, err := RecordingID(recordingIDs[0]).FindRecordingByID()
+	if err != nil {
+		return nil, fmt.Errorf("failed to find recording %d: %w", recordingIDs[0], err)
+	}
+
+	if firstRec.ChannelID != channelID {
+		return nil, errors.New("not all recordings belong to the specified channel")
+	}
+
+	// Create merge args with recording IDs
+	mergeArgs := &helpers.MergeJobArgs{
+		RecordingIDs: recordingIDs,
+		ReEncode:     reEncode,
+	}
+
+	// Create the merge job attached to the first recording
+	if job, err := CreateJob(firstRec, TaskMerge, mergeArgs); err != nil {
+		return nil, err
+	} else {
+		network.BroadCastClients(network.JobCreateEvent, job)
+		return job, nil
+	}
+}
+
+func EnqueueEnhanceVideoJob(recordingID uint, args *helpers.EnhanceArgs) (*Job, error) {
+	rec, err := RecordingID(recordingID).FindRecordingByID()
+	if err != nil {
+		return nil, fmt.Errorf("failed to find recording %d: %w", recordingID, err)
+	}
+
+	if job, err := CreateJob(rec, TaskEnhanceVideo, args); err != nil {
+		return nil, err
+	} else {
+		network.BroadCastClients(network.JobCreateEvent, job)
+		return job, nil
 	}
 }
