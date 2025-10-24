@@ -51,12 +51,12 @@ func AddPreviewJobs(c *gin.Context) {
 
 // StopJob godoc
 // @Summary     Interrupt job gracefully
-// @Description Interrupt job gracefully
+// @Description Interrupt a running job by process ID
 // @Tags        jobs
 // @Param       pid path int  true  "Process ID"
 // @Accept      json
 // @Produce     json
-// @Success     200
+// @Success     200 {} int "Process ID"
 // @Failure     400 {} string "Error message"
 // @Failure     500 {} string "Error message"
 // @Router      /jobs/stop/{pid} [post]
@@ -79,12 +79,12 @@ func StopJob(c *gin.Context) {
 
 // DestroyJob godoc
 // @Summary     Interrupt and delete job gracefully
-// @Description Interrupt and delete job gracefully
+// @Description Interrupt a running job and remove it from the queue
 // @Tags        jobs
 // @Param       id path int  true  "Job id"
 // @Accept      json
 // @Produce     json
-// @Success     200 {} http.StatusOK
+// @Success     200 {} nil
 // @Failure     400 {} string "Error message"
 // @Failure     500 {} string "Error message"
 // @Router      /jobs/{id} [delete]
@@ -140,10 +140,13 @@ func JobsList(c *gin.Context) {
 }
 
 // PauseJobs godoc
-// @Summary     Stops the job processing
-// @Description Stops the job processing
+// @Summary     Stop job processing worker
+// @Description Pause the background job processing worker
 // @Tags        jobs
+// @Accept      json
+// @Produce     json
 // @Success     200 {} nil
+// @Failure     500 {} string "Error message"
 // @Router      /jobs/pause [post]
 func PauseJobs(c *gin.Context) {
 	appG := app.Gin{C: c}
@@ -152,10 +155,13 @@ func PauseJobs(c *gin.Context) {
 }
 
 // ResumeJobs godoc
-// @Summary     Start the job processing
-// @Description Start the job processing
+// @Summary     Start job processing worker
+// @Description Resume the background job processing worker
 // @Tags        jobs
+// @Accept      json
+// @Produce     json
 // @Success     200 {} nil
+// @Failure     500 {} string "Error message"
 // @Router      /jobs/resume [post]
 func ResumeJobs(c *gin.Context) {
 	appG := app.Gin{C: c}
@@ -164,11 +170,13 @@ func ResumeJobs(c *gin.Context) {
 }
 
 // IsProcessing godoc
-// @Summary     Job worker status
-// @Description Job worker status
+// @Summary     Get job worker status
+// @Description Get the current job processing worker status
+// @Tags        jobs
+// @Accept      json
 // @Produce     json
 // @Success     200 {object} responses.JobWorkerStatus
-// @Tags        jobs
+// @Failure     500 {} string "Error message"
 // @Router      /jobs/worker [get]
 func IsProcessing(c *gin.Context) {
 	appG := app.Gin{C: c}

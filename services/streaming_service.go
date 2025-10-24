@@ -39,7 +39,7 @@ type ProcessInfo struct {
 var (
 	// Package-level maps that need protection
 	recInfo    = make(map[database.ChannelID]*database.Recording)
-	streamInfo = make(map[database.ChannelID]StreamInfo)
+	streamInfo = make(map[database.ChannelID]*StreamInfo) // Changed to pointers to avoid lost updates on concurrent modifications
 	streams    = make(map[database.ChannelID]*exec.Cmd)
 
 	// Mutexes for protecting concurrent access to the maps
@@ -171,11 +171,18 @@ func CaptureChannel(id database.ChannelID, url string, skip uint) error {
 			info := Info(id)
 			if newRecording, err := database.CreateRecording(info.ChannelID, info.Filename, "recording"); err != nil {
 				log.Errorf("[Info] Error adding recording '%s': %s", outputFilePath, err)
+				// Note: File remains on disk but not in database - it will need manual cleanup or reimport
 			} else {
 				network.BroadCastClients(network.RecordingAddEvent, newRecording)
 
 				if _, _, errPreviews := newRecording.EnqueuePreviewsJob(); errPreviews != nil {
-					return err
+					// Preview job enqueue failed - clean up the recording and file
+					log.Errorf("[FinishRecording] Error enqueueing preview job for recording '%s': %v", newRecording.Filename, errPreviews)
+
+					if errDelete := newRecording.DestroyRecording(); errDelete != nil {
+						log.Errorf("[FinishRecording] Error cleaning up orphaned recording after preview job failure: %v", errDelete)
+					}
+					return errPreviews
 				}
 			}
 		}
@@ -205,10 +212,15 @@ func GetRecordingMinutes(id database.ChannelID) float64 {
 func Info(id database.ChannelID) *database.Recording {
 	activeRecLock.Lock()
 	defer activeRecLock.Unlock()
-	// The caller gets a pointer to the map's value.
-	// If modification is possible and unintended, a copy should be returned.
-	// For now, assuming read-only usage or intentional modification.
-	return recInfo[id]
+
+	// Return a copy of the Recording data to prevent use-after-free if the map entry is deleted
+	// while the caller is using the returned pointer. Use new() to allocate on heap.
+	if rec, ok := recInfo[id]; ok {
+		recCopy := new(database.Recording)
+		*recCopy = *rec // Copy all fields
+		return recCopy
+	}
+	return nil
 }
 
 func Start(id database.ChannelID) (bool, error) {
@@ -231,7 +243,7 @@ func Start(id database.ChannelID) (bool, error) {
 	if siExisting, ok := streamInfo[channel.ChannelID]; ok {
 		currentIsTerminating = siExisting.IsTerminating
 	}
-	streamInfo[channel.ChannelID] = StreamInfo{
+	streamInfo[channel.ChannelID] = &StreamInfo{
 		IsOnline:      url != "" && queryErr == nil, // Mark online only if URL found AND no query error
 		URL:           url,
 		ChannelName:   channel.ChannelName,
@@ -313,13 +325,11 @@ func TerminateProcess(id database.ChannelID) error {
 
 	streamInfoLock.Lock()
 	if si, siExists := streamInfo[id]; siExists {
-		if !si.IsTerminating { // Avoid redundant logging
+		if !si.IsTerminating {
 			si.IsTerminating = true
-			streamInfo[id] = si // Write back the modified struct
 			log.Infof("[TerminateProcess] Marked channel %d (Name: %s) as IsTerminating in streamInfo.", id, si.ChannelName)
 		}
 	} else {
-		// This case might happen if DeleteStreamData was called after a crash but before TerminateProcess.
 		log.Warnf("[TerminateProcess] No streamInfo found for channel ID %d (Name: %s) when trying to mark IsTerminating.", id, channelNameForLog)
 	}
 	streamInfoLock.Unlock()
@@ -450,7 +460,7 @@ func startThumbnailWorker(ctx context.Context) {
 			for id, si := range streamInfo {
 				// Only process online, non-terminating streams that have a URL.
 				if si.IsOnline && si.URL != "" && !si.IsTerminating {
-					infosToSnapshot[id] = si // This creates a copy of the StreamInfo struct.
+					infosToSnapshot[id] = *si
 				}
 			}
 			streamInfoLock.Unlock()

@@ -10,13 +10,13 @@ import (
 
 // GetUserProfile godoc
 // @Summary     Get user profile
-// @Description Get user profile
+// @Description Get the current authenticated user's profile information
 // @Tags        user
 // @Accept      json
 // @Produce     json
-// @Success     200 {any} JWT token for authentication
+// @Success     200 {object} object "User profile"
 // @Failure     400 {} http.StatusBadRequest
-// @Router      /user/profile [post]
+// @Router      /user/profile [get]
 func GetUserProfile(c *gin.Context) {
 	appG := app.Gin{C: c}
 	user, exists := c.Get("currentUser")

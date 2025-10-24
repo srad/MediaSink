@@ -229,65 +229,116 @@ func CreateRecording(channelId ChannelID, filename RecordingFileName, videoType 
 		PreviewCover:  nil,
 	}
 
-	// Check for existing recording.
-	if errFind := DB.Model(&Recording{}).Where("channel_id = ? AND filename = ?", channelId, filename).FirstOrCreate(&recording).Error; errors.Is(errFind, gorm.ErrRecordNotFound) {
-		return nil, fmt.Errorf("error creating record: %s", errFind)
+	// Check for existing recording first, then create if not found
+	existing := &Recording{}
+	existsResult := DB.Where("channel_id = ? AND filename = ?", channelId, filename).First(existing)
+
+	if existsResult.Error == nil {
+		// Recording already exists, return it
+		return existing, nil
+	}
+
+	if !errors.Is(existsResult.Error, gorm.ErrRecordNotFound) {
+		// Database error
+		return nil, fmt.Errorf("error checking existing recording: %w", existsResult.Error)
+	}
+
+	// Create new recording using transaction to ensure atomic operation
+	tx := BeginTx()
+	if err := tx.Create(&recording).Error; err != nil {
+		tx.Rollback()
+		return nil, fmt.Errorf("error creating recording: %w", err)
+	}
+	if err := tx.Commit().Error; err != nil {
+		return nil, fmt.Errorf("error committing recording creation: %w", err)
 	}
 
 	return recording, nil
 }
 
 func DestroyJobs(id RecordingID) error {
-	var jobs *[]Job
-	err := DB.Model(&Job{}).
-		Where("recording_id = ?", id).
-		Find(&jobs).Error
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return err
+	// Delete all jobs for this recording
+	// With foreign key constraints enabled, this will cascade automatically
+	// But we also do it manually for safety
+	result := DB.Where("recording_id = ?", id).Delete(&Job{})
+	if result.Error != nil && !errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return fmt.Errorf("error deleting jobs for recording %d: %w", id, result.Error)
 	}
-
-	for _, job := range *jobs {
-		if err := DeleteJob(job.JobID); err != nil {
-			log.Warnln(err)
-		}
-	}
-
 	return nil
 }
 
 // DestroyRecording Deletes all recording related files, jobs, and database item.
+// Deletes from database first (atomic transaction), then cleans up files.
 func (recording *Recording) DestroyRecording() error {
 	validate := validator.New(validator.WithRequiredStructEnabled())
 	if err := validate.Struct(recording); err != nil {
 		return fmt.Errorf("invalid recording values: %w", err)
 	}
 
-	// Try to find and destroy all related items: jobs, file, previews, db entry.
-
-	var err1, err2, err3, err4 error
-
-	err1 = DestroyJobs(recording.RecordingID)
-	err2 = DeleteFile(recording.ChannelName, recording.Filename)
-	err3 = recording.DestroyPreviews()
-
-	// Remove from database
-	if err := DB.Delete(&Recording{}, "recording_id = ?", recording.RecordingID).Error; err != nil {
-		err4 = fmt.Errorf("error deleting recordings of file '%s' from channel '%s': %w", recording.Filename, recording.ChannelName, err)
+	// Delete from database first (wrapped in transaction for atomicity)
+	// This prevents orphaned records if subsequent file operations fail
+	tx := BeginTx()
+	if err := tx.Delete(&Recording{}, "recording_id = ?", recording.RecordingID).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("error deleting recording %d from database: %w", recording.RecordingID, err)
+	}
+	if err := tx.Commit().Error; err != nil {
+		return fmt.Errorf("error committing transaction for recording %d: %w", recording.RecordingID, err)
 	}
 
-	return errors.Join(err1, err2, err3, err4)
+	// Now clean up associated files and jobs
+	// Collect all cleanup errors but continue with cleanup
+	var cleanupErrors []error
+
+	// Delete associated jobs
+	if err := DestroyJobs(recording.RecordingID); err != nil {
+		cleanupErrors = append(cleanupErrors, fmt.Errorf("error deleting jobs: %w", err))
+	}
+
+	// Delete recording file
+	if err := DeleteFile(recording.ChannelName, recording.Filename); err != nil {
+		cleanupErrors = append(cleanupErrors, fmt.Errorf("error deleting recording file: %w", err))
+	}
+
+	// Delete preview files
+	if err := recording.DestroyPreviews(); err != nil {
+		cleanupErrors = append(cleanupErrors, fmt.Errorf("error deleting preview files: %w", err))
+	}
+
+	if len(cleanupErrors) > 0 {
+		return errors.Join(cleanupErrors...)
+	}
+
+	return nil
 }
 
 func DeleteRecordingData(channelName ChannelName, filename RecordingFileName) error {
-	var err1, err2, err3 error
-
-	err1 = DeleteFile(channelName, filename)
-	err2 = DeletePreviewFiles(channelName, filename)
-	if err := DB.Delete(&Recording{}, "channel_name = ? AND filename = ?", channelName, filename).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		err3 = fmt.Errorf("error deleting recordings of file '%s' from channel '%s': %w", filename, channelName, err)
+	// Delete from database first (wrapped in transaction) to prevent orphaned records
+	tx := BeginTx()
+	if err := tx.Delete(&Recording{}, "channel_name = ? AND filename = ?", channelName, filename).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		tx.Rollback()
+		return fmt.Errorf("error deleting recordings of file '%s' from channel '%s': %w", filename, channelName, err)
+	}
+	if err := tx.Commit().Error; err != nil {
+		return fmt.Errorf("error committing transaction for recording '%s' in channel '%s': %w", filename, channelName, err)
 	}
 
-	return errors.Join(err1, err2, err3)
+	// Now clean up files and previews
+	var cleanupErrors []error
+
+	if err := DeleteFile(channelName, filename); err != nil {
+		cleanupErrors = append(cleanupErrors, fmt.Errorf("error deleting file: %w", err))
+	}
+
+	if err := DeletePreviewFiles(channelName, filename); err != nil {
+		cleanupErrors = append(cleanupErrors, fmt.Errorf("error deleting preview files: %w", err))
+	}
+
+	if len(cleanupErrors) > 0 {
+		return errors.Join(cleanupErrors...)
+	}
+
+	return nil
 }
 
 func DeleteFile(channelName ChannelName, filename RecordingFileName) error {

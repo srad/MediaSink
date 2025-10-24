@@ -12,12 +12,13 @@ import (
 )
 
 // IsRecording godoc
-// @Summary     Return if server is current recording
-// @Description Return if server is current recording.
+// @Summary     Get recorder status
+// @Description Get the current recording/streaming recorder status
 // @Tags        recorder
+// @Accept      json
 // @Produce     json
 // @Success     200 {object} responses.RecordingStatusResponse
-// @Success     500
+// @Failure     500 {} string "Error message"
 // @Router      /recorder [get]
 func IsRecording(c *gin.Context) {
 	appG := app.Gin{C: c}
@@ -25,9 +26,13 @@ func IsRecording(c *gin.Context) {
 }
 
 // StopRecorder godoc
-// @Summary     StopRecorder server recording
+// @Summary     Pause the recorder
+// @Description Stop/pause the recording and streaming recorder
 // @Tags        recorder
-// @Success     200
+// @Accept      json
+// @Produce     json
+// @Success     200 {} nil
+// @Failure     500 {} string "Error message"
 // @Router      /recorder/pause [post]
 func StopRecorder(c *gin.Context) {
 	appG := app.Gin{C: c}
@@ -38,9 +43,13 @@ func StopRecorder(c *gin.Context) {
 }
 
 // StartRecorder godoc
-// @Summary     StartRecorder server recording
+// @Summary     Resume the recorder
+// @Description Resume/restart the recording and streaming recorder
 // @Tags        recorder
-// @Success     200
+// @Accept      json
+// @Produce     json
+// @Success     200 {} nil
+// @Failure     500 {} string "Error message"
 // @Router      /recorder/resume [post]
 func StartRecorder(c *gin.Context) {
 	appG := app.Gin{C: c}

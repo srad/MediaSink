@@ -29,6 +29,7 @@ func GetInfo(c *gin.Context) {
 	val, err := strconv.ParseUint(secs, 10, 64)
 	if err != nil {
 		appG.Error(http.StatusInternalServerError, err)
+		return
 	}
 
 	data, err := helpers.Info(cfg.DataDisk, cfg.NetworkDev, val)

@@ -45,7 +45,7 @@ func getConfInt(key, envKey string) (int, error) {
 
 	n, err := strconv.Atoi(val)
 	if err != nil {
-		log.Errorf("[getConfInt] Error parsing env variable '%s': %s", envKey, err)
+		return 0, fmt.Errorf("[getConfInt] error parsing env variable '%s': %w", envKey, err)
 	}
 
 	return n, nil

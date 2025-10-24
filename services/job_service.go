@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/srad/mediasink/conf"
@@ -19,6 +20,7 @@ var (
 	sleepBetweenRounds  = 1 * time.Second
 	ctxJobs, cancelJobs = context.WithCancel(context.Background())
 	processing          = false
+	processingMutex     sync.Mutex
 )
 
 type JobMessage[T any] struct {
@@ -31,13 +33,21 @@ func processJobs(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			log.Infoln("[processJobs] Worker stopped")
+			processingMutex.Lock()
 			processing = false
+			processingMutex.Unlock()
 			return
 		case <-time.After(sleepBetweenRounds):
+			processingMutex.Lock()
 			processing = true
+			processingMutex.Unlock()
 			job, errNextJob := database.GetNextJob()
 			if errNextJob != nil {
-				_ = job.Error(errNextJob)
+				if job != nil {
+					_ = job.Error(errNextJob)
+				} else {
+					log.Errorf("Failed to get next job: %s", errNextJob)
+				}
 				continue
 			}
 			if job == nil {
@@ -45,18 +55,32 @@ func processJobs(ctx context.Context) {
 			}
 
 			if err := job.Activate(); err != nil {
-				log.Errorf("Error activating job: %s", err)
+				// Activation failed - mark job as error and skip to next iteration
+				log.Errorf("Error activating job %d: %v", job.JobID, err)
+				if errMark := job.Error(fmt.Errorf("failed to activate job: %w", err)); errMark != nil {
+					log.Errorf("Error marking job %d as failed: %v", job.JobID, errMark)
+				}
+				network.BroadCastClients(network.JobErrorEvent, JobMessage[string]{
+					Job: job,
+					Data: fmt.Sprintf("Failed to activate job: %v", err),
+				})
 				continue
 			}
 			network.BroadCastClients(network.JobActivate, JobMessage[any]{Job: job})
+
+			// Execute the job (this will update job state: Completed or Error)
 			if err := executeJob(job); err != nil {
-				log.Errorln(err)
-				network.BroadCastClients(network.JobErrorEvent, JobMessage[string]{Job: job, Data: err.Error()})
+				log.Errorf("Job execution error: %v", err)
+				// Job state already updated by executeJob -> handleJob -> job.Error()
 			}
-			// actually job.Complete() and job.Error() set active=false, but GORM is a troublemakers ORM.
+
+			// Deactivate the job - it should already be inactive after job.Complete() or job.Error()
+			// but we ensure it's deactivated in case of state inconsistencies
 			if err := job.Deactivate(); err != nil {
-				log.Errorf("Error deactivating job: %s", err)
+				log.Warnf("Error deactivating job %d after execution: %v - job may remain in active state", job.JobID, err)
 			}
+
+			// Broadcast final state after deactivation
 			network.BroadCastClients(network.JobDeactivate, JobMessage[any]{Job: job})
 		}
 	}
@@ -214,26 +238,40 @@ func processConversion(job *database.Job) error {
 	}, *mediaType)
 
 	if errConvert != nil {
-		message := fmt.Errorf("error converting %s to %s: %s", job.Filename, *mediaType, errConvert)
+		message := fmt.Errorf("error converting %s to %s: %w", job.Filename, *mediaType, errConvert)
 
 		log.Errorln(message)
 		if errDelete := os.Remove(result.Filepath); errDelete != nil {
-			log.Errorf("error deleting file %s: %s", result.Filepath, errDelete)
+			log.Errorf("error deleting file %s: %w", result.Filepath, errDelete)
 		}
 		return message
 	}
 
 	log.Infof("[conversionJobs] Completed conversion of '%s' with args '%s'", job.Filename, *job.Args)
 
-	// Also, when fails, destroy it, some reason it is foul.
-	if recording, err := database.CreateRecording(job.ChannelID, database.RecordingFileName(result.Filename), "recording"); err != nil {
+	// Create recording entry for converted file and enqueue previews job
+	recording, err := database.CreateRecording(job.ChannelID, database.RecordingFileName(result.Filename), "recording")
+	if err != nil {
+		// Failed to create recording, clean up the converted file
 		if errRemove := os.Remove(result.Filepath); errRemove != nil {
-			return fmt.Errorf("error deleting file %s: %s", result.Filepath, errRemove)
+			return fmt.Errorf("error creating recording: %w (also failed to delete file: %w)", err, errRemove)
 		}
-	} else {
-		if _, _, errPreviews := recording.EnqueuePreviewsJob(); errPreviews != nil {
-			return errPreviews
+		return fmt.Errorf("error creating recording: %w", err)
+	}
+
+	// Enqueue preview generation job for the newly created recording
+	if _, _, errPreviews := recording.EnqueuePreviewsJob(); errPreviews != nil {
+		// Preview job enqueue failed - clean up the converted file and database record
+		log.Errorf("Error enqueueing preview job, cleaning up converted file: %v (will attempt cleanup)", errPreviews)
+
+		// Try to delete the recording from database
+		if errDelete := recording.DestroyRecording(); errDelete != nil {
+			log.Errorf("Error deleting orphaned recording from database: %v", errDelete)
+			// Return both errors so caller knows about the cleanup failure
+			return fmt.Errorf("error enqueueing preview job: %w (also failed to cleanup: %w)", errPreviews, errDelete)
 		}
+
+		return fmt.Errorf("error enqueueing preview job for recording: %w", errPreviews)
 	}
 
 	log.Infof("Conversion completed for %s", job.Filepath)
@@ -250,6 +288,17 @@ func processCutting(job *database.Job) error {
 	cutArgs, err := database.UnmarshalJobArg[helpers.CutArgs](job)
 	if err != nil {
 		return err
+	}
+
+	// Validate cut arguments
+	if len(cutArgs.Starts) != len(cutArgs.Ends) {
+		return fmt.Errorf("cut arguments validation failed: number of starts (%d) does not match number of ends (%d)", len(cutArgs.Starts), len(cutArgs.Ends))
+	}
+
+	for i := range cutArgs.Starts {
+		if cutArgs.Starts[i] >= cutArgs.Ends[i] {
+			return fmt.Errorf("cut arguments validation failed: start time (%s) must be before end time (%s) for segment %d", cutArgs.Starts[i], cutArgs.Ends[i], i)
+		}
 	}
 
 	log.Infof("[Job] Generating video cut for '%s'", job.Filename)
@@ -269,7 +318,9 @@ func processCutting(job *database.Job) error {
 		segFiles[i] = job.ChannelName.AbsoluteChannelFilePath(database.RecordingFileName(fmt.Sprintf("%s_%04d.mp4", segmentFilename, i)))
 		err = helpers.CutVideo(&helpers.CuttingJob{
 			OnStart: func(info *helpers.CommandInfo) {
-				_ = job.UpdateInfo(info.Pid, info.Command)
+				if err := job.UpdateInfo(info.Pid, info.Command); err != nil {
+					log.Errorf("[Job] Error updating job info during cut: %v", err)
+				}
 
 				network.BroadCastClients(network.JobStartEvent, JobMessage[helpers.TaskInfo]{
 					Job: job,
@@ -343,7 +394,7 @@ func processCutting(job *database.Job) error {
 
 	if errMerge != nil {
 		// Job failed, destroy all files.
-		log.Errorf("Error merging file '%s': %s", mergeFileAbsolutePath, err)
+		log.Errorf("Error merging file '%s': %s", mergeFileAbsolutePath, errMerge)
 		for _, file := range segFiles {
 			if err := os.RemoveAll(file); err != nil {
 				log.Errorf("Error deleting %s: %s", file, err)
@@ -352,29 +403,50 @@ func processCutting(job *database.Job) error {
 		if err := os.RemoveAll(mergeFileAbsolutePath); err != nil {
 			log.Errorf("Error deleting merge file %s: %s", mergeFileAbsolutePath, err)
 		}
-		return err
+		return errMerge
 	}
 
-	_ = os.RemoveAll(mergeFileAbsolutePath)
+	// Clean up merge file
+	if err := os.RemoveAll(mergeFileAbsolutePath); err != nil {
+		log.Warnf("Error deleting merge file %s: %v", mergeFileAbsolutePath, err)
+	}
+
+	// Clean up segment files
 	for _, file := range segFiles {
 		log.Infof("[MergeJob] Deleting segment %s", file)
 		if err := os.Remove(file); err != nil {
-			log.Errorf("Error deleting segment '%s': %s", file, err)
+			log.Errorf("Error deleting segment '%s': %v", file, err)
 		}
 	}
 
+	// Verify output video was created and readable
 	outputVideo := &helpers.Video{FilePath: outputFile}
 	if _, err := outputVideo.GetVideoInfo(); err != nil {
-		log.Errorf("Error reading video information for file '%s': %s", filename, err)
+		// Merged file is unreadable, clean up before returning
+		if errCleanup := os.Remove(outputFile); errCleanup != nil {
+			log.Warnf("Error deleting unreadable merged file '%s': %v", outputFile, errCleanup)
+		}
+		return fmt.Errorf("error reading video information for merged file '%s': %w", filename, err)
 	}
 
 	cutRecording, errCreate := database.CreateRecording(job.ChannelID, filename, "cut")
 	if errCreate != nil {
+		// Failed to create recording - clean up the merged file
+		if errCleanup := os.Remove(outputFile); errCleanup != nil {
+			log.Warnf("Error deleting merged file '%s' after DB save failure: %v", outputFile, errCleanup)
+		}
 		return errCreate
 	}
 
 	// Successfully added cut record, enqueue preview job
 	if _, _, errPreview := cutRecording.EnqueuePreviewsJob(); errPreview != nil {
+		// Preview job enqueue failed - clean up the cut recording and file
+		log.Errorf("Error enqueueing preview job for cut recording, cleaning up: %v", errPreview)
+
+		if errDelete := cutRecording.DestroyRecording(); errDelete != nil {
+			log.Errorf("Error cleaning up orphaned cut recording: %v", errDelete)
+			return fmt.Errorf("error enqueueing preview job: %w (also failed to cleanup: %w)", errPreview, errDelete)
+		}
 		return errPreview
 	}
 
@@ -408,5 +480,7 @@ func StopJobProcessing() {
 }
 
 func IsJobProcessing() bool {
+	processingMutex.Lock()
+	defer processingMutex.Unlock()
 	return processing
 }

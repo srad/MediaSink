@@ -61,30 +61,40 @@ func DestroyChannelRecordings(channelID ChannelID) error {
 		return errChannel
 	}
 
+	var deleteErrors []error
+
 	// 1. Terminate and delete all jobs.
 	if jobs, err := channel.Jobs(); err != nil {
 		log.Errorln(err)
+		deleteErrors = append(deleteErrors, fmt.Errorf("error fetching jobs for channel %d: %w", channelID, err))
 	} else {
 		for _, job := range jobs {
 			if err := DeleteJob(job.JobID); err != nil {
 				log.Errorf("Error destroying job: %s", err)
+				deleteErrors = append(deleteErrors, fmt.Errorf("error deleting job %d: %w", job.JobID, err))
 			}
 		}
 	}
 
-	// 2. Delete records.
+	// 2. Delete all associated recordings.
 	var recordings []*Recording
 	if err := DB.Model(&Recording{}).
 		Where("channel_id = ?", channelID).
 		Find(&recordings).Error; err != nil {
-		log.Errorf("No recordings found to destroy for channel %s", channel.ChannelName)
-		return err
+		log.Errorf("Error finding recordings to destroy for channel %s: %s", channel.ChannelName, err)
+		deleteErrors = append(deleteErrors, fmt.Errorf("error finding recordings for channel %d: %w", channelID, err))
+	} else {
+		for _, recording := range recordings {
+			if err := recording.DestroyRecording(); err != nil {
+				log.Errorf("Error deleting recording %s: %s", recording.Filename, err)
+				deleteErrors = append(deleteErrors, fmt.Errorf("error destroying recording %d: %w", recording.RecordingID, err))
+			}
+		}
 	}
 
-	for _, recording := range recordings {
-		if err := recording.DestroyRecording(); err != nil {
-			log.Errorf("Error deleting recording %s: %s", recording.Filename, err)
-		}
+	// Return aggregated errors if any occurred
+	if len(deleteErrors) > 0 {
+		return errors.Join(deleteErrors...)
 	}
 
 	return nil

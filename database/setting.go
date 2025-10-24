@@ -1,12 +1,10 @@
 package database
 
 import (
-	"errors"
 	"fmt"
 	"strconv"
 
 	log "github.com/sirupsen/logrus"
-	"gorm.io/gorm"
 )
 
 type Setting struct {
@@ -50,15 +48,16 @@ func GetValue(settingKey string) (interface{}, error) {
 }
 
 func (setting *Setting) Save() error {
-	if err := DB.Model(&setting).Where("setting_key = ? ", setting.SettingKey).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			if err2 := DB.Create(&setting).Error; err2 != nil {
-				return err2
-			}
-		} else {
-			log.Errorf("[SaveValue] Error retreiving setting: %s", err)
-			return err
-		}
+	// Use SaveOrCreate to either update existing setting or create new one
+	result := DB.Save(setting)
+	if result.Error != nil {
+		log.Errorf("[Save] Error saving setting: %s", result.Error)
+		return result.Error
+	}
+
+	// Check if a new record was created
+	if result.RowsAffected > 0 {
+		log.Infof("[Save] Setting saved: %s = %s", setting.SettingKey, setting.SettingValue)
 	}
 
 	return nil

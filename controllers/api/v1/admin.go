@@ -11,13 +11,13 @@ import (
 )
 
 // TriggerImport godoc
-// @Summary     Run once the import of mp4 files in the recordings folder, which are not yet in the system
+// @Summary     Run once the import of mp4 files in the recordings folder
 // @Schemes
-// @Description Return a list of channels
+// @Description Import all mp4 files in the recordings directory that are not yet in the system database
 // @Tags        admin
 // @Accept      json
 // @Produce     json
-// @Success     200
+// @Success     200 {} nil
 // @Failure     500 {} http.StatusInternalServerError
 // @Router      /admin/import [post]
 func TriggerImport(c *gin.Context) {
@@ -30,9 +30,9 @@ func TriggerImport(c *gin.Context) {
 }
 
 // GetImportInfo godoc
-// @Summary     Returns server version information
+// @Summary     Returns current import progress information
 // @Schemes
-// @Description version information
+// @Description Get the current import progress status and information
 // @Tags        admin
 // @Accept      json
 // @Produce     json

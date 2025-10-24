@@ -3,10 +3,13 @@ package services
 import (
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"time"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/srad/mediasink/database"
+	"github.com/srad/mediasink/helpers"
 	"gorm.io/gorm"
 )
 
@@ -112,4 +115,71 @@ func DeleteChannel(channelID database.ChannelID) error {
 	}
 
 	return err
+}
+
+// UploadRecording handles uploading a video file to a channel, validating it, and enqueueing preview jobs
+func UploadRecording(channelID database.ChannelID, fileReader io.Reader) (*database.Recording, error) {
+	// Create recording entry and get output path
+	recording, outputPath, err := database.NewRecording(channelID, "recording")
+	if err != nil {
+		return nil, fmt.Errorf("error creating recording entry: %w", err)
+	}
+
+	// Create output file
+	out, err := os.Create(outputPath)
+	if err != nil {
+		return nil, fmt.Errorf("error creating output file: %w", err)
+	}
+
+	// Copy file content to disk
+	_, err = io.Copy(out, fileReader)
+	if closeErr := out.Close(); closeErr != nil && err == nil {
+		err = closeErr
+	}
+
+	if err != nil {
+		if cleanupErr := os.Remove(outputPath); cleanupErr != nil {
+			log.Warnf("Error deleting partial upload file: %v", cleanupErr)
+		}
+		return nil, fmt.Errorf("error copying file: %w", err)
+	}
+
+	// Validate and extract metadata from uploaded file
+	videoInfo := &helpers.Video{FilePath: outputPath}
+	ffProbeInfo, err := videoInfo.GetVideoInfo()
+	if err != nil {
+		if cleanupErr := os.Remove(outputPath); cleanupErr != nil {
+			log.Warnf("Error deleting invalid video file: %v", cleanupErr)
+		}
+		return nil, fmt.Errorf("uploaded file is not a valid video: %w", err)
+	}
+
+	// Update recording with video metadata
+	recording.Duration = ffProbeInfo.Duration
+	recording.Size = ffProbeInfo.Size
+	recording.BitRate = ffProbeInfo.BitRate
+	recording.Width = ffProbeInfo.Width
+	recording.Height = ffProbeInfo.Height
+	recording.Packets = ffProbeInfo.PacketCount
+
+	// Save recording to database
+	if err := recording.Save(); err != nil {
+		if cleanupErr := os.Remove(outputPath); cleanupErr != nil {
+			log.Warnf("Error deleting upload file after DB save failure: %v", cleanupErr)
+		}
+		return nil, fmt.Errorf("error saving recording to database: %w", err)
+	}
+
+	// Enqueue preview generation jobs
+	if _, _, err := recording.EnqueuePreviewsJob(); err != nil {
+		log.Errorf("Error enqueueing preview job for uploaded recording: %v", err)
+		// Cleanup the recording and file if preview job fails
+		if cleanupErr := recording.DestroyRecording(); cleanupErr != nil {
+			log.Errorf("Error cleaning up orphaned recording: %v", cleanupErr)
+		}
+		return nil, fmt.Errorf("error enqueueing preview job: %w", err)
+	}
+
+	log.Infof("Successfully uploaded recording to channel %d: %s", channelID, recording.Filename)
+	return recording, nil
 }
