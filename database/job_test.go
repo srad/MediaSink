@@ -16,17 +16,18 @@ var (
 	video               = helpers.Video{FilePath: file}
 )
 
-func TestGetFrameCount(t *testing.T) {
-	video := &helpers.Video{FilePath: file}
-	count, err := video.GetFrameCount()
-	if err != nil {
-		t.Errorf("error computing framecount: %v", err)
-	}
-
-	if count != 1445 {
-		t.Errorf("Unexpected frame count")
-	}
-}
+// TestGetFrameCount is commented out as GetFrameCount is not currently used
+//func TestGetFrameCount(t *testing.T) {
+//	video := &helpers.Video{FilePath: file}
+//	count, err := video.GetFrameCount()
+//	if err != nil {
+//		t.Errorf("error computing framecount: %v", err)
+//	}
+//
+//	if count != 1445 {
+//		t.Errorf("Unexpected frame count")
+//	}
+//}
 
 func TestGetVideoInfo(t *testing.T) {
 	info, err := video.GetVideoInfo()
