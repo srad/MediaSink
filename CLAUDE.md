@@ -21,7 +21,7 @@ MediaSink.Go is a Go-based web server for video management, stream recording, an
   - `recording_service.go`: Video information updates and metadata
   - `recorder_service.go`: Recording orchestration and lifecycle
   - `channel_service.go`: Channel management
-  - `job_service.go`: Background job processing
+  - `job_service.go`: Background job processing (video enhancement, previews, merges)
   - `streaming_service.go`: Stream capture logic
   - `startup_service.go`: Application startup/recovery procedures
 - **database/**: Data access layer using GORM ORM
@@ -127,16 +127,124 @@ Main endpoint groups:
 - `/user`: User profile
 - `/admin`: Version info, import triggers
 - `/channels`: Channel CRUD and streaming control
-- `/videos`: Video metadata and editing
+- `/videos`: Video metadata, editing, and enhancement
 - `/jobs`: Background job management
 - `/recorder`: Recording status and control
+
+## Video Enhancement Feature
+
+The application supports high-quality video enhancement with the following capabilities:
+
+### Enhancement Parameters
+- **Denoising**: hqdn3d filter with configurable strength (1.0-10.0, recommended 3.0-5.0)
+- **Sharpening**: unsharp filter with configurable amount (0.0-2.0, recommended 1.0-1.5)
+- **Upscaling**: Lanczos scaling to target resolution (720p, 1080p, 1440p, 4K)
+- **Normalization**: Optional color/brightness correction
+- **Quality Control**: CRF values (15-28, lower = higher quality)
+- **Encoding Presets**: 7 presets from veryfast to veryslow
+
+### Encoding
+- **Codec**: H.265/HEVC (libx265)
+- **Format**: yuv420p (4:2:0 chroma subsampling for browser compatibility)
+- **Audio**: Passthrough without re-encoding
+- **Container**: MP4 with faststart flag
+
+### Endpoints
+- `POST /videos/{id}/enhance`: Enhance a video with specified parameters
+- `POST /videos/{id}/estimate-enhancement`: Real-time file size estimation
+- `GET /videos/enhance/descriptions`: Get parameter descriptions and recommended values
+
+### File Size Estimation
+Calculates estimated output size based on:
+- Resolution scaling factor
+- CRF-based empirical compression ratios (0.38-0.80)
+- Input file size
+
+### Request Validation
+All enhancement requests are validated using struct tags:
+- `EnhanceRequest`: Recording ID, resolution, denoise/sharpen strength, preset, optional CRF
+- `EstimateEnhancementRequest`: Same parameters minus recording ID
+- Validation enforces allowed resolutions, presets, and value ranges
+
+## Video Merging
+
+The application supports merging multiple videos with optional re-encoding:
+
+### Standard Merge
+- Concatenates videos without re-encoding (using codec copy)
+- Fast operation, preserves quality
+
+### Re-encoded Merge
+- Re-encodes all videos to highest quality spec across all inputs
+- Calculates maximum resolution, FPS, and bitrate
+- Uses H.265 encoding with CRF 18 (high quality)
+- Pads videos to uniform aspect ratio before merging
+- Endpoint: `POST /channels/{id}/merge` with `MergeRequest`
+
+### Validation
+- Requires minimum 2 recordings
+- Validates all recording IDs are positive
+
+## Request Validation
+
+The application uses `go-playground/validator` for declarative request validation:
+
+### Validation Method
+- Struct tags define validation rules: `validate:"required,min=1.0,max=10.0"`
+- `ValidateRequest()` method in `app/request.go` validates requests
+- Returns formatted error messages with field names and validation failures
+- HTTP 400 response on validation failure
+
+### Request Models
+- `EnhanceRequest`: Video enhancement parameters
+- `EstimateEnhancementRequest`: File size estimation parameters
+- `MergeRequest`: Video merging parameters
+
+## WebSocket Improvements
+
+### Concurrent Write Fix
+- Added mutex protection in ping goroutine to prevent concurrent websocket writes
+- Ensures broadcast messages and ping messages don't clash
+- Prevents "concurrent write to websocket connection" panic
+
+### Event Broadcasting
+- `BroadCastClients()` sends real-time updates to connected clients
+- Events: job creation, progress, completion, errors, channel online/offline
 
 ## Concurrency & Cleanup
 
 The application uses goroutines for:
 - HTTP server operation
-- Background job processing
-- Stream recording
+- Background job processing (enhancement, merging, previews)
+- Stream recording and checking
 - Graceful shutdown with service cleanup
+- WebSocket ping heartbeat (with mutex protection)
 
 Signal handlers (SIGTERM, SIGINT) trigger orderly shutdown of services before exit.
+
+## FFmpeg Integration
+
+The application uses FFmpeg for video processing:
+
+### Video Enhancement
+- **Filter Chain**: hqdn3d (denoise) → scale (upscale) → unsharp (sharpen) → format (convert to yuv420p)
+- **Parameters**: Dynamic based on user input
+- **Audio**: Copied without re-encoding
+
+### Video Merging (Re-encoded)
+- **Filter Chain**: scale + pad (normalize dimensions) → format (yuv420p)
+- **FPS**: Adjusted to match highest input FPS
+- **Bitrate**: CRF 18 (fixed quality)
+
+### Error Handling
+- Non-critical FFmpeg info/warnings filtered from logs
+- Actual errors still logged and broadcasted to client
+- Failed output files cleaned up on error
+
+## Performance Considerations
+
+- **Resolution**: Limiting to 4 standard resolutions (720p, 1080p, 1440p, 4K)
+- **Encoding**: Presets allow speed/quality tradeoff
+- **CRF Values**: 15-28 range provides fine control
+- **Audio Passthrough**: Avoids audio re-encoding overhead
+- **Async Processing**: Long-running jobs run in background with progress updates
