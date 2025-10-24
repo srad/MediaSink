@@ -37,12 +37,13 @@ func GetImportProgress() (int, int) {
 
 func runImport() {
 	importing = true
+	defer func() {
+		importing = false
+	}()
 
 	if err := ImportChannels(ctx); err != nil {
-		log.Errorln(err)
+		log.Errorf("Error during channel import: %v", err)
 	}
-
-	importing = false
 }
 
 // ImportChannels Imports folders and videos found on disk.
@@ -60,18 +61,21 @@ func ImportChannels(context.Context) error {
 
 	recordingFolder, err := os.Open(cfg.RecordingsAbsolutePath)
 	if err != nil {
-		return fmt.Errorf("failed opening directory '%s': %s", cfg.RecordingsAbsolutePath, err)
+		return fmt.Errorf("failed opening directory '%s': %w", cfg.RecordingsAbsolutePath, err)
 	}
 	defer func(file *os.File) {
 		if err := file.Close(); err != nil {
-			log.Errorf("error closing folder %s", file.Name())
+			log.Errorf("error closing folder %s: %v", file.Name(), err)
 		}
 	}(recordingFolder)
 
 	// ---------------------------------------------------------------------------------
 	// Traverse folders (channels)
 	// ---------------------------------------------------------------------------------
-	channelFolders, _ := recordingFolder.Readdirnames(0)
+	channelFolders, err := recordingFolder.Readdirnames(0)
+	if err != nil {
+		return fmt.Errorf("error reading directory entries from '%s': %w", cfg.RecordingsAbsolutePath, err)
+	}
 	importSize = len(channelFolders)
 	importProgress = 0
 	for _, name := range channelFolders {
@@ -87,14 +91,16 @@ func ImportChannels(context.Context) error {
 
 		newChannel, err4 := database.CreateChannel(channelName, channelName.String(), "https://"+channelName.String())
 		if err4 != nil {
-			log.Errorf("[Import/%s (%d/%d)] Error adding %s", channelName, importProgress, importSize, err4)
-		}
+			log.Errorf("[Import/%s (%d/%d)] Error creating channel: %v", channelName, importProgress, importSize, err4)
+		// Skip this channel if it cannot be created
+		continue
+	}
 
-		// ---------------------------------------------------------------------------------
-		// Import individual files
-		// ---------------------------------------------------------------------------------
-		log.Infof("[Import/%s (%d/%d)] Import individual files ...", channelName, importProgress, len(channelFolders))
-		files, err2 := os.ReadDir(channelName.AbsoluteChannelPath())
+	// ---------------------------------------------------------------------------------
+	// Import individual files
+	// ---------------------------------------------------------------------------------
+	log.Infof("[Import/%s (%d/%d)] Import individual files ...", channelName, importProgress, len(channelFolders))
+	files, err2 := os.ReadDir(channelName.AbsoluteChannelPath())
 		if err2 != nil {
 			log.Errorf("[Import/%s] Error reading: %s", channelName, err2)
 			continue

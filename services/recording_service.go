@@ -1,12 +1,15 @@
 package services
 
 import (
+	"sync"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/srad/mediasink/database"
 )
 
 var (
-	isUpdating = false
+	isUpdating      = false
+	isUpdatingMutex sync.Mutex
 )
 
 func UpdateVideoInfo() error {
@@ -16,7 +19,9 @@ func UpdateVideoInfo() error {
 		log.Errorln(err)
 		return err
 	}
+	isUpdatingMutex.Lock()
 	isUpdating = true
+	isUpdatingMutex.Unlock()
 	count := len(recordings)
 
 	i := 1
@@ -35,11 +40,15 @@ func UpdateVideoInfo() error {
 		i++
 	}
 
+	isUpdatingMutex.Lock()
 	isUpdating = false
+	isUpdatingMutex.Unlock()
 
 	return nil
 }
 
 func IsUpdatingRecordings() bool {
+	isUpdatingMutex.Lock()
+	defer isUpdatingMutex.Unlock()
 	return isUpdating
 }

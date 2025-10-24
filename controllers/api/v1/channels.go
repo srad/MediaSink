@@ -2,9 +2,7 @@ package v1
 
 import (
 	"fmt"
-	"io"
 	"net/http"
-	"os"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -190,12 +188,13 @@ func UpdateChannel(c *gin.Context) {
 
 // DeleteChannel godoc
 // @Summary     Delete channel
-// @Description Delete channel with all recordings
+// @Description Delete a channel and all its associated recordings
 // @Tags        channels
 // @Accept      json
 // @Produce     json
-// @Param       id path uint true  "List of tags"
-// @Success     200 {} database.Channel
+// @Param       id path uint true  "Channel id"
+// @Success     200 {} nil
+// @Failure     400 {} http.StatusBadRequest
 // @Failure     500 {}  http.StatusInternalServerError
 // @Router      /channels/{id} [delete]
 func DeleteChannel(c *gin.Context) {
@@ -253,13 +252,13 @@ func TagChannel(c *gin.Context) {
 }
 
 // ResumeChannel godoc
-// @Summary     Tag a channel
-// @Description Delete channel with all recordings
+// @Summary     Resume channel recording
+// @Description Resume/restart recording for a channel that was paused
 // @Tags        channels
 // @Accept      json
 // @Produce     json
 // @Param       id path uint true "Channel id"
-// @Success     200 {} http.StatusOK
+// @Success     200 {} nil
 // @Failure     400 {} http.StatusBadRequest
 // @Failure     500 {} http.StatusInternalServerError
 // @Router      /channels/{id}/resume [post]
@@ -289,13 +288,14 @@ func ResumeChannel(c *gin.Context) {
 }
 
 // FavChannel godoc
-// @Summary     Mark channel as one of favorites
-// @Description Mark channel as one of favorites
+// @Summary     Bookmark a channel
+// @Description Mark a channel as favorite/bookmarked
 // @Tags        channels
 // @Accept      json
 // @Produce     json
 // @Param       id path uint true "Channel id"
-// @Success     200 {} http.StatusOK
+// @Success     200 {} nil
+// @Failure     400 {} http.StatusBadRequest
 // @Failure     500 {} http.StatusInternalServerError
 // @Router       /channels/{id}/fav [patch]
 func FavChannel(c *gin.Context) {
@@ -318,13 +318,14 @@ func FavChannel(c *gin.Context) {
 }
 
 // UnFavChannel godoc
-// @Summary     Remove channel as one of favorites
-// @Description Remove channel as one of favorites
+// @Summary     Remove channel from bookmarks
+// @Description Remove a channel from favorites/bookmarks
 // @Tags        channels
 // @Accept      json
 // @Produce     json
 // @Param       id path uint true "Channel id"
-// @Success     200 {} http.StatusOK
+// @Success     200 {} nil
+// @Failure     400 {} http.StatusBadRequest
 // @Failure     500 {} http.StatusInternalServerError
 // @Router      /channels/{id}/unfav [patch]
 func UnFavChannel(c *gin.Context) {
@@ -349,12 +350,12 @@ func UnFavChannel(c *gin.Context) {
 // Parameters that separated by spaces: | param name | param type | data type | is mandatory? | comment attribute(optional) |
 
 // UploadChannel godoc
-// @Summary     Add a new channel
-// @Description Add a new channel
+// @Summary     Upload video file to channel
+// @Description Upload a video file to a channel's recordings
 // @Tags        channels
 // @Param       id path uint true "Channel id"
-// @Param       file formData []byte true "Uploaded file chunk"
-// @Accept      json
+// @Param       file formData file true "Video file to upload"
+// @Accept      multipart/form-data
 // @Produce     json
 // @Success     200 {object} database.Recording
 // @Failure     400 {} http.StatusBadRequest
@@ -374,29 +375,16 @@ func UploadChannel(c *gin.Context) {
 		appG.Error(http.StatusBadRequest, err)
 		return
 	}
+	defer file.Close()
 
-	channelID := database.ChannelID(id)
-	recording, outputPath, err := database.NewRecording(channelID, "recording")
-
-	out, err := os.Create(outputPath)
+	recording, err := services.UploadRecording(database.ChannelID(id), file)
 	if err != nil {
-		appG.Error(http.StatusInternalServerError, err)
-		return
-	}
-	defer out.Close()
-	_, err = io.Copy(out, file)
-	if err != nil {
-		appG.Error(http.StatusInternalServerError, err)
-		return
-	}
-
-	if err := recording.Save(); err != nil {
-		appG.Error(http.StatusInternalServerError, err)
-		return
-	}
-
-	if _, _, err := recording.EnqueuePreviewsJob(); err != nil {
-		appG.Error(http.StatusInternalServerError, err)
+		// Check if it's a validation error (bad request) vs server error
+		if err.Error() == fmt.Sprintf("uploaded file is not a valid video: %v", err) {
+			appG.Error(http.StatusBadRequest, err)
+		} else {
+			appG.Error(http.StatusInternalServerError, err)
+		}
 		return
 	}
 
@@ -404,13 +392,14 @@ func UploadChannel(c *gin.Context) {
 }
 
 // PauseChannel godoc
-// @Summary     Pause channel for recording
-// @Description Pause channel for recording
+// @Summary     Pause channel recording
+// @Description Pause/stop recording for a channel
 // @Tags        channels
 // @Accept      json
 // @Produce     json
 // @Param       id path uint true "Channel id"
-// @Success     200 {} http.StatusOK
+// @Success     200 {} nil
+// @Failure     400 {} http.StatusBadRequest
 // @Failure     500 {} http.StatusInternalServerError
 // @Router      /channels/{id}/pause [post]
 func PauseChannel(c *gin.Context) {

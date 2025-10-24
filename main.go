@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -20,6 +21,7 @@ var (
 	Version    string
 	Commit     string
 	ApiVersion string
+	cleanupOnce sync.Once
 )
 
 func init() {
@@ -59,13 +61,8 @@ func main() {
 		FullTimestamp: false,
 	})
 
-	c := make(chan os.Signal)
+	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-c
-		cleanup()
-		os.Exit(1)
-	}()
 
 	database.Init()
 	// models.StartMetrics(conf.AppCfg.NetworkDev)
@@ -95,7 +92,12 @@ func main() {
 		log.Infof("[main] start http server listening %s", endPoint)
 	}()
 
+	// Wait for signal and perform cleanup once
 	<-c
+	cleanupOnce.Do(func() {
+		cleanup()
+	})
+	os.Exit(0)
 }
 
 func cleanup() {

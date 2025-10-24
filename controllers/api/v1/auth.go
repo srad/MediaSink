@@ -10,13 +10,13 @@ import (
 )
 
 // CreateUser godoc
-// @Summary     Create new user
-// @Description Create new user
+// @Summary     Create new user account
+// @Description Create a new user account with username and password
 // @Tags        auth
 // @Param       AuthenticationRequest body requests.AuthenticationRequest true "Username and password"
 // @Accept      json
 // @Produce     json
-// @Success     200 {} nil "JWT token for authentication"
+// @Success     200 {} nil "User created successfully"
 // @Failure     400 {string} string "Error message"
 // @Failure     500 {string} string "Error message"
 // @Router      /auth/signup [post]
@@ -81,13 +81,12 @@ func Login(c *gin.Context) {
 }
 
 // Logout godoc
-// @Summary     User logout.
-// @Description User logout, removes the authentication cookie.
+// @Summary     User logout
+// @Description User logout, clears the authentication session
 // @Tags        auth
-// @Param       AuthenticationRequest body requests.AuthenticationRequest true "Username and password"
 // @Accept      json
 // @Produce     json
-// @Success     200 {object} responses.LoginResponse "JWT token for authentication"
+// @Success     200 {} object "Logout successful message"
 // @Failure     401 {string} string "Error message"
 // @Failure     400 {string} string "Error message"
 // @Router      /auth/logout [post]

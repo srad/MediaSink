@@ -97,6 +97,31 @@ func (channelName ChannelName) AbsoluteChannelPath() string {
 	return filepath.Join(cfg.RecordingsAbsolutePath, channelName.String())
 }
 
+// safeJoinPath safely joins a base path with a relative path, preventing path traversal attacks
+func safeJoinPath(basePath, relativePath string) (string, error) {
+	if strings.Contains(relativePath, "..") {
+		return "", fmt.Errorf("path traversal detected: relative path contains '..'")
+	}
+
+	fullPath := filepath.Join(basePath, relativePath)
+	absBasePath, err := filepath.Abs(basePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to get absolute base path: %w", err)
+	}
+
+	absFullPath, err := filepath.Abs(fullPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to get absolute full path: %w", err)
+	}
+
+	// Ensure the full path is within the base path
+	if !strings.HasPrefix(absFullPath, absBasePath) {
+		return "", fmt.Errorf("path traversal detected: resolved path is outside base directory")
+	}
+
+	return fullPath, nil
+}
+
 func (channelName ChannelName) MkDir() error {
 	dir := channelName.AbsoluteChannelPath()
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
@@ -127,37 +152,41 @@ func (channelName ChannelName) PreviewPath() string {
 func copyDefaultSnapshotTo(dataPath string) error {
 	pwd, err := os.Getwd()
 	if err != nil {
-		log.Errorln(err)
+		return fmt.Errorf("failed to get current working directory: %w", err)
 	}
 
 	filePath := filepath.Join(pwd, "assets", "live.jpg")
 	srcFile, err := os.Open(filePath)
-	check(err)
+	if err != nil {
+		return fmt.Errorf("failed to open default snapshot file '%s': %w", filePath, err)
+	}
 	defer func(srcFile *os.File) {
 		if err := srcFile.Close(); err != nil {
-			log.Errorf("Error copying default live.jpg image to folder '%s': %s", filePath, err)
+			log.Errorf("Error closing default live.jpg image file: %s", err)
 		}
 	}(srcFile)
 
-	destFile, err := os.Create(filepath.Join(dataPath, SnapshotFilename)) // creates if file doesn't exist
-	check(err)
+	destFilePath := filepath.Join(dataPath, SnapshotFilename)
+	destFile, err := os.Create(destFilePath) // creates if file doesn't exist
+	if err != nil {
+		return fmt.Errorf("failed to create snapshot file at '%s': %w", destFilePath, err)
+	}
 	defer func(destFile *os.File) {
 		if err := destFile.Close(); err != nil {
-			log.Errorf("Error creating snapshot file: %s", err)
+			log.Errorf("Error closing snapshot file: %s", err)
 		}
 	}(destFile)
 
 	_, err = io.Copy(destFile, srcFile) // check first var for number of bytes copied
-	check(err)
-
-	return destFile.Sync()
-}
-
-func check(err error) {
 	if err != nil {
-		log.Errorf("Error : %s", err)
-		os.Exit(1)
+		return fmt.Errorf("failed to copy default snapshot file to '%s': %w", destFilePath, err)
 	}
+
+	if err := destFile.Sync(); err != nil {
+		return fmt.Errorf("failed to sync snapshot file '%s': %w", destFilePath, err)
+	}
+
+	return nil
 }
 
 // GetRecordingsPaths generates the file paths for various recording assets such as video, poster, and stripe images

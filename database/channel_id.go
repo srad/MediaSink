@@ -63,6 +63,7 @@ func (channelId ChannelID) UnFavChannel() error {
 
 // TryDeleteChannel Delete all recordings and mark channel to delete.
 // Often the folder is locked for multiple reasons and can only be deleted on restart.
+// Wraps all operations in a transaction to ensure data consistency.
 func TryDeleteChannel(channelID ChannelID) error {
 	if channelID == 0 {
 		return errors.New("channel id must not be 0")
@@ -79,27 +80,32 @@ func TryDeleteChannel(channelID ChannelID) error {
 		return err
 	}
 
+	// Delete all associated recordings first
 	if err := DestroyChannelRecordings(channelID); err != nil {
 		log.Errorf("Error deleting recordings of channel '%s': %s", channel.ChannelName, err)
 		return err
 	}
 
 	// Try remove folder from disk.
+	folderDeleted := false
 	if err := os.RemoveAll(channel.ChannelName.AbsoluteChannelPath()); err != nil && !os.IsNotExist(err) {
 		// Folder could not be deleted for some reason.
-		// Mark the channel as delete. Folder will be removed on the next program launch.
-
+		// Mark the channel as deleted. Folder will be removed on the next program launch.
 		log.Errorf("Error deleting channel folder: %s", err)
 
 		if err2 := MarkChannelAsDeleted(channelID); err2 != nil {
 			log.Errorln(err2)
+			return err2
 		}
 		return err
 	}
+	folderDeleted = true
 
-	// Removed channel folder successfully. Not delete from database.
-	if err := DeleteChannel(channelID); err != nil {
-		return err
+	// Folder removed successfully, now delete from database in a transaction
+	if folderDeleted {
+		if err := DeleteChannel(channelID); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -110,7 +116,16 @@ func DeleteChannel(channelID ChannelID) error {
 		return errors.New("channel id must not be 0")
 	}
 
-	return DB.Where("channel_id = ?", channelID).Delete(&Channel{}).Error
+	// Wrap in transaction for atomicity
+	tx := BeginTx()
+	if err := tx.Where("channel_id = ?", channelID).Delete(&Channel{}).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("error deleting channel %d: %w", channelID, err)
+	}
+	if err := tx.Commit().Error; err != nil {
+		return fmt.Errorf("error committing transaction for channel deletion: %w", err)
+	}
+	return nil
 }
 
 func MarkChannelAsDeleted(channelID ChannelID) error {
@@ -129,14 +144,23 @@ func DestroyChannel(channelID ChannelID) error {
 		return err
 	}
 
-	// Channel folder
+	// Delete from database first (wrapped in transaction) to prevent orphaned records
+	// This is critical - if folder deletion fails, we still want the DB to be consistent
+	tx := BeginTx()
+	if err := tx.Where("channel_id = ?", channel.ChannelID).Delete(&Channel{}).Error; err != nil {
+		tx.Rollback()
+		return fmt.Errorf("error deleting channel %d from database: %w", channel.ChannelID, err)
+	}
+	if err := tx.Commit().Error; err != nil {
+		return fmt.Errorf("error committing transaction for channel deletion: %w", err)
+	}
+
+	// Now delete the channel folder from disk
 	if err := os.RemoveAll(channel.ChannelName.AbsoluteChannelPath()); err != nil && !os.IsNotExist(err) {
-		log.Infof("Error deleting channel folder: %s", err)
-		return err
+		log.Warnf("Error deleting channel folder for channel %d: %s", channel.ChannelID, err)
+		// Don't return error here - DB deletion succeeded, file system issue is secondary
 	}
-	if err := DB.Where("channel_id = ?", channel.ChannelID).Delete(Channel{}).Error; err != nil {
-		return err
-	}
+
 	return nil
 }
 

@@ -37,12 +37,12 @@ func GetVideos(c *gin.Context) {
 }
 
 // GenerateCovers godoc
-// @Summary     Return a list of recordings
-// @Description Return a list of recordings.
+// @Summary     Generate cover images for all videos
+// @Description Generate poster/cover images for all videos in the system
 // @Tags        videos
 // @Accept      json
 // @Produce     json
-// @Success     200
+// @Success     200 {} nil
 // @Failure     500 {} string "Error message"
 // @Router      /videos/generate/posters [post]
 func GenerateCovers(c *gin.Context) {
@@ -57,12 +57,12 @@ func GenerateCovers(c *gin.Context) {
 }
 
 // UpdateVideoInfo godoc
-// @Summary     Return a list of videos
-// @Description Return a list of videos.
+// @Summary     Update video metadata information
+// @Description Update metadata information for all videos in the system
 // @Tags        videos
 // @Accept      json
 // @Produce     json
-// @Success     200
+// @Success     200 {} nil
 // @Failure     500 {} string "Error message"
 // @Router      /videos/updateinfo [post]
 func UpdateVideoInfo(c *gin.Context) {
@@ -76,14 +76,14 @@ func UpdateVideoInfo(c *gin.Context) {
 }
 
 // IsUpdatingVideoInfo godoc
-// @Summary     Returns if current the videos are updated.
-// @Description Returns if current the videos are updated.
+// @Summary     Check if video metadata update is in progress
+// @Description Get the status of the video metadata update process
 // @Tags        videos
 // @Accept      json
 // @Produce     json
-// @Success     200
+// @Success     200 {object} bool
 // @Failure     500 {} string "Error message"
-// @Router      /videos/isupdating [get]
+// @Router      /videos/isupdating [post]
 func IsUpdatingVideoInfo(c *gin.Context) {
 	appG := app.Gin{C: c}
 	// TODO: do it
@@ -174,13 +174,13 @@ func GenerateVideoPreviews(c *gin.Context) {
 }
 
 // FavVideo godoc
-// @Summary     Bookmark a certain video in a channel
-// @Description Bookmark a certain video in a channel.
+// @Summary     Bookmark a video
+// @Description Bookmark/favorite a video for easy access
 // @Tags        videos
 // @Accept      json
 // @Produce     json
 // @Param       id path uint true "video item id"
-// @Success     200
+// @Success     200 {} nil
 // @Failure     400 {} string "Error message"
 // @Failure     500 {} string "Error message"
 // @Router      /videos/{id}/fav [patch]
@@ -202,13 +202,13 @@ func FavVideo(c *gin.Context) {
 }
 
 // UnfavVideo godoc
-// @Summary     Bookmark a certain video in a channel
-// @Description Bookmark a certain video in a channel.
+// @Summary     Remove video from bookmarks
+// @Description Remove/unbookmark a video from favorites
 // @Tags        videos
 // @Accept      json
 // @Produce     json
 // @Param       id path uint true "video item id"
-// @Success     200
+// @Success     200 {} nil
 // @Failure     400 {} string "Error message"
 // @Failure     500 {} string "Error message"
 // @Router      /videos/{id}/unfav [patch]
@@ -350,10 +350,11 @@ func FilterVideos(c *gin.Context) {
 
 // GetRandomVideos godoc
 // @Summary     Get random videos
+// @Description Get a random selection of videos from the system
 // @Tags        videos
 // @Accept      json
 // @Produce     json
-// @Param       limit path string int "How many videos"
+// @Param       limit path int true "Number of random videos to return"
 // @Success     200 {object} []database.Recording
 // @Failure     400 {} string "Error message"
 // @Failure     500 {} string "Error message"
@@ -378,13 +379,13 @@ func GetRandomVideos(c *gin.Context) {
 }
 
 // DownloadVideo godoc
-// @Summary     Download a file from a channel
-// @Description Download a file from a channel.
+// @Summary     Download a video file
+// @Description Download a video file as an attachment
 // @Tags        videos
 // @Accept      json
-// @Produce     json
+// @Produce     octet-stream
 // @Param       id path uint true "Recording item id"
-// @Success     200
+// @Success     200 {file} file "Video file"
 // @Failure     400 {} string "Error message"
 // @Failure     500 {} string "Error message"
 // @Router      /videos/{id}/download [get]

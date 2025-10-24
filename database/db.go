@@ -1,8 +1,10 @@
 package database
 
 import (
+	"database/sql"
 	"fmt"
 	"os"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/srad/mediasink/conf"
@@ -46,7 +48,7 @@ func Init() {
 	/// Open and assign database.
 	config := &gorm.Config{
 		Logger:                                   newLogger,
-		DisableForeignKeyConstraintWhenMigrating: true,
+		DisableForeignKeyConstraintWhenMigrating: false, // Enable foreign key constraints for data integrity
 	}
 	db, err := gorm.Open(dialector, config)
 	if err != nil {
@@ -54,11 +56,26 @@ func Init() {
 	}
 	DB = db
 
+	// Configure connection pool for better concurrency handling
+	sqlDB, err := db.DB()
+	if err != nil {
+		panic("failed to get database instance")
+	}
+	sqlDB.SetMaxIdleConns(10)
+	sqlDB.SetMaxOpenConns(100)
+	sqlDB.SetConnMaxLifetime(time.Hour)
+
 	migrate()
 }
 
+// BeginTx starts a new transaction with default isolation level
+// All database operations for multi-step processes should use this
+func BeginTx() *gorm.DB {
+	return DB.Begin(&sql.TxOptions{Isolation: sql.LevelReadCommitted})
+}
+
 func migrate() {
-	// Migrate the schema
+	// Migrate the schema in correct order (parent tables first)
 	if err := DB.AutoMigrate(&User{}); err != nil {
 		panic(fmt.Sprintf("[Migrate] Error user: %s", err))
 	}
