@@ -170,9 +170,9 @@ func UploadRecording(channelID database.ChannelID, fileReader io.Reader) (*datab
 		return nil, fmt.Errorf("error saving recording to database: %w", err)
 	}
 
-	// Enqueue preview generation jobs
-	if _, _, err := recording.EnqueuePreviewsJob(); err != nil {
-		log.Errorf("Error enqueueing preview job for uploaded recording: %v", err)
+	// Enqueue preview frames generation job
+	if _, err := recording.EnqueuePreviewFramesJob(); err != nil {
+		log.Errorf("Error enqueueing preview frames job for uploaded recording: %v", err)
 		// Cleanup the recording and file if preview job fails
 		if cleanupErr := recording.DestroyRecording(); cleanupErr != nil {
 			log.Errorf("Error cleaning up orphaned recording: %v", cleanupErr)

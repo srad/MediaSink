@@ -165,11 +165,11 @@ func GenerateVideoPreviews(c *gin.Context) {
 		appG.Error(http.StatusInternalServerError, err)
 		return
 	} else {
-		if job1, job2, err := videos.EnqueuePreviewsJob(); err != nil {
+		if job, err := videos.EnqueuePreviewFramesJob(); err != nil {
 			appG.Error(http.StatusInternalServerError, err)
 			return
 		} else {
-			appG.Response(http.StatusOK, []*database.Job{job1, job2})
+			appG.Response(http.StatusOK, job)
 		}
 	}
 }

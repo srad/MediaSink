@@ -140,45 +140,19 @@ func ImportChannels(context.Context) error {
 				continue
 			}
 
-			// Check if the preview files exist and add to the record data otherwise generate new.
-			if database.PreviewFileExists(newRecording.ChannelName, newRecording.Filename, database.PreviewCover) {
-				if err := newRecording.UpdatePreviewPath(database.PreviewCover); err != nil {
-					log.Errorln(err)
-				}
-			} else {
-				if _, err := newRecording.EnqueuePreviewCoverJob(); err != nil {
-					log.Errorln(err)
-				}
-			}
+			// Check if preview frames exist (both database entry and physical folder)
+			previewFramesPath := newRecording.RecordingID.GetPreviewFramesPath(newRecording.ChannelName)
+			_, dbErr := database.FindVideoPreviewByRecordingID(newRecording.RecordingID)
+			_, folderErr := os.Stat(previewFramesPath)
 
-			if database.PreviewFileExists(newRecording.ChannelName, newRecording.Filename, database.PreviewStripe) {
-				if err := newRecording.UpdatePreviewPath(database.PreviewStripe); err != nil {
-					log.Errorln(err)
-				}
-			} else {
-				if _, err := newRecording.EnqueuePreviewStripeJob(); err != nil {
-					log.Errorln(err)
-				}
-			}
+			needsPreview := dbErr != nil || folderErr != nil
 
-			// Destroy all preview videos for now.
-			if database.PreviewFileExists(newRecording.ChannelName, newRecording.Filename, database.PreviewVideo) {
-				if err := database.DeletePreview(newRecording.ChannelName, newRecording.Filename, database.PreviewVideo); err != nil {
-					log.Errorln(err)
-				}
-				if err := newRecording.NilPreview(database.PreviewVideo); err != nil {
-					log.Errorln(err)
+			if needsPreview {
+				// Preview doesn't exist or frames folder is missing, enqueue preview frames job
+				if _, err := newRecording.EnqueuePreviewFramesJob(); err != nil {
+					log.Errorf("[Import/%s] Error enqueueing preview frames job: %s", channelName, err)
 				}
 			}
-			//if database.PreviewFileExists(newRecording.ChannelName, newRecording.Filename, database.PreviewVideo) {
-			//	if err := newRecording.UpdatePreviewPath(database.PreviewVideo); err != nil {
-			//		log.Errorln(err)
-			//	}
-			//} else {
-			//	if _, err := newRecording.EnqueuePreviewVideoJob(); err != nil {
-			//		log.Errorln(err)
-			//	}
-			//}
 		}
 	}
 

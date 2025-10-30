@@ -38,6 +38,7 @@ func GetChannelByIDWithRecordings(id ChannelID) (*Channel, error) {
 
 	err := DB.Model(&Channel{}).
 		Preload("Recordings").
+		Preload("Recordings.VideoPreviews").
 		Where("channels.channel_id = ?", id).
 		Select("*", "(SELECT COUNT(*) FROM recordings WHERE recordings.channel_id = channels.channel_id) recordings_count", "(SELECT SUM(size) FROM recordings WHERE recordings.channel_name = channels.channel_name) recordings_size").
 		First(&channel).Error
@@ -192,15 +193,12 @@ func NewRecording(channelID ChannelID, videoType string) (*Recording, string, er
 			CreatedAt:     timestamp,
 			VideoType:     videoType,
 			Packets:       0,
-			Duration:      0,
-			Size:          0,
-			BitRate:       0,
-			Width:         0,
-			Height:        0,
-			PathRelative:  relativePath,
-			PreviewStripe: nil,
-			PreviewVideo:  nil,
-			PreviewCover:  nil,
+			Duration:     0,
+			Size:         0,
+			BitRate:      0,
+			Width:        0,
+			Height:       0,
+			PathRelative: relativePath,
 		},
 		filePath,
 		nil

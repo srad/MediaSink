@@ -88,9 +88,36 @@ func migrate() {
 	if err := DB.AutoMigrate(&Job{}); err != nil {
 		panic(fmt.Sprintf("[Migrate] Error Job: %s", err))
 	}
+	if err := DB.AutoMigrate(&VideoPreview{}); err != nil {
+		panic(fmt.Sprintf("[Migrate] Error VideoPreview: %s", err))
+	}
 	if err := DB.AutoMigrate(&Setting{}); err != nil {
 		panic(fmt.Sprintf("[Migrate] Error Setting: %s", err))
 	}
+
+	// Remove deprecated preview columns from recordings table
+	if DB.Migrator().HasColumn(&Recording{}, "preview_stripe") {
+		if err := DB.Migrator().DropColumn(&Recording{}, "preview_stripe"); err != nil {
+			log.Warnf("[Migrate] Error dropping preview_stripe column: %s", err)
+		} else {
+			log.Infof("[Migrate] Dropped deprecated preview_stripe column")
+		}
+	}
+	if DB.Migrator().HasColumn(&Recording{}, "preview_video") {
+		if err := DB.Migrator().DropColumn(&Recording{}, "preview_video"); err != nil {
+			log.Warnf("[Migrate] Error dropping preview_video column: %s", err)
+		} else {
+			log.Infof("[Migrate] Dropped deprecated preview_video column")
+		}
+	}
+	if DB.Migrator().HasColumn(&Recording{}, "preview_cover") {
+		if err := DB.Migrator().DropColumn(&Recording{}, "preview_cover"); err != nil {
+			log.Warnf("[Migrate] Error dropping preview_cover column: %s", err)
+		} else {
+			log.Infof("[Migrate] Dropped deprecated preview_cover column")
+		}
+	}
+
 	if err := InitSettings(); err != nil {
 		log.Panicf("[Setting] Init error: %s", err)
 	}

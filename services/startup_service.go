@@ -1,8 +1,12 @@
 package services
 
 import (
+	"os"
+	"path/filepath"
+
 	"github.com/astaxie/beego/utils"
 	log "github.com/sirupsen/logrus"
+	"github.com/srad/mediasink/conf"
 	"github.com/srad/mediasink/database"
 	"github.com/srad/mediasink/helpers"
 )
@@ -16,6 +20,7 @@ func StartUpJobs() {
 	if err := deleteOrphanedRecordings(); err != nil { // Blocking
 		log.Errorln(err)
 	}
+	cleanupDeprecatedPreviewFolders() // Clean up old posters and stripes folders
 	StartImport()
 	go fixOrphanedFiles()
 }
@@ -90,4 +95,34 @@ func fixOrphanedFiles() error {
 	}
 
 	return nil
+}
+
+// cleanupDeprecatedPreviewFolders removes old preview folders (posters, stripes)
+// that have been replaced by the new frames-based preview system
+func cleanupDeprecatedPreviewFolders() {
+	cfg := conf.Read()
+	channels, err := database.ChannelList()
+	if err != nil {
+		log.Errorf("[CleanupDeprecatedPreviews] Error getting channel list: %s", err)
+		return
+	}
+
+	deprecatedFolders := []string{"posters", "stripes"}
+
+	for _, channel := range channels {
+		previewsBasePath := filepath.Join(cfg.RecordingsAbsolutePath, channel.ChannelName.String(), cfg.DataPath)
+
+		for _, folder := range deprecatedFolders {
+			deprecatedPath := filepath.Join(previewsBasePath, folder)
+
+			if _, err := os.Stat(deprecatedPath); err == nil {
+				log.Infof("[CleanupDeprecatedPreviews] Removing deprecated preview folder: %s", deprecatedPath)
+				if err := os.RemoveAll(deprecatedPath); err != nil {
+					log.Errorf("[CleanupDeprecatedPreviews] Error removing %s: %s", deprecatedPath, err)
+				} else {
+					log.Infof("[CleanupDeprecatedPreviews] Successfully removed: %s", deprecatedPath)
+				}
+			}
+		}
+	}
 }

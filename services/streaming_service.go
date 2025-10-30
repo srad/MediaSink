@@ -175,7 +175,7 @@ func CaptureChannel(id database.ChannelID, url string, skip uint) error {
 			} else {
 				network.BroadCastClients(network.RecordingAddEvent, newRecording)
 
-				if _, _, errPreviews := newRecording.EnqueuePreviewsJob(); errPreviews != nil {
+				if _, errPreviews := newRecording.EnqueuePreviewFramesJob(); errPreviews != nil {
 					// Preview job enqueue failed - clean up the recording and file
 					log.Errorf("[FinishRecording] Error enqueueing preview job for recording '%s': %v", newRecording.Filename, errPreviews)
 
