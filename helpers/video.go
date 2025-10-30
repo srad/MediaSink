@@ -18,9 +18,10 @@ import (
 )
 
 var (
-	VideosFolder  = "videos"
-	StripesFolder = "stripes"
-	CoverFolder   = "posters"
+	VideosFolder        = "videos"
+	StripesFolder       = "stripes"
+	CoverFolder         = "posters"
+	PreviewFramesFolder = "frames"
 )
 
 // Video Represent a video to which operations can be applied.
@@ -552,6 +553,153 @@ func (video Video) ExecPreviewCover(outputPath string) (*PreviewResult, error) {
 	}
 
 	return &PreviewResult{FilePath: video.FilePath, Filename: file}, nil
+}
+
+// ExecPreviewFrames generates individual preview frames for a video
+// Frames are extracted at regular intervals and named with the timestamp in seconds
+// previewFramesPath should be the absolute path from RecordingID.GetPreviewFramesPath()
+func (video *Video) ExecPreviewFrames(args *VideoConversionArgs, videoDuration float64, previewFramesPath string) (*PreviewResult, error) {
+	basename := filepath.Base(video.FilePath)
+	filename := FileNameWithoutExtension(basename)
+
+	// Calculate frame interval to ensure whole-number intervals
+	// Start with 2-second intervals and increase if frameCount exceeds 800
+	frameInterval := uint64(2)
+	frameCount := uint64((videoDuration + float64(frameInterval) - 1) / float64(frameInterval)) // ceil division
+
+	for frameCount > 800 {
+		frameInterval++
+		frameCount = uint64((videoDuration + float64(frameInterval) - 1) / float64(frameInterval))
+	}
+
+	// Ensure minimum of 30 frames
+	if frameCount < 30 {
+		frameInterval = uint64((videoDuration + 29) / 30) // ceil division
+		frameCount = 30
+	}
+
+	// Remove existing preview frames directory to ensure clean regeneration
+	previewDir := previewFramesPath
+	if err := os.RemoveAll(previewDir); err != nil && !os.IsNotExist(err) {
+		return nil, fmt.Errorf("error removing existing preview frames directory: %w", err)
+	}
+
+	// Create preview frames directory
+	if err := os.MkdirAll(previewDir, 0777); err != nil {
+		return nil, fmt.Errorf("error creating preview frames directory: %w", err)
+	}
+
+	// Calculate fps based on frame interval
+	fps := 1.0 / float64(frameInterval)
+
+	// Use a counter pattern for temp files
+	tempPattern := filepath.Join(previewDir, "frame-%06d.jpg")
+
+	// Track frame timestamps from FFmpeg progress output
+	var framesExtracted uint64
+	var lastOutTimeMs int64
+	var lastFrameNum int64
+	frameTimestamps := make(map[int64]int64) // frameNum -> timestamp in seconds
+
+	err := ExecSync(&ExecArgs{
+		OnStart: func(info CommandInfo) {
+			if args.OnStart != nil {
+				args.OnStart(TaskInfo{
+					Pid:     info.Pid,
+					Command: info.Command,
+					Message: "Generating preview frames",
+				})
+			}
+		},
+		OnPipeOut: func(out PipeMessage) {
+			kvs := ParseFFmpegKVs(out.Output)
+
+			// Track the actual timestamp from FFmpeg
+			if outTimeMs, ok := kvs["out_time_ms"]; ok {
+				if value, err := strconv.ParseInt(outTimeMs, 10, 64); err == nil && value > 0 {
+					lastOutTimeMs = value
+				}
+			}
+
+			// When a new frame is extracted, record its timestamp
+			if frame, ok := kvs["frame"]; ok {
+				if value, err := strconv.ParseInt(frame, 10, 64); err == nil && value > 0 {
+					if value > lastFrameNum {
+						lastFrameNum = value
+						// Store the timestamp in seconds (convert from milliseconds)
+						frameTimestamps[value] = lastOutTimeMs / 1000
+						framesExtracted++
+						args.OnProgress(TaskProgress{
+							Current: framesExtracted,
+							Total:   frameCount,
+							Message: "Generating preview frames",
+						})
+					}
+				}
+			}
+
+			if progress, ok := kvs["progress"]; ok {
+				if progress == "end" && args.OnEnd != nil {
+					args.OnEnd(TaskComplete{
+						Message: "Preview frames generated",
+					})
+				}
+			}
+		},
+		OnPipeErr: func(pipe PipeMessage) {
+			if args.OnError != nil {
+				args.OnError(fmt.Errorf("error generating frames: %s", pipe.Output))
+			}
+		},
+		Command: "ffmpeg",
+		CommandArgs: []string{
+			"-i", video.FilePath,
+			"-y",
+			"-progress", "pipe:1",
+			"-threads", fmt.Sprint(conf.ThreadCount),
+			"-an",
+			"-vf", fmt.Sprintf("fps=%.4f", fps),
+			"-q:v", "2",
+			"-hide_banner",
+			"-loglevel", "error",
+			tempPattern,
+		},
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("error generating preview frames for '%s': %w", video.FilePath, err)
+	}
+
+	// Rename frames using the actual timestamps from FFmpeg
+	files, err := os.ReadDir(previewDir)
+	if err != nil {
+		return nil, fmt.Errorf("error reading preview frames directory: %w", err)
+	}
+
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".jpg") {
+			// Extract frame number from filename (e.g., "frame-000001.jpg" -> 1)
+			var frameNum int64
+			_, err := fmt.Sscanf(file.Name(), "frame-%06d.jpg", &frameNum)
+			if err != nil {
+				// Skip files that don't match pattern
+				continue
+			}
+
+			// Get the actual timestamp for this frame from our tracking map
+			if timestamp, ok := frameTimestamps[frameNum]; ok {
+				newName := fmt.Sprintf("%d.jpg", timestamp)
+				oldPath := filepath.Join(previewDir, file.Name())
+				newPath := filepath.Join(previewDir, newName)
+
+				if err := os.Rename(oldPath, newPath); err != nil {
+					return nil, fmt.Errorf("error renaming preview frame: %w", err)
+				}
+			}
+		}
+	}
+
+	return &PreviewResult{FilePath: previewDir, Filename: filename}, nil
 }
 
 // CreatePreviewShots Create a separate preview image file, at every frame distance.

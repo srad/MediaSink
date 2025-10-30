@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -93,13 +94,8 @@ func executeJob(job *database.Job) error {
 	video := helpers.Video{FilePath: job.Recording.AbsoluteChannelFilepath()}
 
 	switch job.Task {
-	case database.TaskPreviewCover:
-		return handleJob(job, processPreviewCover(job, &video))
-	case database.TaskPreviewStrip:
-		return handleJob(job, processPreviewStrip(job, &video))
-	case database.TaskPreviewVideo:
-		// video jobs won't be created for now.
-		return nil //handleJob(job, processPreviewVideo(job, &video))
+	case database.TaskPreviewFrames:
+		return handleJob(job, processPreviewFrames(job, &video))
 	case database.TaskCut:
 		return handleJob(job, processCutting(job))
 	case database.TaskConvert:
@@ -123,97 +119,139 @@ func handleJob(job *database.Job, err error) error {
 	}
 }
 
-func processPreviewStrip(job *database.Job, video *helpers.Video) error {
-	previewArgs := &helpers.VideoConversionArgs{
-		OnStart: func(info helpers.TaskInfo) {
+func processPreviewFrames(job *database.Job, video *helpers.Video) error {
+	// Delete existing preview entry and frames before regenerating
+	_ = database.DeleteVideoPreviewByRecordingID(job.Recording.RecordingID)
+
+	previewFramesPath := job.Recording.RecordingID.GetPreviewFramesPath(job.ChannelName)
+
+	// Remove existing preview frames directory
+	if err := os.RemoveAll(previewFramesPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("error removing existing preview frames directory: %w", err)
+	}
+
+	// Create preview frames directory
+	if err := os.MkdirAll(previewFramesPath, 0777); err != nil {
+		return fmt.Errorf("error creating preview frames directory: %w", err)
+	}
+
+	// Calculate frame interval and count
+	frameInterval := uint64(2)
+	frameCount := uint64((job.Recording.Duration + float64(frameInterval) - 1) / float64(frameInterval))
+
+	for frameCount > 800 {
+		frameInterval++
+		frameCount = uint64((job.Recording.Duration + float64(frameInterval) - 1) / float64(frameInterval))
+	}
+
+	if frameCount < 30 {
+		frameInterval = uint64((job.Recording.Duration + 29) / 30)
+		frameCount = 30
+	}
+
+	// Use select filter to extract frames at exact time intervals
+	// This is more reliable than fps filter as it extracts at precise timestamps
+	selectFilter := fmt.Sprintf("select='isnan(prev_selected_t)+gte(t-prev_selected_t\\,%d)',setpts=N/FRAME_RATE/TB", frameInterval)
+	tempPattern := filepath.Join(previewFramesPath, "frame-%06d.jpg")
+
+	// Execute FFmpeg to extract frames with progress tracking
+	err := helpers.ExecSync(&helpers.ExecArgs{
+		Command: "ffmpeg",
+		CommandArgs: []string{
+			"-i", video.FilePath,
+			"-y",
+			"-progress", "pipe:1",
+			"-threads", fmt.Sprint(conf.ThreadCount),
+			"-an",
+			"-vf", selectFilter,
+			"-vsync", "vfr", // Variable frame rate - only output selected frames
+			"-q:v", "2",
+			"-hide_banner",
+			"-loglevel", "error",
+			tempPattern,
+		},
+		OnStart: func(info helpers.CommandInfo) {
 			if err := job.UpdateInfo(info.Pid, info.Command); err != nil {
-				log.Errorf("[Job] Error updating job info: %s", err)
+				log.Errorf("[PreviewFrames] Error updating job info: %v", err)
+			}
+			network.BroadCastClients(network.JobStartEvent, JobMessage[helpers.TaskInfo]{
+				Job: job,
+				Data: helpers.TaskInfo{
+					Pid:     info.Pid,
+					Command: info.Command,
+					Message: "Generating preview frames",
+				},
+			})
+		},
+		OnPipeOut: func(pm helpers.PipeMessage) {
+			// Use the same parsing as enhance video job
+			emitProgressFromFrame(job, pm.Output, frameCount)
+
+			kvs := helpers.ParseFFmpegKVs(pm.Output)
+			if progress, ok := kvs["progress"]; ok {
+				if progress == "end" {
+					network.BroadCastClients(network.JobDoneEvent, JobMessage[helpers.TaskComplete]{
+						Data: helpers.TaskComplete{Message: "Preview frames generated"},
+						Job:  job,
+					})
+				}
+			}
+		},
+		OnPipeErr: func(pm helpers.PipeMessage) {
+			log.Errorf("[PreviewFrames] Error: %s", pm.Output)
+			network.BroadCastClients(network.JobErrorEvent, JobMessage[string]{Job: job, Data: pm.Output})
+		},
+	})
+
+	if err != nil {
+		return fmt.Errorf("error generating preview frames: %w", err)
+	}
+
+	// Rename frames using calculated timestamps
+	// With select filter and regular intervals:
+	// - frame-000001.jpg corresponds to timestamp 0
+	// - frame-000002.jpg corresponds to timestamp frameInterval
+	// - frame-000003.jpg corresponds to timestamp frameInterval * 2
+	// etc.
+	files, err := os.ReadDir(previewFramesPath)
+	if err != nil {
+		return fmt.Errorf("error reading preview frames directory: %w", err)
+	}
+
+	for _, file := range files {
+		if !file.IsDir() && strings.HasSuffix(file.Name(), ".jpg") {
+			// Extract frame number from filename (e.g., "frame-000001.jpg" -> 1)
+			var frameNum int64
+			_, err := fmt.Sscanf(file.Name(), "frame-%06d.jpg", &frameNum)
+			if err != nil {
+				// Skip files that don't match pattern
+				continue
 			}
 
-			network.BroadCastClients(network.JobStartEvent, JobMessage[helpers.TaskInfo]{
-				Job:  job,
-				Data: info,
-			})
-		},
-		OnProgress: func(info helpers.TaskProgress) {
-			network.BroadCastClients(network.JobProgressEvent, JobMessage[helpers.TaskProgress]{
-				Job:  job,
-				Data: info})
-		},
-		OnEnd: func(info helpers.TaskComplete) {
-			network.BroadCastClients(network.JobDoneEvent, JobMessage[helpers.TaskComplete]{
-				Data: info,
-				Job:  job,
-			})
-		},
-		OnError: func(err error) {
-			network.BroadCastClients(network.JobErrorEvent, JobMessage[string]{
-				Data: err.Error(),
-				Job:  job,
-			})
-		},
-		InputPath:  job.ChannelName.AbsoluteChannelPath(),
-		OutputPath: job.ChannelName.AbsoluteChannelDataPath(),
-		Filename:   job.Filename.String(),
-	}
+			// Calculate timestamp: frame N (1-indexed) corresponds to timestamp (N-1) * frameInterval
+			// Frame 1 → 0 seconds, Frame 2 → frameInterval seconds, Frame 3 → frameInterval*2, etc.
+			timestamp := uint64(frameNum-1) * frameInterval
+			newName := fmt.Sprintf("%d.jpg", timestamp)
+			oldPath := filepath.Join(previewFramesPath, file.Name())
+			newPath := filepath.Join(previewFramesPath, newName)
 
-	if _, err := video.ExecPreviewStripe(previewArgs, conf.FrameCount, 256, job.Recording.Packets); err != nil {
-		return err
-	} else {
-		return job.Recording.UpdatePreviewPath(database.PreviewStripe)
-	}
-}
-
-func processPreviewVideo(job *database.Job, video *helpers.Video) error {
-	if err := job.Recording.DestroyPreview(database.PreviewVideo); err != nil {
-		return err
-	}
-
-	previewArgs := &helpers.VideoConversionArgs{
-		OnStart: func(info helpers.TaskInfo) {
-			if err := job.UpdateInfo(info.Pid, info.Command); err != nil {
-				log.Errorf("[Job] Error updating job info: %s", err)
+			if err := os.Rename(oldPath, newPath); err != nil {
+				return fmt.Errorf("error renaming preview frame: %w", err)
 			}
-
-			network.BroadCastClients(network.JobStartEvent, JobMessage[helpers.TaskInfo]{
-				Job:  job,
-				Data: info,
-			})
-		},
-		OnProgress: func(info helpers.TaskProgress) {
-			network.BroadCastClients(network.JobProgressEvent, JobMessage[helpers.TaskProgress]{
-				Job:  job,
-				Data: info})
-		},
-		OnEnd: func(info helpers.TaskComplete) {
-			network.BroadCastClients(network.JobDoneEvent, JobMessage[helpers.TaskComplete]{
-				Data: info,
-				Job:  job,
-			})
-		},
-		OnError: func(err error) {
-			network.BroadCastClients(network.JobErrorEvent, JobMessage[string]{
-				Data: err.Error(),
-				Job:  job,
-			})
-		},
-		InputPath:  job.ChannelName.AbsoluteChannelPath(),
-		OutputPath: job.ChannelName.AbsoluteChannelDataPath(),
-		Filename:   job.Filename.String(),
+		}
 	}
 
-	if _, err := video.ExecPreviewVideo(previewArgs, conf.FrameCount, 256, job.Recording.Packets); err != nil {
-		return err
+	// Store preview metadata in video_previews table
+	relativePreviewPath := job.Recording.RecordingID.GetRelativePreviewFramesPath(job.ChannelName)
+	videoPreview := &database.VideoPreview{
+		RecordingID:   job.Recording.RecordingID,
+		FrameCount:    frameCount,
+		FrameInterval: frameInterval,
+		PreviewPath:   relativePreviewPath,
 	}
 
-	return job.Recording.UpdatePreviewPath(database.PreviewVideo)
-}
-
-func processPreviewCover(job *database.Job, video *helpers.Video) error {
-	if _, err := video.ExecPreviewCover(job.ChannelName.AbsoluteChannelDataPath()); err != nil {
-		return err
-	}
-	return job.Recording.UpdatePreviewPath(database.PreviewCover)
+	// Create new preview record
+	return videoPreview.CreateVideoPreview()
 }
 
 func processConversion(job *database.Job) error {
@@ -229,11 +267,7 @@ func processConversion(job *database.Job) error {
 			}
 		},
 		OnProgress: func(info helpers.TaskProgress) {
-			if err := job.UpdateProgress(fmt.Sprintf("%f", float32(info.Current)/float32(info.Total)*100)); err != nil {
-				log.Errorf("Error updating job progress: %s", err)
-			}
-
-			network.BroadCastClients(network.JobProgressEvent, JobMessage[helpers.TaskProgress]{Job: job, Data: info})
+			emitJobProgress(job, info.Current, info.Total, info.Message)
 		},
 		OnError: func(err error) {
 			network.BroadCastClients(network.JobErrorEvent, JobMessage[string]{Job: job, Data: err.Error()})
@@ -266,7 +300,7 @@ func processConversion(job *database.Job) error {
 	}
 
 	// Enqueue preview generation job for the newly created recording
-	if _, _, errPreviews := recording.EnqueuePreviewsJob(); errPreviews != nil {
+	if _, errPreviews := recording.EnqueuePreviewFramesJob(); errPreviews != nil {
 		// Preview job enqueue failed - clean up the converted file and database record
 		log.Errorf("Error enqueueing preview job, cleaning up converted file: %v (will attempt cleanup)", errPreviews)
 
@@ -445,7 +479,7 @@ func processCutting(job *database.Job) error {
 	}
 
 	// Successfully added cut record, enqueue preview job
-	if _, _, errPreview := cutRecording.EnqueuePreviewsJob(); errPreview != nil {
+	if _, errPreview := cutRecording.EnqueuePreviewFramesJob(); errPreview != nil {
 		// Preview job enqueue failed - clean up the cut recording and file
 		log.Errorf("Error enqueueing preview job for cut recording, cleaning up: %v", errPreview)
 
@@ -589,7 +623,7 @@ func processMerge(job *database.Job) error {
 	}
 
 	// Enqueue preview jobs for merged recording
-	if _, _, errPreview := mergedRecording.EnqueuePreviewsJob(); errPreview != nil {
+	if _, errPreview := mergedRecording.EnqueuePreviewFramesJob(); errPreview != nil {
 		log.Errorf("[MergeJob] Error enqueueing preview jobs for merged recording: %v", errPreview)
 
 		if errDelete := mergedRecording.DestroyRecording(); errDelete != nil {
@@ -620,17 +654,37 @@ func StopJobProcessing() {
 	cancelJobs()
 }
 
+// emitJobProgress is a centralized handler for job progress updates
+// It handles both database persistence and client broadcasting in one place
+func emitJobProgress(job *database.Job, current, total uint64, message string) {
+	// Calculate percentage for database storage
+	progressPercent := float32(current) / float32(total) * 100
+
+	// Update database
+	if err := job.UpdateProgress(fmt.Sprintf("%.2f", progressPercent)); err != nil {
+		log.Errorf("Error updating job progress in database: %s", err)
+	}
+
+	// Broadcast to connected clients
+	network.BroadCastClients(network.JobProgressEvent, JobMessage[helpers.TaskProgress]{
+		Job: job,
+		Data: helpers.TaskProgress{
+			Step:    1,
+			Steps:   1,
+			Total:   total,
+			Current: current,
+			Message: message,
+		},
+	})
+}
+
+// emitProgressFromFrame parses FFmpeg frame output and emits progress
 func emitProgressFromFrame(job *database.Job, s string, totalCount uint64) {
 	if strings.Contains(s, "frame=") {
 		s := strings.Split(s, "=")
 		if len(s) == 2 {
 			if p, err := strconv.ParseUint(s[1], 10, 64); err == nil {
-				network.BroadCastClients(network.JobProgressEvent, JobMessage[helpers.TaskProgress]{Job: job, Data: helpers.TaskProgress{
-					Step:    1,
-					Steps:   1,
-					Total:   totalCount,
-					Current: p,
-				}})
+				emitJobProgress(job, p, totalCount, "Processing")
 			}
 		}
 	}
@@ -757,7 +811,7 @@ func processEnhanceVideo(job *database.Job) error {
 	}
 
 	// Enqueue preview jobs for enhanced recording
-	if _, _, errPreview := enhancedRecording.EnqueuePreviewsJob(); errPreview != nil {
+	if _, errPreview := enhancedRecording.EnqueuePreviewFramesJob(); errPreview != nil {
 		log.Errorf("[EnhanceVideoJob] Error enqueueing preview jobs: %v", errPreview)
 
 		if errDelete := enhancedRecording.DestroyRecording(); errDelete != nil {

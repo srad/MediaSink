@@ -4,25 +4,47 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
-	"github.com/astaxie/beego/utils"
 	"github.com/go-playground/validator/v10"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/srad/mediasink/conf"
 	"github.com/srad/mediasink/helpers"
 	"gorm.io/gorm"
 )
 
 const (
-	PreviewStripe PreviewType = "preview-stripe"
-	PreviewVideo  PreviewType = "preview-video"
-	PreviewCover  PreviewType = "preview-cover"
+	PreviewFrames PreviewType = "preview-frames"
 )
 
 type PreviewType string
 
 type RecordingID uint
+
+// GetPreviewFramesPath returns the absolute path to the preview frames directory for this recording
+func (recordingID RecordingID) GetPreviewFramesPath(channelName ChannelName) string {
+	cfg := conf.Read()
+	return filepath.Join(
+		cfg.RecordingsAbsolutePath,
+		channelName.String(),
+		cfg.DataPath,
+		helpers.PreviewFramesFolder,
+		fmt.Sprintf("%d", recordingID),
+	)
+}
+
+// GetRelativePreviewFramesPath returns the relative path to the preview frames directory for this recording
+func (recordingID RecordingID) GetRelativePreviewFramesPath(channelName ChannelName) string {
+	cfg := conf.Read()
+	return filepath.Join(
+		channelName.String(),
+		cfg.DataPath,
+		helpers.PreviewFramesFolder,
+		fmt.Sprintf("%d", recordingID),
+	)
+}
 
 type Recording struct {
 	RecordingID RecordingID `json:"recordingId" gorm:"autoIncrement;primaryKey;column:recording_id" extensions:"!x-nullable" validate:"gte=0"`
@@ -44,9 +66,7 @@ type Recording struct {
 
 	PathRelative string `json:"pathRelative" gorm:"default:null;not null" validate:"required,filepath"`
 
-	PreviewStripe *string `json:"previewStripe" gorm:"default:null"`
-	PreviewVideo  *string `json:"previewVideo" gorm:"default:null"`
-	PreviewCover  *string `json:"previewCover" gorm:"default:null"`
+	VideoPreviews *VideoPreview `json:"videoPreview" gorm:"foreignKey:recording_id;references:recording_id"`
 }
 
 func FindRecordingByID(recordingID RecordingID) (*Recording, error) {
@@ -56,6 +76,7 @@ func FindRecordingByID(recordingID RecordingID) (*Recording, error) {
 
 	var recording *Recording
 	if err := DB.Model(Recording{}).
+		Preload("VideoPreviews").
 		Where("recordings.recording_id = ?", recordingID).
 		First(&recording).Error; err != nil {
 		return nil, err
@@ -92,6 +113,7 @@ func SortBy(column string, order string, skip, take int) ([]*Recording, int64, e
 
 	// 4. Perform the Find query
 	err := query.
+		Preload("VideoPreviews").
 		Order(fmt.Sprintf("%s %s", column, order)).
 		Offset(skip).
 		Limit(take).
@@ -118,6 +140,7 @@ func FindRandom(limit int) ([]*Recording, error) {
 	var recordings []*Recording
 
 	err := DB.Model(Recording{}).
+		Preload("VideoPreviews").
 		Order("RANDOM()").
 		Limit(limit).
 		Find(&recordings).Error
@@ -133,6 +156,7 @@ func RecordingsList() ([]*Recording, error) {
 	var recordings []*Recording
 
 	err := DB.Model(Recording{}).
+		Preload("VideoPreviews").
 		Select("recordings.*").
 		Find(&recordings).Error
 
@@ -146,6 +170,7 @@ func RecordingsList() ([]*Recording, error) {
 func BookmarkList() ([]*Recording, error) {
 	var recordings []*Recording
 	err := DB.Model(Recording{}).
+		Preload("VideoPreviews").
 		Where("bookmark = ?", true).
 		Select("recordings.*").Order("recordings.channel_name asc").
 		Find(&recordings).Error
@@ -161,41 +186,6 @@ func GetPaths(channelName ChannelName, filename RecordingFileName) RecordingPath
 	return channelName.GetRecordingsPaths(filename)
 }
 
-func PreviewFileExists(channelName ChannelName, filename RecordingFileName, previewType PreviewType) bool {
-	paths := GetPaths(channelName, filename)
-
-	switch previewType {
-	case PreviewStripe:
-		return utils.FileExists(paths.AbsolutePreviewStripePath)
-	case PreviewVideo:
-		return utils.FileExists(paths.AbsolutePreviewVideosPath)
-	case PreviewCover:
-		return utils.FileExists(paths.AbsolutePreviewCoverPath)
-	}
-
-	return false
-}
-
-func DeletePreview(channelName ChannelName, filename RecordingFileName, previewType PreviewType) error {
-	paths := GetPaths(channelName, filename)
-
-	switch previewType {
-	case PreviewStripe:
-		if err := os.Remove(paths.AbsolutePreviewStripePath); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-	case PreviewVideo:
-		if err := os.Remove(paths.AbsolutePreviewVideosPath); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-	case PreviewCover:
-		if err := os.Remove(paths.AbsolutePreviewCoverPath); err != nil && !os.IsNotExist(err) {
-			return err
-		}
-	}
-
-	return nil
-}
 
 func CreateRecording(channelId ChannelID, filename RecordingFileName, videoType string) (*Recording, error) {
 	channel, errChannel := GetChannelByID(channelId)
@@ -221,12 +211,9 @@ func CreateRecording(channelId ChannelID, filename RecordingFileName, videoType 
 		Duration:      info.Duration,
 		Size:          info.Size,
 		BitRate:       info.BitRate,
-		Width:         info.Width,
-		Height:        info.Height,
-		PathRelative:  channel.ChannelName.ChannelPath(filename),
-		PreviewStripe: nil,
-		PreviewVideo:  nil,
-		PreviewCover:  nil,
+		Width:        info.Width,
+		Height:       info.Height,
+		PathRelative: channel.ChannelName.ChannelPath(filename),
 	}
 
 	// Check for existing recording first, then create if not found
@@ -313,7 +300,13 @@ func (recording *Recording) DestroyRecording() error {
 }
 
 func DeleteRecordingData(channelName ChannelName, filename RecordingFileName) error {
-	// Delete from database first (wrapped in transaction) to prevent orphaned records
+	// Get recording ID for preview frames cleanup
+	var recording Recording
+	if err := DB.Where("channel_name = ? AND filename = ?", channelName, filename).First(&recording).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return fmt.Errorf("error retrieving recording: %w", err)
+	}
+
+	// Delete from database (wrapped in transaction) to prevent orphaned records
 	tx := BeginTx()
 	if err := tx.Delete(&Recording{}, "channel_name = ? AND filename = ?", channelName, filename).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		tx.Rollback()
@@ -330,7 +323,7 @@ func DeleteRecordingData(channelName ChannelName, filename RecordingFileName) er
 		cleanupErrors = append(cleanupErrors, fmt.Errorf("error deleting file: %w", err))
 	}
 
-	if err := DeletePreviewFiles(channelName, filename); err != nil {
+	if err := DeletePreviewFiles(recording.RecordingID, channelName); err != nil {
 		cleanupErrors = append(cleanupErrors, fmt.Errorf("error deleting preview files: %w", err))
 	}
 
@@ -354,6 +347,7 @@ func DeleteFile(channelName ChannelName, filename RecordingFileName) error {
 func (recordingID RecordingID) FindRecordingByID() (*Recording, error) {
 	var recording *Recording
 	err := DB.Table("recordings").
+		Preload("VideoPreviews").
 		Where("recording_id = ?", recordingID).
 		First(&recording).Error
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -442,12 +436,7 @@ func (recording *Recording) DestroyPreviews() error {
 		return nil
 	}
 
-	var err1, err2 error
-
-	err1 = DeletePreviewFiles(recording.ChannelName, recording.Filename)
-	err2 = recording.nilPreviews()
-
-	return errors.Join(err1, err2)
+	return DeletePreviewFiles(recording.RecordingID, recording.ChannelName)
 }
 
 func (recording *Recording) DestroyPreview(previewType PreviewType) error {
@@ -461,125 +450,28 @@ func (recording *Recording) DestroyPreview(previewType PreviewType) error {
 		return errFind
 	}
 
-	paths := recording.ChannelName.GetRecordingsPaths(recording.Filename)
-
 	switch previewType {
-
-	case PreviewStripe:
-		if err := os.Remove(paths.AbsolutePreviewStripePath); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("error deleting '%s' from channel '%s': %w", paths.RelativeStripePath, recording.ChannelName, err)
+	case PreviewFrames:
+		previewFramesPath := recording.RecordingID.GetPreviewFramesPath(recording.ChannelName)
+		if err := os.RemoveAll(previewFramesPath); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("error deleting preview frames directory: %w", err)
 		}
-
-		return DB.
-			Model(&Recording{}).
-			Where("recording_id = ?", recording.RecordingID).Update("preview_stripe", nil).Error
-
-	case PreviewVideo:
-		if err := os.Remove(paths.AbsolutePreviewVideosPath); err != nil && !os.IsNotExist(err) {
-			err = fmt.Errorf("error deleting '%s' from channel '%s': %w", paths.RelativeVideosPath, recording.ChannelName, err)
-		}
-		return DB.
-			Model(&Recording{}).
-			Where("recording_id = ?", recording.RecordingID).
-			Update("preview_video", nil).Error
-
-	case PreviewCover:
-		if err := os.Remove(paths.AbsolutePreviewCoverPath); err != nil && !os.IsNotExist(err) {
-			err = fmt.Errorf("error deleting '%s' from channel '%s': %w", paths.RelativeCoverPath, paths.RelativeCoverPath, err)
-		}
-		return DB.
-			Model(&Recording{}).
-			Where("recording_id = ?", recording.RecordingID).
-			Update("preview_cover", nil).Error
+		return DeleteVideoPreviewByRecordingID(recording.RecordingID)
 	}
 
 	return fmt.Errorf("invalid preview type %s", previewType)
 }
 
-func (recording *Recording) UpdatePreviewPath(previewType PreviewType) error {
-	validate := validator.New(validator.WithRequiredStructEnabled())
-	if err := validate.Struct(recording); err != nil {
-		return err
+
+func DeletePreviewFiles(recordingID RecordingID, channelName ChannelName) error {
+	// Delete preview frames directory
+	previewFramesPath := recordingID.GetPreviewFramesPath(channelName)
+	if err := os.RemoveAll(previewFramesPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("error deleting preview frames directory: %w", err)
 	}
 
-	paths := GetPaths(recording.ChannelName, recording.Filename)
-
-	switch previewType {
-	case PreviewStripe:
-		return DB.Model(&Recording{}).
-			Where("recording_id = ?", recording.RecordingID).
-			Update("preview_stripe", paths.RelativeStripePath).Error
-	case PreviewVideo:
-		return DB.Model(&Recording{}).
-			Where("recording_id = ?", recording.RecordingID).
-			Update("preview_video", paths.RelativeVideosPath).Error
-	case PreviewCover:
-		return DB.Model(&Recording{}).
-			Where("recording_id = ?", recording.RecordingID).
-			Update("preview_cover", paths.RelativeCoverPath).Error
-	}
-
-	return nil
-}
-
-func (recording *Recording) NilPreview(previewType PreviewType) error {
-	validate := validator.New(validator.WithRequiredStructEnabled())
-	if err := validate.Struct(recording); err != nil {
-		return err
-	}
-
-	switch previewType {
-	case PreviewStripe:
-		return DB.Model(&Recording{}).
-			Where("recording_id = ?", recording.RecordingID).
-			Update("preview_stripe", nil).Error
-	case PreviewVideo:
-		return DB.Model(&Recording{}).
-			Where("recording_id = ?", recording.RecordingID).
-			Update("preview_video", nil).Error
-	case PreviewCover:
-		return DB.Model(&Recording{}).
-			Where("recording_id = ?", recording.RecordingID).
-			Update("preview_cover", nil).Error
-	}
-
-	return nil
-}
-
-func (recording *Recording) nilPreviews() error {
-	validate := validator.New(validator.WithRequiredStructEnabled())
-	if err := validate.Struct(recording); err != nil {
-		return err
-	}
-
-	return DB.
-		Model(&Recording{}).
-		Where("recording_id = ?", recording.RecordingID).
-		Update("path_relative", recording.ChannelName.ChannelPath(recording.Filename)).
-		Update("preview_video", nil).
-		Update("preview_stripe", nil).
-		Update("preview_cover", nil).Error
-}
-
-func DeletePreviewFiles(channelName ChannelName, filename RecordingFileName) error {
-	paths := channelName.GetRecordingsPaths(filename)
-
-	var err1, err2, err3 error
-	if err := os.Remove(paths.AbsolutePreviewVideosPath); err != nil && !os.IsNotExist(err) {
-		err1 = fmt.Errorf("error deleting '%s' from channel '%s': %w", paths.RelativeVideosPath, channelName, err)
-	}
-	if err := os.Remove(paths.AbsolutePreviewStripePath); err != nil && !os.IsNotExist(err) {
-		err2 = fmt.Errorf("error deleting '%s' from channel '%s': %w", paths.RelativeStripePath, channelName, err)
-	}
-	if err := os.Remove(paths.AbsolutePreviewCoverPath); err != nil && !os.IsNotExist(err) {
-		err3 = fmt.Errorf("error deleting '%s' from channel '%s': %w", paths.RelativeCoverPath, channelName, err)
-	}
-
-	if err1 != nil || err2 != nil || err3 != nil {
-		return errors.Join(err1, err2, err3)
-	}
-
-	return nil
+	// Delete preview metadata from database
+	return DeleteVideoPreviewByRecordingID(recordingID)
 }
 
 func (recording *Recording) Save() error {

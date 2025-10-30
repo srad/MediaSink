@@ -16,9 +16,7 @@ import (
 
 const (
 	TaskConvert        JobTask   = "convert"
-	TaskPreviewCover   JobTask   = "preview-cover"
-	TaskPreviewStrip   JobTask   = "preview-stripe"
-	TaskPreviewVideo   JobTask   = "preview-video"
+	TaskPreviewFrames  JobTask   = "preview-frames"
 	TaskCut            JobTask   = "cut"
 	TaskMerge          JobTask   = "merge"
 	TaskEnhanceVideo   JobTask   = "enhance-video"
@@ -309,46 +307,16 @@ func (recording *Recording) EnqueueConversionJob(mediaType string) (*Job, error)
 	return enqueueJob[string](recording, TaskConvert, &mediaType)
 }
 
-func (recording *Recording) EnqueuePreviewsJob() (*Job, *Job, error) {
-	job1, err1 := recording.EnqueuePreviewCoverJob()
-	job2, err2 := recording.EnqueuePreviewStripeJob()
-	//job3, err3 := recording.EnqueuePreviewVideoJob()
-
-	return job1, job2, errors.Join(err1, err2)
-}
-
-func (recording *Recording) EnqueuePreviewStripeJob() (*Job, error) {
-	job, exists, err := JobExists(recording.RecordingID, TaskPreviewStrip)
+func (recording *Recording) EnqueuePreviewFramesJob() (*Job, error) {
+	job, exists, err := JobExists(recording.RecordingID, TaskPreviewFrames)
 	if err != nil {
 		return job, err
 	}
 	if exists {
 		return job, nil
 	}
-	return enqueueJob[*any](recording, TaskPreviewStrip, nil)
+	return enqueueJob[*any](recording, TaskPreviewFrames, nil)
 }
-
-func (recording *Recording) EnqueuePreviewCoverJob() (*Job, error) {
-	job, exists, err := JobExists(recording.RecordingID, TaskPreviewCover)
-	if err != nil {
-		return job, err
-	}
-	if exists {
-		return job, nil
-	}
-	return enqueueJob[*any](recording, TaskPreviewCover, nil)
-}
-
-//func (recording *Recording) EnqueuePreviewVideoJob() (*Job, error) {
-//	job, exists, err := JobExists(recording.RecordingID, TaskPreviewVideo)
-//	if err != nil {
-//		return job, err
-//	}
-//	if exists {
-//		return job, nil
-//	}
-//	return enqueueJob[*any](recording, TaskPreviewVideo, nil)
-//}
 
 func (recording *Recording) EnqueueCuttingJob(args *helpers.CutArgs) (*Job, error) {
 	return enqueueJob(recording, TaskCut, args)

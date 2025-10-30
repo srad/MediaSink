@@ -24,16 +24,16 @@ var (
 type ChannelName string
 
 type RecordingPaths struct {
-	AbsolutePreviewStripePath string
-	AbsoluteRecordingsPath    string
-	AbsolutePreviewVideosPath string
-	AbsolutePreviewCoverPath  string
-	Filepath                  string
-	RelativeVideosPath        string
-	RelativeStripePath        string
-	RelativeCoverPath         string
-	JPG                       string
-	MP4                       string
+	AbsolutePreviewStripePath  string
+	AbsoluteRecordingsPath     string
+	AbsolutePreviewVideosPath  string
+	AbsolutePreviewCoverPath   string
+	Filepath                   string
+	RelativeVideosPath         string
+	RelativeStripePath         string
+	RelativeCoverPath          string
+	JPG                        string
+	MP4                        string
 	//ScreensPath            string
 }
 
