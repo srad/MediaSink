@@ -31,11 +31,11 @@ type JobMessage[T any] struct {
 	Data T             `json:"data"`
 }
 
-func processJobs(ctx context.Context) {
+func processJobs(ctx context.Context, workerName string, threadCount int, priorities ...database.JobPriority) {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Infoln("[processJobs] Worker stopped")
+			log.Infof("[%s] Worker stopped", workerName)
 			processingMutex.Lock()
 			processing = false
 			processingMutex.Unlock()
@@ -44,12 +44,12 @@ func processJobs(ctx context.Context) {
 			processingMutex.Lock()
 			processing = true
 			processingMutex.Unlock()
-			job, errNextJob := database.GetNextJob()
+			job, errNextJob := database.GetNextJob(priorities...)
 			if errNextJob != nil {
 				if job != nil {
 					_ = job.Error(errNextJob)
 				} else {
-					log.Errorf("Failed to get next job: %s", errNextJob)
+					log.Errorf("[%s] Failed to get next job: %s", workerName, errNextJob)
 				}
 				continue
 			}
@@ -59,9 +59,9 @@ func processJobs(ctx context.Context) {
 
 			if err := job.Activate(); err != nil {
 				// Activation failed - mark job as error and skip to next iteration
-				log.Errorf("Error activating job %d: %v", job.JobID, err)
+				log.Errorf("[%s] Error activating job %d: %v", workerName, job.JobID, err)
 				if errMark := job.Error(fmt.Errorf("failed to activate job: %w", err)); errMark != nil {
-					log.Errorf("Error marking job %d as failed: %v", job.JobID, errMark)
+					log.Errorf("[%s] Error marking job %d as failed: %v", workerName, job.JobID, errMark)
 				}
 				network.BroadCastClients(network.JobErrorEvent, JobMessage[string]{
 					Job:  job,
@@ -72,15 +72,15 @@ func processJobs(ctx context.Context) {
 			network.BroadCastClients(network.JobActivate, JobMessage[any]{Job: job})
 
 			// Execute the job (this will update job state: Completed or Error)
-			if err := executeJob(job); err != nil {
-				log.Errorf("Job execution error: %v", err)
+			if err := executeJob(job, threadCount); err != nil {
+				log.Errorf("[%s] Job execution error: %v", workerName, err)
 				// Job state already updated by executeJob -> handleJob -> job.Error()
 			}
 
 			// Deactivate the job - it should already be inactive after job.Complete() or job.Error()
 			// but we ensure it's deactivated in case of state inconsistencies
 			if err := job.Deactivate(); err != nil {
-				log.Warnf("Error deactivating job %d after execution: %v - job may remain in active state", job.JobID, err)
+				log.Warnf("[%s] Error deactivating job %d after execution: %v - job may remain in active state", workerName, job.JobID, err)
 			}
 
 			// Broadcast final state after deactivation
@@ -89,21 +89,31 @@ func processJobs(ctx context.Context) {
 	}
 }
 
+// processFastJobs worker processes fast tasks (preview frames)
+func processFastJobs(ctx context.Context) {
+	processJobs(ctx, "FastJobWorker", conf.FastJobThreadCount, database.PriorityHigh)
+}
+
+// processSlowJobs worker processes slower tasks (cut, merge, enhance, convert)
+func processSlowJobs(ctx context.Context) {
+	processJobs(ctx, "SlowJobWorker", conf.SlowJobThreadCount, database.PriorityNormal, database.PriorityLow)
+}
+
 // executeJob Blocking execution.
-func executeJob(job *database.Job) error {
+func executeJob(job *database.Job, threadCount int) error {
 	video := helpers.Video{FilePath: job.Recording.AbsoluteChannelFilepath()}
 
 	switch job.Task {
 	case database.TaskPreviewFrames:
-		return handleJob(job, processPreviewFrames(job, &video))
+		return handleJob(job, processPreviewFrames(job, &video, threadCount))
 	case database.TaskCut:
-		return handleJob(job, processCutting(job))
+		return handleJob(job, processCutting(job, threadCount))
 	case database.TaskConvert:
-		return handleJob(job, processConversion(job))
+		return handleJob(job, processConversion(job, threadCount))
 	case database.TaskMerge:
-		return handleJob(job, processMerge(job))
+		return handleJob(job, processMerge(job, threadCount))
 	case database.TaskEnhanceVideo:
-		return handleJob(job, processEnhanceVideo(job))
+		return handleJob(job, processEnhanceVideo(job, threadCount))
 	}
 
 	return nil
@@ -119,7 +129,7 @@ func handleJob(job *database.Job, err error) error {
 	}
 }
 
-func processPreviewFrames(job *database.Job, video *helpers.Video) error {
+func processPreviewFrames(job *database.Job, video *helpers.Video, threadCount int) error {
 	// Delete existing preview entry and frames before regenerating
 	_ = database.DeleteVideoPreviewByRecordingID(job.Recording.RecordingID)
 
@@ -151,7 +161,8 @@ func processPreviewFrames(job *database.Job, video *helpers.Video) error {
 
 	// Use select filter to extract frames at exact time intervals
 	// This is more reliable than fps filter as it extracts at precise timestamps
-	selectFilter := fmt.Sprintf("select='isnan(prev_selected_t)+gte(t-prev_selected_t\\,%d)',setpts=N/FRAME_RATE/TB", frameInterval)
+	// Scale to max height with proportional width (-1 maintains aspect ratio)
+	selectFilter := fmt.Sprintf("select='isnan(prev_selected_t)+gte(t-prev_selected_t\\,%d)',setpts=N/FRAME_RATE/TB,scale=-1:%d", frameInterval, conf.FrameHeight)
 	tempPattern := filepath.Join(previewFramesPath, "frame-%06d.jpg")
 
 	// Execute FFmpeg to extract frames with progress tracking
@@ -161,11 +172,11 @@ func processPreviewFrames(job *database.Job, video *helpers.Video) error {
 			"-i", video.FilePath,
 			"-y",
 			"-progress", "pipe:1",
-			"-threads", fmt.Sprint(conf.ThreadCount),
+			"-threads", fmt.Sprint(threadCount),
 			"-an",
 			"-vf", selectFilter,
 			"-vsync", "vfr", // Variable frame rate - only output selected frames
-			"-q:v", "2",
+			"-q:v", "6",
 			"-hide_banner",
 			"-loglevel", "error",
 			tempPattern,
@@ -254,7 +265,7 @@ func processPreviewFrames(job *database.Job, video *helpers.Video) error {
 	return videoPreview.CreateVideoPreview()
 }
 
-func processConversion(job *database.Job) error {
+func processConversion(job *database.Job, threadCount int) error {
 	mediaType, err := database.UnmarshalJobArg[string](job)
 	if err != nil {
 		return err
@@ -272,9 +283,10 @@ func processConversion(job *database.Job) error {
 		OnError: func(err error) {
 			network.BroadCastClients(network.JobErrorEvent, JobMessage[string]{Job: job, Data: err.Error()})
 		},
-		InputPath:  job.ChannelName.AbsoluteChannelPath(),
-		Filename:   job.Filename.String(),
-		OutputPath: job.ChannelName.AbsoluteChannelPath(),
+		InputPath:   job.ChannelName.AbsoluteChannelPath(),
+		Filename:    job.Filename.String(),
+		OutputPath:  job.ChannelName.AbsoluteChannelPath(),
+		ThreadCount: threadCount,
 	}, *mediaType)
 
 	if errConvert != nil {
@@ -324,7 +336,7 @@ func processConversion(job *database.Job) error {
 // 2. Merge the cuts
 // 3. Enqueue preview job for new cut
 // This action is intrinsically procedural, keep it together locally.
-func processCutting(job *database.Job) error {
+func processCutting(job *database.Job, threadCount int) error {
 	cutArgs, err := database.UnmarshalJobArg[helpers.CutArgs](job)
 	if err != nil {
 		return err
@@ -502,7 +514,7 @@ func processCutting(job *database.Job) error {
 	return nil
 }
 
-func processMerge(job *database.Job) error {
+func processMerge(job *database.Job, threadCount int) error {
 	mergeArgs, err := database.UnmarshalJobArg[helpers.MergeJobArgs](job)
 	if err != nil {
 		return err
@@ -647,7 +659,43 @@ func DeleteJob(id uint) error {
 
 func StartJobProcessing() {
 	ctxJobs, cancelJobs = context.WithCancel(context.Background())
-	go processJobs(ctxJobs)
+	go processFastJobs(ctxJobs)
+	go processSlowJobs(ctxJobs)
+	go cleanupOldJobs(ctxJobs)
+}
+
+// cleanupOldJobs automatically removes completed and error jobs older than 30 days
+func cleanupOldJobs(ctx context.Context) {
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+
+	// Run cleanup immediately on startup
+	performCleanup()
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Infoln("[cleanupOldJobs] Cleanup worker stopped")
+			return
+		case <-ticker.C:
+			performCleanup()
+		}
+	}
+}
+
+func performCleanup() {
+	cutoff := time.Now().AddDate(0, 0, -30)
+	result := database.DB.
+		Where("status IN (?) AND completed_at < ?",
+			[]database.JobStatus{database.StatusJobCompleted, database.StatusJobError},
+			cutoff).
+		Delete(&database.Job{})
+
+	if result.Error != nil {
+		log.Errorf("[cleanupOldJobs] Error cleaning up old jobs: %s", result.Error)
+	} else if result.RowsAffected > 0 {
+		log.Infof("[cleanupOldJobs] Cleaned up %d old jobs (older than 30 days)", result.RowsAffected)
+	}
 }
 
 func StopJobProcessing() {
@@ -690,7 +738,7 @@ func emitProgressFromFrame(job *database.Job, s string, totalCount uint64) {
 	}
 }
 
-func processEnhanceVideo(job *database.Job) error {
+func processEnhanceVideo(job *database.Job, threadCount int) error {
 	enhanceArgs, err := database.UnmarshalJobArg[helpers.EnhanceArgs](job)
 	if err != nil {
 		return err
@@ -741,7 +789,7 @@ func processEnhanceVideo(job *database.Job) error {
 		"-progress", "pipe:1",
 		"-i", inputFile,
 		"-hide_banner",
-		"-threads", fmt.Sprint(conf.ThreadCount),
+		"-threads", fmt.Sprint(threadCount),
 		"-loglevel", "error",
 		"-stats_period", "2.0",
 		"-vf", filterChain + ",format=yuv420p",

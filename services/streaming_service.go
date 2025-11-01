@@ -15,7 +15,6 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/srad/mediasink/conf"
 	"github.com/srad/mediasink/database"
 	"github.com/srad/mediasink/helpers"
 	"github.com/srad/mediasink/network"
@@ -50,10 +49,8 @@ var (
 // Screenshot method on StreamInfo itself is fine as it operates on its own fields.
 // The caller (startThumbnailWorker) will handle locking when accessing streamInfo map.
 func (si *StreamInfo) Screenshot() error {
-	// Ensure conf.FrameWidth and other path components are valid.
-	// This function itself doesn't modify global maps.
-	// Using absolute path for ffmpeg in helpers.ExtractFirstFrame is recommended.
-	return helpers.ExtractFirstFrame(si.URL, conf.FrameWidth, filepath.Join(si.ChannelName.AbsoluteChannelDataPath(), database.SnapshotFilename))
+	// Using absolute path for ffmpeg in helpers.ExtractFirstFrame.
+	return helpers.ExtractFirstFrame(si.URL, filepath.Join(si.ChannelName.AbsoluteChannelDataPath(), database.SnapshotFilename))
 }
 
 // CaptureChannel Starts and also waits for the stream to end or being killed
@@ -262,8 +259,7 @@ func Start(id database.ChannelID) (bool, error) {
 
 	go func() {
 		// This helpers.ExtractFirstFrame is for the live snapshot.
-		// Ensure it uses absolute paths internally for ffmpeg.
-		if errSnapshot := helpers.ExtractFirstFrame(url, conf.FrameWidth, filepath.Join(channel.ChannelName.AbsoluteChannelDataPath(), database.SnapshotFilename)); errSnapshot != nil {
+		if errSnapshot := helpers.ExtractFirstFrame(url, filepath.Join(channel.ChannelName.AbsoluteChannelDataPath(), database.SnapshotFilename)); errSnapshot != nil {
 			log.Errorf("[Start] Error extracting live snapshot for %s: %v", channel.ChannelName, errSnapshot)
 		}
 	}()

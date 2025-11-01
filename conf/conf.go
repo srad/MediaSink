@@ -14,14 +14,25 @@ const (
 	//ScreensFolder = "screens"
 	winFont   = "C\\\\:/Windows/Fonts/DMMono-Regular.ttf"
 	linuxFont = "/usr/share/fonts/truetype/DMMono-Regular.ttf"
-	// FrameCount Number of extracted frames or timeline/preview
-	FrameCount = 96
-	FrameWidth = "480"
+
+	// Preview frame settings
+	FrameHeight = 320 // Maximum height for preview frames, width scaled proportionally
 )
 
 var (
 	ThreadCount = uint(float32(runtime.NumCPU() / 2))
+	// Per-worker thread counts: divide total cores by 3 (fast worker, slow worker, main thread)
+	// Ensure at least 1 thread per worker
+	FastJobThreadCount = max(1, runtime.NumCPU()/3)
+	SlowJobThreadCount = max(1, runtime.NumCPU()/3)
 )
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
 
 type Cfg struct {
 	DbFileName             string

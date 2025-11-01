@@ -3,6 +3,7 @@ package controllers
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/srad/mediasink/app"
@@ -37,6 +38,20 @@ func Setup(version, commit, apiVersion string) http.Handler {
 	router.Use(gin.Recovery())
 
 	cfg := conf.Read()
+
+	// Add CORS headers specifically for static files to allow canvas usage
+	router.Use(func(c *gin.Context) {
+		if strings.HasPrefix(c.Request.URL.Path, "/videos/") {
+			c.Header("Access-Control-Allow-Origin", "*")
+			c.Header("Access-Control-Allow-Headers", "*")
+			c.Header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+			if c.Request.Method == "OPTIONS" {
+				c.AbortWithStatus(http.StatusNoContent)
+				return
+			}
+		}
+		c.Next()
+	})
 
 	// This is only for development. User nginx or something to serve the static files.
 	router.Static("/videos", cfg.RecordingsAbsolutePath)
@@ -137,7 +152,6 @@ func Setup(version, commit, apiVersion string) http.Handler {
 
 		videos.POST("/updateinfo", v1.UpdateVideoInfo)
 		videos.POST("/isupdating", v1.IsUpdatingVideoInfo)
-		videos.POST("/generate/posters", v1.GenerateCovers)
 
 		videos.GET("", v1.GetVideos)
 		videos.POST("/filter", v1.FilterVideos)
@@ -157,6 +171,14 @@ func Setup(version, commit, apiVersion string) http.Handler {
 		videos.POST("/:id/estimate-enhancement", v1.EstimateEnhancement)
 
 		videos.DELETE("/:id", v1.DeleteVideo)
+
+		// Previews Group
+		// ------------------------------------------------------
+		previews := apiV1.Group("/previews")
+		previews.Use(middlewares.CheckAuthorizationHeader)
+
+		previews.POST("/regenerate", v1.RegenerateAllPreviews)
+		previews.GET("/regenerate", v1.GetRegenerationProgress)
 
 		// Info Group
 		// ------------------------------------------------------
