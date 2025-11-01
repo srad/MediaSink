@@ -37,26 +37,6 @@ func GetVideos(c *gin.Context) {
 	appG.Response(http.StatusOK, videos)
 }
 
-// GenerateCovers godoc
-// @Summary     Generate cover images for all videos
-// @Description Generate poster/cover images for all videos in the system
-// @Tags        videos
-// @Accept      json
-// @Produce     json
-// @Success     200 {} nil
-// @Failure     500 {} string "Error message"
-// @Router      /videos/generate/posters [post]
-func GenerateCovers(c *gin.Context) {
-	appG := app.Gin{C: c}
-
-	if err := services.GenerateVideoCovers(); err != nil {
-		appG.Error(http.StatusInternalServerError, err)
-		return
-	}
-
-	appG.Response(http.StatusOK, nil)
-}
-
 // UpdateVideoInfo godoc
 // @Summary     Update video metadata information
 // @Description Update metadata information for all videos in the system

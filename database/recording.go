@@ -407,29 +407,6 @@ func (recording *Recording) DataFolder() string {
 	return recording.ChannelName.AbsoluteChannelDataPath()
 }
 
-func AddPreviewPaths(recordingID RecordingID) error {
-	if recordingID == 0 {
-		return errors.New("invalid job id")
-	}
-
-	recording, err := recordingID.FindRecordingByID()
-	if err != nil {
-		return err
-	}
-
-	paths := recording.ChannelName.GetRecordingsPaths(recording.Filename)
-
-	updates := map[string]interface{}{"preview_video": paths.RelativeVideosPath, "preview_stripe": paths.RelativeStripePath, "preview_cover": paths.RelativeCoverPath}
-
-	if err := DB.Model(Recording{}).Where("recording_id = ?", recordingID).Updates(updates).Error; err != nil {
-		return err
-	}
-
-	log.Infof("Updated preview for record %d", recordingID)
-
-	return nil
-}
-
 func (recording *Recording) DestroyPreviews() error {
 	validate := validator.New(validator.WithRequiredStructEnabled())
 	if err := validate.Struct(recording); err != nil {

@@ -24,17 +24,12 @@ var (
 type ChannelName string
 
 type RecordingPaths struct {
-	AbsolutePreviewStripePath  string
-	AbsoluteRecordingsPath     string
-	AbsolutePreviewVideosPath  string
-	AbsolutePreviewCoverPath   string
-	Filepath                   string
-	RelativeVideosPath         string
-	RelativeStripePath         string
-	RelativeCoverPath          string
-	JPG                        string
-	MP4                        string
-	//ScreensPath            string
+	AbsoluteRecordingsPath    string
+	AbsolutePreviewVideosPath string
+	Filepath                  string
+	RelativeVideosPath        string
+	JPG                       string
+	MP4                       string
 }
 
 // Scan Restores the channel type from the database
@@ -215,23 +210,17 @@ func copyDefaultSnapshotTo(dataPath string) error {
 //	fmt.Println(paths.AbsoluteRecordingsPath) // Will print the absolute path for recordings directory.
 func (channelName ChannelName) GetRecordingsPaths(name RecordingFileName) RecordingPaths {
 	filename := name.String()
-	posterJpg := strings.TrimSuffix(filename, filepath.Ext(filename)) + ".jpg"
-	stripeJpg := strings.TrimSuffix(filename, filepath.Ext(filename)) + ".jpg"
+	jpg := strings.TrimSuffix(filename, filepath.Ext(filename)) + ".jpg"
 	mp4 := strings.TrimSuffix(filename, filepath.Ext(filename)) + ".mp4"
 
 	cfg := conf.Read()
 
 	return RecordingPaths{
-		AbsoluteRecordingsPath: cfg.RecordingsAbsolutePath,
-
+		AbsoluteRecordingsPath:    cfg.RecordingsAbsolutePath,
 		Filepath:                  channelName.AbsoluteChannelFilePath(name),
 		RelativeVideosPath:        filepath.Join(channelName.RelativeDataPath(), helpers.VideosFolder, mp4),
-		RelativeStripePath:        filepath.Join(channelName.RelativeDataPath(), helpers.StripesFolder, stripeJpg),
-		RelativeCoverPath:         filepath.Join(channelName.RelativeDataPath(), helpers.CoverFolder, posterJpg),
 		AbsolutePreviewVideosPath: filepath.Join(channelName.AbsoluteChannelDataPath(), helpers.VideosFolder, mp4),
-		AbsolutePreviewStripePath: filepath.Join(channelName.AbsoluteChannelDataPath(), helpers.StripesFolder, stripeJpg),
-		AbsolutePreviewCoverPath:  filepath.Join(channelName.AbsoluteChannelDataPath(), helpers.CoverFolder, posterJpg),
-		JPG:                       stripeJpg,
+		JPG:                       jpg,
 		MP4:                       mp4,
 	}
 }

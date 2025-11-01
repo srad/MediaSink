@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -19,8 +18,6 @@ import (
 
 var (
 	VideosFolder        = "videos"
-	StripesFolder       = "stripes"
-	CoverFolder         = "posters"
 	PreviewFramesFolder = "frames"
 )
 
@@ -124,13 +121,14 @@ type TaskInfo struct {
 }
 
 type VideoConversionArgs struct {
-	OnStart    func(info TaskInfo)
-	OnProgress func(info TaskProgress)
-	OnEnd      func(task TaskComplete)
-	OnError    func(error)
-	InputPath  string
-	OutputPath string
-	Filename   string
+	OnStart     func(info TaskInfo)
+	OnProgress  func(info TaskProgress)
+	OnEnd       func(task TaskComplete)
+	OnError     func(error)
+	InputPath   string
+	OutputPath  string
+	Filename    string
+	ThreadCount int
 }
 
 type ProcessInfo struct {
@@ -176,24 +174,6 @@ type PreviewResult struct {
 	Filename string
 }
 
-type PreviewStripeArgs struct {
-	OnStart                    func(info CommandInfo)
-	OnProgress                 func(TaskProgress)
-	OnEnd                      func(task string)
-	OnErr                      func(error)
-	OutputDir, OutFile         string
-	FrameDistance, FrameHeight uint
-}
-
-type PreviewVideoArgs struct {
-	OnStart                    func(info CommandInfo)
-	OnProgress                 func(TaskProgress)
-	OnEnd                      func()
-	OnErr                      func(error)
-	OutputDir, OutFile         string
-	FrameDistance, FrameHeight uint
-}
-
 type MergeArgs struct {
 	OnStart                func(info CommandInfo)
 	OnProgress             func(info PipeMessage)
@@ -210,113 +190,17 @@ type MergeReEncodeArgs struct {
 	AbsoluteOutputFilepath string
 }
 
-func (video *Video) createPreviewStripe(arg *PreviewStripeArgs) error {
-	dir := filepath.Join(arg.OutputDir, StripesFolder)
-	if err := os.MkdirAll(dir, 0777); err != nil {
-		return err
-	}
-
-	return ExecSync(&ExecArgs{
-		OnStart: arg.OnStart,
-		OnPipeOut: func(out PipeMessage) {
-			kvs := ParseFFmpegKVs(out.Output)
-
-			if frame, ok := kvs["frame"]; ok {
-				if value, err := strconv.ParseUint(frame, 10, 64); err == nil && value > 0 {
-					arg.OnProgress(TaskProgress{Current: value})
-				}
-			}
-			if progress, ok := kvs["progress"]; ok {
-				if progress == "end" && arg.OnEnd != nil {
-					arg.OnEnd("preview-stripe")
-				}
-			}
-		},
-		OnPipeErr: func(pipe PipeMessage) {
-			if arg.OnErr != nil {
-				arg.OnErr(errors.New(pipe.Output))
-			}
-		},
+func ExtractFirstFrame(input, outputPathPoster string) error {
+	err := ExecSync(&ExecArgs{
 		Command:     "ffmpeg",
-		CommandArgs: []string{"-i", video.FilePath, "-y", "-progress", "pipe:1", "-frames:v", "1", "-q:v", "0", "-threads", fmt.Sprint(conf.ThreadCount), "-an", "-vf", fmt.Sprintf("select=not(mod(n\\,%d)),scale=-2:%d,tile=%dx1", arg.FrameDistance, arg.FrameHeight, conf.FrameCount), "-hide_banner", "-loglevel", "error", "-stats", "-fps_mode", "vfr", filepath.Join(dir, arg.OutFile)},
-		// Embed time-code in video
-		//CommandArgs: []string{"-i", absolutePath, "-y", "-progress", "pipe:1", "-frames:v", "1", "-q:v", "0", "-threads", fmt.Sprint(conf.ThreadCount), "-an", "-vf", fmt.Sprintf("select=not(mod(n\\,%d)),scale=-2:%d,drawtext=fontfile=%s: text='%%{pts\\:gmtime\\:0\\:%%H\\\\\\:%%M\\\\\\:%%S}': rate=%f: x=(w-tw)/2: y=h-(2*lh): fontsize=20: fontcolor=white: bordercolor=black: borderw=3: box=0: boxcolor=0x00000000@1,tile=%dx1", frameDistance, frameHeight, conf.GetFontPath(), fps, conf.FrameCount), "-hide_banner", "-loglevel", "error", "-stats", "-fps_mode", "vfr", filepath.Join(dir, outFile)},
+		CommandArgs: []string{"-y", "-hide_banner", "-loglevel", "error", "-i", input, "-r", "1", "-vf", fmt.Sprintf("scale=-1:%d", conf.FrameHeight), "-q:v", "2", "-frames:v", "1", outputPathPoster},
 	})
-}
 
-func (video *Video) createPreviewCover(outputDir, filename string) error {
-	coverDir := filepath.Join(outputDir, CoverFolder)
-	if err := os.MkdirAll(coverDir, 0777); err != nil {
-		return err
+	if err != nil {
+		return fmt.Errorf("error extracting frame '%s'", err)
 	}
 
-	path := filepath.Join(coverDir, filename)
-
-	return ExtractFirstFrame(video.FilePath, conf.FrameWidth, path)
-}
-
-func (video *Video) createPreviewVideo(args *PreviewVideoArgs) (string, error) {
-	dir := filepath.Join(args.OutputDir, VideosFolder)
-	if err := os.MkdirAll(dir, 0777); err != nil {
-		return "", err
-	}
-
-	return dir, ExecSync(&ExecArgs{
-		OnStart: args.OnStart,
-		OnPipeOut: func(out PipeMessage) {
-			kvs := ParseFFmpegKVs(out.Output)
-
-			if frame, ok := kvs["frame"]; ok {
-				if value, err := strconv.ParseUint(frame, 10, 64); err == nil && value > 0 {
-					args.OnProgress(TaskProgress{Current: value})
-				}
-			}
-			if progress, ok := kvs["progress"]; ok {
-				if progress == "end" && args.OnEnd != nil {
-					args.OnEnd()
-				}
-			}
-		},
-		OnPipeErr: func(message PipeMessage) {
-			if args.OnErr != nil {
-				args.OnErr(errors.New(message.Output))
-			}
-		},
-		Command:     "ffmpeg",
-		CommandArgs: []string{"-i", video.FilePath, "-y", "-progress", "pipe:1", "-q:v", "0", "-threads", fmt.Sprint(conf.ThreadCount), "-an", "-vf", fmt.Sprintf("select=not(mod(n\\,%d)),scale=-2:%d", args.FrameDistance, args.FrameHeight), "-hide_banner", "-loglevel", "error", "-stats", "-fps_mode", "vfr", "-movflags", "faststart", filepath.Join(dir, args.OutFile)},
-	})
-}
-
-func (video *Video) CreatePreviewTimelapse(args *PreviewVideoArgs) (string, error) {
-	dir := filepath.Join(args.OutputDir, VideosFolder)
-	if err := os.MkdirAll(dir, 0777); err != nil {
-		return "", err
-	}
-
-	return dir, ExecSync(&ExecArgs{
-		OnStart: args.OnStart,
-		OnPipeOut: func(out PipeMessage) {
-			kvs := ParseFFmpegKVs(out.Output)
-
-			if frame, ok := kvs["frame"]; ok {
-				if value, err := strconv.ParseUint(frame, 10, 64); err == nil && value > 0 {
-					args.OnProgress(TaskProgress{Current: value})
-				}
-			}
-			if progress, ok := kvs["progress"]; ok {
-				if progress == "end" && args.OnEnd != nil {
-					args.OnEnd()
-				}
-			}
-		},
-		OnPipeErr: func(message PipeMessage) {
-			if args.OnErr != nil {
-				args.OnErr(errors.New(message.Output))
-			}
-		},
-		Command:     "ffmpeg",
-		CommandArgs: []string{"-i", video.FilePath, "-y", "-progress", "pipe:1", "-q:v", "0", "-threads", fmt.Sprint(conf.ThreadCount), "-an", "-vf", fmt.Sprintf("select=not(mod(n\\,%d)),scale=-2:%d", args.FrameDistance, args.FrameHeight), "-hide_banner", "-loglevel", "error", "-stats", "-fps_mode", "vfr", "-movflags", "faststart", filepath.Join(dir, args.OutFile)},
-	})
+	return nil
 }
 
 func calcFps(output string) (float64, error) {
@@ -339,19 +223,6 @@ func calcFps(output string) (float64, error) {
 	fps := a / b
 
 	return fps, nil
-}
-
-func ExtractFirstFrame(input, height, outputPathPoster string) error {
-	err := ExecSync(&ExecArgs{
-		Command:     "ffmpeg",
-		CommandArgs: []string{"-y", "-hide_banner", "-loglevel", "error", "-i", input, "-r", "1", "-vf", "scale=" + height + ":-1", "-q:v", "2", "-frames:v", "1", outputPathPoster},
-	})
-
-	if err != nil {
-		return fmt.Errorf("error extracting frame '%s'", err)
-	}
-
-	return nil
 }
 
 func ConvertVideo(args *VideoConversionArgs, mediaType string) (*ConversionResult, error) {
@@ -404,7 +275,7 @@ func ConvertVideo(args *VideoConversionArgs, mediaType string) (*ConversionResul
 				}
 			},
 			Command:     "ffmpeg",
-			CommandArgs: []string{"-i", input, "-y", "-threads", fmt.Sprint(conf.ThreadCount), "-hide_banner", "-loglevel", "error", "-progress", "pipe:1", "-q:a", "0", "-map", "a", outputAbsoluteMp3},
+			CommandArgs: []string{"-i", input, "-y", "-threads", fmt.Sprint(args.ThreadCount), "-hide_banner", "-loglevel", "error", "-progress", "pipe:1", "-q:a", "0", "-map", "a", outputAbsoluteMp3},
 		})
 
 		return result, err
@@ -442,117 +313,10 @@ func ConvertVideo(args *VideoConversionArgs, mediaType string) (*ConversionResul
 		// slow
 		// slower
 		// veryslow
-		CommandArgs: []string{"-i", input, "-y", "-threads", fmt.Sprint(conf.ThreadCount), "-an", "-vf", fmt.Sprintf("scale=-1:%s", mediaType), "-hide_banner", "-loglevel", "error", "-progress", "pipe:1", "-movflags", "faststart", "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-c:a", "copy", output},
+		CommandArgs: []string{"-i", input, "-y", "-threads", fmt.Sprint(args.ThreadCount), "-an", "-vf", fmt.Sprintf("scale=-1:%s", mediaType), "-hide_banner", "-loglevel", "error", "-progress", "pipe:1", "-movflags", "faststart", "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-c:a", "copy", output},
 	})
 
 	return result, err
-}
-
-func (video *Video) ExecPreviewStripe(args *VideoConversionArgs, extractCount uint64, frameHeight uint, frameCount uint64) (*PreviewResult, error) {
-	frameDistance := uint(float32(frameCount) / float32(extractCount))
-	basename := filepath.Base(video.FilePath)
-	filename := FileNameWithoutExtension(basename)
-
-	var frame uint64
-	err := video.createPreviewStripe(&PreviewStripeArgs{
-		OnStart: func(info CommandInfo) {
-			args.OnStart(TaskInfo{
-				Steps:   2,
-				Step:    1,
-				Pid:     info.Pid,
-				Command: info.Command,
-				Message: "Generating stripe",
-			})
-		},
-		OnProgress: func(info TaskProgress) {
-			frame++
-			args.OnProgress(TaskProgress{
-				Current: frame,
-				Total:   extractCount,
-				Steps:   2,
-				Step:    1,
-				Message: "Generating stripe",
-			})
-		},
-		OnEnd: func(task string) {
-			if args.OnEnd == nil {
-				args.OnEnd(TaskComplete{
-					Step:    1,
-					Steps:   2,
-					Message: "Stripe generated",
-				})
-			}
-		},
-		OnErr:         args.OnError,
-		OutputDir:     args.OutputPath,
-		OutFile:       filename + ".jpg",
-		FrameDistance: frameDistance,
-		FrameHeight:   frameHeight,
-	})
-
-	if err != nil {
-		return nil, fmt.Errorf("error generating stripe for '%s': %s", video.FilePath, err)
-	}
-
-	return &PreviewResult{Filename: args.Filename, FilePath: path.Join(args.OutputPath, filename+".jpg")}, nil
-}
-
-func (video Video) ExecPreviewVideo(args *VideoConversionArgs, extractCount uint64, videoHeight uint, frameCount uint64) (*PreviewResult, error) {
-	frameDistance := uint(float32(frameCount) / float32(extractCount))
-	basename := filepath.Base(video.FilePath)
-	filename := FileNameWithoutExtension(basename)
-
-	previewVideoDir, err := video.CreatePreviewTimelapse(&PreviewVideoArgs{
-		OnStart: func(info CommandInfo) {
-			args.OnStart(TaskInfo{
-				Steps:   2,
-				Step:    2,
-				Pid:     info.Pid,
-				Command: info.Command,
-				Message: "Generating preview video",
-			})
-		},
-		OnProgress: func(info TaskProgress) {
-			args.OnProgress(TaskProgress{
-				Current: info.Current,
-				Total:   extractCount,
-				Steps:   2,
-				Step:    2,
-				Message: "Generating preview video",
-			})
-		},
-		OnEnd: func() {
-			if args.OnEnd == nil {
-				args.OnEnd(TaskComplete{
-					Step:    2,
-					Steps:   2,
-					Message: "Video generated",
-				})
-			}
-		},
-		OnErr:         args.OnError,
-		OutputDir:     args.OutputPath,
-		OutFile:       filename + ".mp4",
-		FrameDistance: frameDistance,
-		FrameHeight:   videoHeight,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("error generating preview video for %s: %s", video.FilePath, err)
-	}
-
-	return &PreviewResult{Filename: args.Filename, FilePath: previewVideoDir}, nil
-}
-
-func (video Video) ExecPreviewCover(outputPath string) (*PreviewResult, error) {
-	basename := filepath.Base(video.FilePath)
-	filename := FileNameWithoutExtension(basename)
-	file := filename + ".jpg"
-
-	if err := video.createPreviewCover(outputPath, file); err != nil {
-		return nil, fmt.Errorf("error generating poster for '%s': %s", video.FilePath, err)
-	}
-
-	return &PreviewResult{FilePath: video.FilePath, Filename: file}, nil
 }
 
 // ExecPreviewFrames generates individual preview frames for a video

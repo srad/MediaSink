@@ -26,11 +26,17 @@ const (
 	StatusJobCanceled  JobStatus = "canceled"
 	JobOrderASC        JobOrder  = "ASC"
 	JobOrderDESC       JobOrder  = "DESC"
+
+	// Job priorities (lower value = higher priority)
+	PriorityHigh   JobPriority = 1 // Fast jobs: preview frames
+	PriorityNormal JobPriority = 3 // Medium jobs: cut, merge
+	PriorityLow    JobPriority = 5 // Slow jobs: enhance, convert
 )
 
 type JobTask string
 type JobStatus string
 type JobOrder string
+type JobPriority int
 
 type Job struct {
 	Channel   Channel   `json:"-" gorm:"foreignKey:channel_id;references:channel_id;"`
@@ -49,7 +55,8 @@ type Job struct {
 	Task   JobTask   `json:"task" gorm:"not null;default:preview" extensions:"!x-nullable"`
 	Status JobStatus `json:"status" gorm:"not null;default:completed" extensions:"!x-nullable"`
 
-	Filepath    string     `json:"filepath" gorm:"not null;default:null;" extensions:"!x-nullable"`
+	Priority JobPriority `json:"priority" gorm:"not null;default:5;index:idx_priority" extensions:"!x-nullable"`
+	Filepath string      `json:"filepath" gorm:"not null;default:null;" extensions:"!x-nullable"`
 	Active      bool       `json:"active" gorm:"not null;default:false" extensions:"!x-nullable"`
 	CreatedAt   time.Time  `json:"createdAt" gorm:"not null;default:current_timestamp;index:idx_create_at" extensions:"!x-nullable"`
 	StartedAt   *time.Time `json:"startedAt" gorm:"default:null" extensions:"!x-nullable"`
@@ -180,12 +187,20 @@ func DeleteJob(id uint) error {
 
 // GetNextJob Any job is attached to a recording which it will process.
 // The caller must know which type the JSON serialized argument originally had.
-func GetNextJob() (*Job, error) {
+// Jobs are ordered by priority (lower value = higher priority) then by creation time.
+// If priorities is nil or empty, all jobs are considered. Otherwise, only jobs with matching priorities.
+func GetNextJob(priorities ...JobPriority) (*Job, error) {
 	var job *Job
-	err := DB.Where("status = ? AND active = ?", StatusJobOpen, false).
+	query := DB.Where("status = ? AND active = ?", StatusJobOpen, false)
+
+	if len(priorities) > 0 {
+		query = query.Where("priority IN (?)", priorities)
+	}
+
+	err := query.
 		Preload("Channel").
 		Preload("Recording").
-		Order("jobs.created_at ASC").
+		Order("jobs.priority ASC, jobs.created_at ASC").
 		First(&job).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -285,6 +300,17 @@ func CreateJob[T any](recording *Recording, task JobTask, args *T) (*Job, error)
 		data = string(bytes)
 	}
 
+	// Set priority based on task type
+	priority := PriorityLow // Default
+	switch task {
+	case TaskPreviewFrames:
+		priority = PriorityHigh
+	case TaskCut, TaskMerge:
+		priority = PriorityNormal
+	case TaskEnhanceVideo, TaskConvert:
+		priority = PriorityLow
+	}
+
 	job := &Job{
 		ChannelID:   recording.ChannelID,
 		ChannelName: recording.ChannelName,
@@ -293,6 +319,7 @@ func CreateJob[T any](recording *Recording, task JobTask, args *T) (*Job, error)
 		Filepath:    recording.ChannelName.AbsoluteChannelFilePath(recording.Filename),
 		Status:      StatusJobOpen,
 		Task:        task,
+		Priority:    priority,
 		Args:        &data,
 		Active:      false,
 		CreatedAt:   time.Now(),
