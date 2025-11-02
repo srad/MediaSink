@@ -96,21 +96,21 @@ func startStreamWorker(ctx context.Context, ctrlChan <-chan recorderControlMessa
 		case cmd := <-ctrlChan:
 			switch cmd {
 			case pauseRecording:
-				log.Infoln("[startStreamWorker] Received pause command. Pausing stream checks.")
+				log.Debugf("[startStreamWorker] Received pause command. Pausing stream checks.")
 				workerPaused = true
 			case resumeRecording:
-				log.Infoln("[startStreamWorker] Received resume command. Resuming stream checks.")
+				log.Debugf("[startStreamWorker] Received resume command. Resuming stream checks.")
 				workerPaused = false
 			}
 
 		case <-ticker.C:
 			if workerPaused {
-				log.Infoln("[startStreamWorker] Paused, skipping stream check cycle.")
+				log.Debugln("[startStreamWorker] Paused, skipping stream check cycle.")
 				continue
 			}
-			log.Infoln("[startStreamWorker] Starting stream check cycle...")
+			log.Debugln("[startStreamWorker] Starting stream check cycle...")
 			checkStreams(ctx) // Pass context for cancellation within checkStreams concurrent operations
-			log.Infoln("[startStreamWorker] Stream check cycle finished. Waiting for next tick or command.")
+			log.Debugln("[startStreamWorker] Stream check cycle finished. Waiting for next tick or command.")
 		}
 	}
 }
@@ -186,7 +186,7 @@ func checkStreams(ctx context.Context) {
 				network.BroadCastClients(network.ChannelStartEvent, currentChannelState.ChannelID)
 			}
 			if startErr != nil {
-				log.Warnf("Did not start stream: %s", startErr.Error())
+				log.Debugf("Did not start stream: %s", startErr.Error())
 			}
 			// If !started, the original code did not broadcast anything from this block.
 

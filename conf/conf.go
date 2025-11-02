@@ -16,7 +16,7 @@ const (
 	linuxFont = "/usr/share/fonts/truetype/DMMono-Regular.ttf"
 
 	// Preview frame settings
-	FrameHeight = 320 // Maximum height for preview frames, width scaled proportionally
+	FrameHeight = 224 // Maximum height for preview frames, width scaled proportionally
 )
 
 var (

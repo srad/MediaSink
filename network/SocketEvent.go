@@ -96,7 +96,7 @@ func (d *wsDispatcher) rmWs(ws *websocket.Conn) {
 			// This creates a new slice and assigns it back.
 			// It's generally safe but can be inefficient if many removes happen.
 			d.listeners = append(d.listeners[:i], d.listeners[i+1:]...)
-			log.Infof("[wsDispatcher] Removed client. Total listeners: %d", len(d.listeners))
+			log.Debugf("[wsDispatcher] Removed client. Total listeners: %d", len(d.listeners))
 			break // Assuming only one entry per connection
 		}
 	}
@@ -122,7 +122,7 @@ func WsHandler(c *gin.Context) {
 	}
 
 	defer func() {
-		log.Infoln("[WsHandler] Cleaning up connection: Removing from dispatcher and closing.")
+		log.Debugln("[WsHandler] Cleaning up connection: Removing from dispatcher and closing.")
 		dispatcher.rmWs(ws) // 1. Remove from our list
 		ws.Close()          // 2. Ensure connection is closed
 	}()
@@ -131,7 +131,7 @@ func WsHandler(c *gin.Context) {
 	connection := wsConnection{ws: ws}
 	// Add it to the dispatcher *after* setting up defer, so cleanup is guaranteed
 	dispatcher.addWs(connection)
-	log.Infof("[WsHandler] Client connected. Total listeners: %d", len(dispatcher.listeners))
+	log.Debugf("[WsHandler] Client connected. Total listeners: %d", len(dispatcher.listeners))
 
 	// --- Configure Handlers ---
 
@@ -146,7 +146,7 @@ func WsHandler(c *gin.Context) {
 	// Set Close Handler: Primarily for logging *why* it closed, if a clean close message is received.
 	// We DO NOT call rmWs or Close here anymore.
 	ws.SetCloseHandler(func(code int, text string) error {
-		log.Infof("[WsHandler] Close message received (code: %d, text: '%s'). Cleanup will occur via defer.", code, text)
+		log.Debugf("[WsHandler] Close message received (code: %d, text: '%s'). Cleanup will occur via defer.", code, text)
 		// Returning nil allows the default close process, which will cause ReadJSON to fail.
 		return nil
 	})
@@ -173,7 +173,7 @@ func WsHandler(c *gin.Context) {
 				connection.mu.Unlock()
 
 				if err != nil {
-					log.Warnf("[WsHandler-Ping] Ping failed: %v. Closing connection.", err)
+					log.Debugf("[WsHandler-Ping] Ping failed: %v. Closing connection.", err)
 					// IMPORTANT: Only call ws.Close(). Do NOT call rmWs.
 					// Closing here will cause ws.ReadJSON() in the main loop to fail,
 					// which then triggers the defer block for cleanup.
@@ -205,13 +205,13 @@ func WsHandler(c *gin.Context) {
 				log.Errorf("[WsHandler-Read] Unexpected read error: %v", err)
 			} else {
 				// This includes normal closes, read timeouts, ws.Close() being called, etc.
-				log.Infof("[WsHandler-Read] Read loop exiting (likely connection closed): %v", err)
+				log.Debugf("[WsHandler-Read] Read loop exiting (likely connection closed): %v", err)
 			}
 			// IMPORTANT: We simply return. The 'defer' block above handles ALL cleanup.
 			return
 		}
 
 		// If a message is successfully read, process it (currently just logging).
-		log.Infof("[Socket] Received: %v", msg)
+		log.Debugf("[WsHandler] Received: %v", msg)
 	}
 }

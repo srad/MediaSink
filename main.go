@@ -48,7 +48,7 @@ func init() {
 		if err != nil {
 			log.Fatalf("FATAL: Required executable '%s' not found in PATH: %v", app, err)
 		}
-		log.Infof("OK: Found executable '%s' at '%s'", app, path)
+		log.Debugf("OK: Found executable '%s' at '%s'", app, path)
 	}
 
 	log.Infoln("All init checks passed.")

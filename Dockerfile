@@ -160,7 +160,14 @@ ARG API_VERSION
 RUN apt-get update && \
     apt-get install --no-install-recommends -y \
       libsqlite3-dev \
+      curl \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Install libtensorflow C library (required for TensorFlow Go bindings)
+RUN curl -L https://storage.googleapis.com/tensorflow/versions/2.18.0/libtensorflow-cpu-linux-x86_64.tar.gz | \
+    tar xz --directory /usr/local && \
+    ln -s /usr/local/external/local_tsl/tsl /usr/local/include/tsl && \
+    ldconfig
 
 WORKDIR /app
 RUN mkdir -p docs
@@ -243,8 +250,15 @@ RUN apt-get -y install \
       pkg-config \
       texinfo \
       wget \
+      curl \
       yasm \
       zlib1g-dev
+
+# Install libtensorflow C library (required for TensorFlow Go bindings at runtime)
+RUN curl -L https://storage.googleapis.com/tensorflow/versions/2.18.0/libtensorflow-cpu-linux-x86_64.tar.gz | \
+    tar xz --directory /usr/local && \
+    ln -s /usr/local/external/local_tsl/tsl /usr/local/include/tsl && \
+    ldconfig
 
 WORKDIR /app
 
@@ -264,6 +278,21 @@ COPY ./docker-entrypoint.sh ./docker-entrypoint.sh
 COPY ./wait-for-it.sh ./wait-for-it.sh
 COPY ./conf/app.docker.yml conf/app.yml
 RUN fc-cache -fv
+
+# Download MobileNet-v2 SavedModel for TensorFlow-based video analysis
+RUN mkdir -p ./assets/models/mobilenet_v2 && \
+    curl -L "https://tfhub.dev/google/imagenet/mobilenet_v2_100_224/feature_vector/5?tf-hub-format=compressed" | \
+    tar -xz -C ./assets/models/mobilenet_v2
+
+# Download MobileNetV3-Large SavedModel for TensorFlow-based video analysis
+RUN mkdir -p ./assets/models/mobilenet_v3_large && \
+    curl -L "https://tfhub.dev/google/imagenet/mobilenet_v3_large_100_224/classification/5?tf-hub-format=compressed" | \
+    tar -xz -C ./assets/models/mobilenet_v3_large
+
+# Download MobileViT-XXS SavedModel for TensorFlow-based video analysis
+RUN mkdir -p ./assets/models/mobilevit && \
+    curl -L "https://www.kaggle.com/models/kaggle/mobilevit/TensorFlow2/xxs-1k-256/1?tf-hub-format=compressed" | \
+    tar -xz -C ./assets/models/mobilevit
 
 # Ensure scripts are executable
 RUN chmod +x /app/docker-entrypoint.sh

@@ -180,6 +180,14 @@ func Setup(version, commit, apiVersion string) http.Handler {
 		previews.POST("/regenerate", v1.RegenerateAllPreviews)
 		previews.GET("/regenerate", v1.GetRegenerationProgress)
 
+		// Analysis Group
+		// ------------------------------------------------------
+		analysis := apiV1.Group("/analysis")
+		analysis.Use(middlewares.CheckAuthorizationHeader)
+
+		analysis.POST("/:id", v1.AnalyzeVideo)
+		analysis.GET("/:id", v1.GetAnalysisResult)
+
 		// Info Group
 		// ------------------------------------------------------
 		info := apiV1.Group("/info")
