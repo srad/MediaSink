@@ -91,6 +91,9 @@ func migrate() {
 	if err := DB.AutoMigrate(&VideoPreview{}); err != nil {
 		panic(fmt.Sprintf("[Migrate] Error VideoPreview: %s", err))
 	}
+	if err := DB.AutoMigrate(&VideoAnalysisResult{}); err != nil {
+		panic(fmt.Sprintf("[Migrate] Error VideoAnalysisResult: %s", err))
+	}
 	if err := DB.AutoMigrate(&Setting{}); err != nil {
 		panic(fmt.Sprintf("[Migrate] Error Setting: %s", err))
 	}

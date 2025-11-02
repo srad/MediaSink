@@ -17,6 +17,7 @@ import (
 const (
 	TaskConvert        JobTask   = "convert"
 	TaskPreviewFrames  JobTask   = "preview-frames"
+	TaskAnalyzeFrames  JobTask   = "analyze-frames"
 	TaskCut            JobTask   = "cut"
 	TaskMerge          JobTask   = "merge"
 	TaskEnhanceVideo   JobTask   = "enhance-video"
@@ -29,7 +30,7 @@ const (
 
 	// Job priorities (lower value = higher priority)
 	PriorityHigh   JobPriority = 1 // Fast jobs: preview frames
-	PriorityNormal JobPriority = 3 // Medium jobs: cut, merge
+	PriorityNormal JobPriority = 3 // Medium jobs: cut, merge, analyze
 	PriorityLow    JobPriority = 5 // Slow jobs: enhance, convert
 )
 
@@ -59,8 +60,9 @@ type Job struct {
 	Filepath string      `json:"filepath" gorm:"not null;default:null;" extensions:"!x-nullable"`
 	Active      bool       `json:"active" gorm:"not null;default:false" extensions:"!x-nullable"`
 	CreatedAt   time.Time  `json:"createdAt" gorm:"not null;default:current_timestamp;index:idx_create_at" extensions:"!x-nullable"`
-	StartedAt   *time.Time `json:"startedAt" gorm:"default:null" extensions:"!x-nullable"`
-	CompletedAt *time.Time `json:"completedAt" gorm:"default:null" extensions:"!x-nullable"`
+	StartedAt   *time.Time `json:"startedAt" gorm:"default:null"`
+	CompletedAt *time.Time `json:"completedAt" gorm:"default:null"`
+	DurationMs  *uint64    `json:"durationMs" gorm:"default:null"` // Duration in milliseconds
 
 	// Additional information
 	Pid      *int    `json:"pid" gorm:"default:null"`
@@ -112,9 +114,24 @@ func (job *Job) Cancel(reason string) error {
 }
 
 func (job *Job) Completed() error {
+	now := time.Now()
 	err1 := job.updateStatus(StatusJobCompleted, nil)
+
+	updates := map[string]interface{}{
+		"completed_at": now,
+	}
+
+	// Calculate duration if job was started - fetch StartedAt from database
+	var dbJob Job
+	if err := DB.Model(&Job{}).Where("job_id = ?", job.JobID).Select("started_at").First(&dbJob).Error; err == nil {
+		if dbJob.StartedAt != nil {
+			durationMs := uint64(now.Sub(*dbJob.StartedAt).Milliseconds())
+			updates["duration_ms"] = durationMs
+		}
+	}
+
 	err2 := DB.Model(&Job{}).Where("job_id = ?", job.JobID).
-		Update("completed_at", time.Now()).Error
+		Updates(updates).Error
 
 	return errors.Join(err1, err2)
 }
@@ -157,8 +174,25 @@ func JobExists(recordingID RecordingID, task JobTask) (*Job, bool, error) {
 	return job, result.RowsAffected > 0, nil
 }
 
-// DeleteJob If an existing PID is assigned to the job,
-// first the process is try-killed and then the job deleted.
+// JobHasStatus checks if a job with the given ID has a specific status
+func JobHasStatus(jobID uint, status JobStatus) (bool, error) {
+	if jobID == 0 {
+		return false, errors.New("invalid job id")
+	}
+
+	var count int64
+	result := DB.Model(&Job{}).Where("job_id = ? AND status = ?", jobID, status).Count(&count)
+
+	if result.Error != nil {
+		return false, result.Error
+	}
+
+	return count > 0, nil
+}
+
+// DeleteJob cancels a job by interrupting its process and marking status as canceled.
+// This ensures proper cleanup and state tracking. Jobs are permanently deleted only during
+// the automated 30-day cleanup process.
 func DeleteJob(id uint) error {
 	if id == 0 {
 		return fmt.Errorf("invalid job id: %d", id)
@@ -169,16 +203,24 @@ func DeleteJob(id uint) error {
 		return err
 	}
 
+	// Interrupt the running process if it exists
 	if job.Pid != nil {
 		if err := helpers.Interrupt(*job.Pid); err != nil {
-			log.Errorf("[Destroy] Error interrupting process: %s", err)
+			log.Errorf("[DeleteJob] Error interrupting process: %s", err)
 			return err
 		}
 	}
 
+	// Mark job as canceled instead of deleting
+	// This allows downstream processes to detect the cancellation
+	reason := "canceled by user"
 	if err := DB.Model(&Job{}).
 		Where("job_id = ?", id).
-		Delete(Job{}).Error; err != nil {
+		Updates(map[string]interface{}{
+			"status": StatusJobCanceled,
+			"info":   reason,
+			"active": false,
+		}).Error; err != nil {
 		return err
 	}
 
@@ -305,7 +347,7 @@ func CreateJob[T any](recording *Recording, task JobTask, args *T) (*Job, error)
 	switch task {
 	case TaskPreviewFrames:
 		priority = PriorityHigh
-	case TaskCut, TaskMerge:
+	case TaskCut, TaskMerge, TaskAnalyzeFrames:
 		priority = PriorityNormal
 	case TaskEnhanceVideo, TaskConvert:
 		priority = PriorityLow
@@ -347,6 +389,10 @@ func (recording *Recording) EnqueuePreviewFramesJob() (*Job, error) {
 
 func (recording *Recording) EnqueueCuttingJob(args *helpers.CutArgs) (*Job, error) {
 	return enqueueJob(recording, TaskCut, args)
+}
+
+func (recording *Recording) EnqueueAnalysisJob() (*Job, error) {
+	return enqueueJob[*any](recording, TaskAnalyzeFrames, nil)
 }
 
 func enqueueJob[T any](recording *Recording, task JobTask, args *T) (*Job, error) {

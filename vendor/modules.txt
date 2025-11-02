@@ -5,8 +5,9 @@ filippo.io/edwards25519/field
 # github.com/KyleBanks/depth v1.2.1
 ## explicit
 github.com/KyleBanks/depth
-# github.com/astaxie/beego v1.12.1
+# github.com/astaxie/beego v1.12.3
 ## explicit; go 1.13
+github.com/astaxie/beego/logs
 github.com/astaxie/beego/utils
 github.com/astaxie/beego/validation
 # github.com/bytedance/gopkg v0.1.3
@@ -61,6 +62,9 @@ github.com/cloudwego/base64x/internal/native
 github.com/cloudwego/base64x/internal/native/avx2
 github.com/cloudwego/base64x/internal/native/sse
 github.com/cloudwego/base64x/internal/rt
+# github.com/disintegration/imaging v1.6.2
+## explicit
+github.com/disintegration/imaging
 # github.com/fsnotify/fsnotify v1.9.0
 ## explicit; go 1.17
 github.com/fsnotify/fsnotify
@@ -210,7 +214,7 @@ github.com/leodido/go-urn/scim/schema
 # github.com/mattn/go-isatty v0.0.20
 ## explicit; go 1.15
 github.com/mattn/go-isatty
-# github.com/mattn/go-sqlite3 v1.14.32
+# github.com/mattn/go-sqlite3 v2.0.3+incompatible => github.com/mattn/go-sqlite3 v1.14.32
 ## explicit; go 1.19
 github.com/mattn/go-sqlite3
 # github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
@@ -252,6 +256,7 @@ github.com/sagikazarmark/locafero
 github.com/sagikazarmark/locafero/internal/queue
 # github.com/shiena/ansicolor v0.0.0-20230509054315-a9deabde6e02
 ## explicit; go 1.20
+github.com/shiena/ansicolor
 # github.com/sirupsen/logrus v1.9.3
 ## explicit; go 1.13
 github.com/sirupsen/logrus
@@ -309,6 +314,30 @@ github.com/twitchyliquid64/golang-asm/unsafeheader
 # github.com/ugorji/go/codec v1.3.1
 ## explicit; go 1.21
 github.com/ugorji/go/codec
+# github.com/wamuir/graft v0.10.0
+## explicit; go 1.18
+github.com/wamuir/graft/tensorflow
+github.com/wamuir/graft/tensorflow/core/framework/allocation_description_go_proto
+github.com/wamuir/graft/tensorflow/core/framework/attr_value_go_proto
+github.com/wamuir/graft/tensorflow/core/framework/cost_graph_go_proto
+github.com/wamuir/graft/tensorflow/core/framework/full_type_go_proto
+github.com/wamuir/graft/tensorflow/core/framework/function_go_proto
+github.com/wamuir/graft/tensorflow/core/framework/graph_debug_info_proto
+github.com/wamuir/graft/tensorflow/core/framework/graph_go_proto
+github.com/wamuir/graft/tensorflow/core/framework/node_def_go_proto
+github.com/wamuir/graft/tensorflow/core/framework/op_def_go_proto
+github.com/wamuir/graft/tensorflow/core/framework/resource_handle_go_proto
+github.com/wamuir/graft/tensorflow/core/framework/step_stats_go_proto
+github.com/wamuir/graft/tensorflow/core/framework/tensor_description_go_proto
+github.com/wamuir/graft/tensorflow/core/framework/tensor_go_proto
+github.com/wamuir/graft/tensorflow/core/framework/tensor_shape_go_proto
+github.com/wamuir/graft/tensorflow/core/framework/tensor_slice_go_proto
+github.com/wamuir/graft/tensorflow/core/framework/types_go_proto
+github.com/wamuir/graft/tensorflow/core/framework/variable_go_proto
+github.com/wamuir/graft/tensorflow/core/framework/versions_go_proto
+github.com/wamuir/graft/tensorflow/core/protobuf/for_core_protos_go_proto
+github.com/wamuir/graft/tensorflow/tsl/protobuf/for_core_protos_go_proto
+github.com/wamuir/graft/tensorflow/xla/tsl/protobuf/for_core_protos_go_proto
 # go.uber.org/mock v0.6.0
 ## explicit; go 1.23.0
 # go.yaml.in/yaml/v3 v3.0.4
@@ -328,6 +357,12 @@ golang.org/x/crypto/internal/alias
 golang.org/x/crypto/internal/poly1305
 golang.org/x/crypto/pbkdf2
 golang.org/x/crypto/sha3
+# golang.org/x/image v0.32.0
+## explicit; go 1.24.0
+golang.org/x/image/bmp
+golang.org/x/image/ccitt
+golang.org/x/image/tiff
+golang.org/x/image/tiff/lzw
 # golang.org/x/mod v0.29.0
 ## explicit; go 1.24.0
 golang.org/x/mod/internal/lazyregexp
@@ -393,21 +428,55 @@ golang.org/x/tools/internal/gopathwalk
 golang.org/x/tools/internal/imports
 golang.org/x/tools/internal/modindex
 golang.org/x/tools/internal/stdlib
+# gonum.org/v1/gonum v0.16.0
+## explicit; go 1.23.0
+gonum.org/v1/gonum/blas
+gonum.org/v1/gonum/blas/blas64
+gonum.org/v1/gonum/blas/cblas128
+gonum.org/v1/gonum/blas/gonum
+gonum.org/v1/gonum/floats
+gonum.org/v1/gonum/floats/scalar
+gonum.org/v1/gonum/internal/asm/c128
+gonum.org/v1/gonum/internal/asm/c64
+gonum.org/v1/gonum/internal/asm/f32
+gonum.org/v1/gonum/internal/asm/f64
+gonum.org/v1/gonum/internal/cmplx64
+gonum.org/v1/gonum/internal/math32
+gonum.org/v1/gonum/lapack
+gonum.org/v1/gonum/lapack/gonum
+gonum.org/v1/gonum/lapack/lapack64
+gonum.org/v1/gonum/mat
 # google.golang.org/protobuf v1.36.10
 ## explicit; go 1.23
+google.golang.org/protobuf/encoding/prototext
 google.golang.org/protobuf/encoding/protowire
+google.golang.org/protobuf/internal/descfmt
+google.golang.org/protobuf/internal/descopts
 google.golang.org/protobuf/internal/detrand
+google.golang.org/protobuf/internal/editiondefaults
+google.golang.org/protobuf/internal/encoding/defval
 google.golang.org/protobuf/internal/encoding/messageset
+google.golang.org/protobuf/internal/encoding/tag
+google.golang.org/protobuf/internal/encoding/text
 google.golang.org/protobuf/internal/errors
+google.golang.org/protobuf/internal/filedesc
+google.golang.org/protobuf/internal/filetype
 google.golang.org/protobuf/internal/flags
 google.golang.org/protobuf/internal/genid
+google.golang.org/protobuf/internal/impl
 google.golang.org/protobuf/internal/order
 google.golang.org/protobuf/internal/pragma
+google.golang.org/protobuf/internal/protolazy
+google.golang.org/protobuf/internal/set
 google.golang.org/protobuf/internal/strs
+google.golang.org/protobuf/internal/version
 google.golang.org/protobuf/proto
 google.golang.org/protobuf/reflect/protoreflect
 google.golang.org/protobuf/reflect/protoregistry
 google.golang.org/protobuf/runtime/protoiface
+google.golang.org/protobuf/runtime/protoimpl
+google.golang.org/protobuf/types/known/anypb
+google.golang.org/protobuf/types/known/wrapperspb
 # gorm.io/driver/mysql v1.6.0
 ## explicit; go 1.18
 gorm.io/driver/mysql
@@ -428,4 +497,3 @@ gorm.io/gorm/logger
 gorm.io/gorm/migrator
 gorm.io/gorm/schema
 gorm.io/gorm/utils
-# github.com/mattn/go-sqlite3 v2.0.3+incompatible => github.com/mattn/go-sqlite3 v1.14.32

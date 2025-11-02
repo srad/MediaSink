@@ -1,7 +1,7 @@
 package services
 
 import (
-	"bytes" // Added for ProcessList and improved Stderr handling
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -10,7 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync" // Added for sync.Mutex
+	"sync"
 	"syscall"
 	"time"
 

@@ -81,13 +81,10 @@ func ImportChannels(context.Context) error {
 	for _, name := range channelFolders {
 		importProgress++
 		channelName := database.ChannelName(name)
-		log.Infof("Import/%s (%d/%d)] Scanning folder", channelName, importProgress, importSize)
 		// Is no directory, skip
 		if dir, err := os.Stat(channelName.AbsoluteChannelPath()); err != nil || !dir.IsDir() {
 			continue
 		}
-
-		log.Infof("[Import/%s (%d/%d)] Reading folder", channelName, importProgress, importSize)
 
 		newChannel, err4 := database.CreateChannel(channelName, channelName.String(), "https://"+channelName.String())
 		if err4 != nil {
@@ -99,7 +96,6 @@ func ImportChannels(context.Context) error {
 	// ---------------------------------------------------------------------------------
 	// Import individual files
 	// ---------------------------------------------------------------------------------
-	log.Infof("[Import/%s (%d/%d)] Import individual files ...", channelName, importProgress, len(channelFolders))
 	files, err2 := os.ReadDir(channelName.AbsoluteChannelPath())
 		if err2 != nil {
 			log.Errorf("[Import/%s] Error reading: %s", channelName, err2)
@@ -118,7 +114,7 @@ func ImportChannels(context.Context) error {
 				continue
 			}
 
-			log.Infof("[Import/%s (%d/%d) (%d/%d)] Checking file: %s", channelName, importProgress, importSize, j, len(files), file.Name())
+			log.Debugf("[Import/%s (%d/%d) (%d/%d)] Checking file: %s", channelName, importProgress, importSize, j, len(files), file.Name())
 
 			filename := database.RecordingFileName(file.Name())
 			video := &helpers.Video{FilePath: channelName.AbsoluteChannelFilePath(filename)}

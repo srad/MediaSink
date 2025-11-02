@@ -24,7 +24,7 @@ func CheckAuthorizationHeader(c *gin.Context) {
 		// Workaround for JWT over websockets. The bearer can also be sent as get parameter.
 		if getAuth, exists := c.GetQuery("Authorization"); exists && getAuth != "" {
 			authHeader = "Bearer " + getAuth
-			log.Info("Received authentication as get parameter. Likely from a socket.")
+			log.Debugln("Received authentication as get parameter. Likely from a socket.")
 		} else {
 			err := errors.New("authorization header is missing")
 			log.Errorln(err)
