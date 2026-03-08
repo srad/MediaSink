@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"embed"
 	"fmt"
 	"net/http"
 	"strings"
@@ -32,7 +33,7 @@ import (
 // @BasePath  /api/v1
 
 // Setup InitRouter initialize routing information
-func Setup(version, commit, apiVersion string) http.Handler {
+func Setup(version, commit, apiVersion string, frontendFS embed.FS) http.Handler {
 	router := gin.New()
 	// r.Use(gin.Logger())
 	router.Use(gin.Recovery())
@@ -53,7 +54,6 @@ func Setup(version, commit, apiVersion string) http.Handler {
 		c.Next()
 	})
 
-	// This is only for development. User nginx or something to serve the static files.
 	router.Static("/videos", cfg.RecordingsAbsolutePath)
 
 	// API V1
@@ -185,6 +185,9 @@ func Setup(version, commit, apiVersion string) http.Handler {
 		analysis := apiV1.Group("/analysis")
 		analysis.Use(middlewares.CheckAuthorizationHeader)
 
+		analysis.POST("/search/image", v1.SearchSimilarVideosByImage)
+		analysis.POST("/group", v1.GroupSimilarVideos)
+		analysis.POST("/all", v1.AnalyzeAllVideos)
 		analysis.POST("/:id", v1.AnalyzeVideo)
 		analysis.GET("/:id", v1.GetAnalysisResult)
 
@@ -205,6 +208,8 @@ func Setup(version, commit, apiVersion string) http.Handler {
 		go network.WsListen()
 		apiV1.GET("/ws", middlewares.CheckAuthorizationHeader, network.WsHandler)
 	}
+
+	serveFrontend(router, frontendFS, version, commit, apiVersion)
 
 	return router
 }

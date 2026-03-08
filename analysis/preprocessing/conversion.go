@@ -4,47 +4,64 @@ import (
 	"image"
 
 	"github.com/disintegration/imaging"
-	tf "github.com/wamuir/graft/tensorflow"
 )
 
-// ImageToTensor converts an image to a TensorFlow tensor with default size (224x224)
-// Default size is used for backward compatibility
-func ImageToTensor(img image.Image) (*tf.Tensor, error) {
+// ImageToTensor converts an image to a flat float32 slice with default size (224x224)
+func ImageToTensor(img image.Image) ([]float32, error) {
 	return ImageToTensorWithSize(img, 224)
 }
 
-// ImageToTensorWithSize converts an image to a TensorFlow tensor with specified input size
-// The image is resized to size x size using Lanczos interpolation
-// Pixel values are normalized to [0, 1] range
-// Returns a tensor with shape [1, height, width, 3] suitable for TensorFlow models
-func ImageToTensorWithSize(img image.Image, size int) (*tf.Tensor, error) {
-	// Resize the image to model input size using high-quality Lanczos filter
+// ImageToTensorWithSize converts an image to a flat float32 slice of length H*W*3.
+// The image is resized to size x size using Lanczos interpolation.
+// Pixel values are normalized to [0, 1] range.
+// Layout: row-major NHWC, batch dimension omitted (caller wraps in shape [1,H,W,3]).
+func ImageToTensorWithSize(img image.Image, size int) ([]float32, error) {
 	img = imaging.Resize(img, size, size, imaging.Lanczos)
 
-	// Get the image dimensions
 	bounds := img.Bounds()
 	width, height := bounds.Max.X, bounds.Max.Y
 
-	// Create a slice to hold the pixel data
-	// Format: [height][width][3] where 3 is RGB channels
-	pixels := make([][][3]float32, height)
+	pixels := make([]float32, height*width*3)
+	idx := 0
 	for y := 0; y < height; y++ {
-		pixels[y] = make([][3]float32, width)
 		for x := 0; x < width; x++ {
-			// Get RGBA components and normalize to [0, 1] range
-			// RGBA() returns values in [0, 65535] range
+			// RGBA() returns values in [0, 65535]; normalize to [0, 1]
 			r, g, b, _ := img.At(x, y).RGBA()
-			pixels[y][x][0] = float32(r) / 65535.0
-			pixels[y][x][1] = float32(g) / 65535.0
-			pixels[y][x][2] = float32(b) / 65535.0
+			pixels[idx] = float32(r) / 65535.0
+			pixels[idx+1] = float32(g) / 65535.0
+			pixels[idx+2] = float32(b) / 65535.0
+			idx += 3
 		}
 	}
 
-	// Create the tensor with batch size of 1
-	tensor, err := tf.NewTensor([][][][3]float32{pixels})
-	if err != nil {
-		return nil, err
+	return pixels, nil
+}
+
+// ImageToTensorNCHW converts an image to a flat float32 slice in NCHW layout
+// (channel-first): all R values, then all G values, then all B values.
+// The image is resized to size x size. Pixel values are normalized to [0, 1].
+// Caller wraps in shape [1, 3, size, size].
+func ImageToTensorNCHW(img image.Image, size int) ([]float32, error) {
+	img = imaging.Resize(img, size, size, imaging.Lanczos)
+
+	bounds := img.Bounds()
+	width, height := bounds.Max.X, bounds.Max.Y
+	planeSize := height * width
+
+	pixels := make([]float32, 3*planeSize)
+	rBase := 0
+	gBase := planeSize
+	bBase := 2 * planeSize
+
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			i := y*width + x
+			r, g, b, _ := img.At(x, y).RGBA()
+			pixels[rBase+i] = float32(r) / 65535.0
+			pixels[gBase+i] = float32(g) / 65535.0
+			pixels[bBase+i] = float32(b) / 65535.0
+		}
 	}
 
-	return tensor, nil
+	return pixels, nil
 }

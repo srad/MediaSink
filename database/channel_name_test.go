@@ -2,6 +2,7 @@ package database
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"testing"
 )
@@ -30,7 +31,7 @@ func TestChannelPath(t *testing.T) {
 func TestAbsoluteChannelFilePath(t *testing.T) {
 	channelName := ChannelName("my_channel")
 	filename := RecordingFileName("my_file.mp4")
-	expected := fmt.Sprintf("/recordings/my_channel/%s", filename)
+	expected := filepath.Join("/tmp", "my_channel", filename.String())
 	fact := channelName.AbsoluteChannelFilePath(filename)
 
 	if fact != expected {

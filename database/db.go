@@ -4,8 +4,10 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
+	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	log "github.com/sirupsen/logrus"
 	"github.com/srad/mediasink/conf"
 	"gorm.io/driver/mysql"
@@ -41,8 +43,16 @@ func Init() {
 		dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Europe/Berlin", os.Getenv("DB_HOST"), os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME"), os.Getenv("DB_PORT"))
 		dialector = postgres.New(postgres.Config{DSN: dsn})
 	default:
-		// SQLite3
-		dialector = sqlite.Open(cfg.DbFileName)
+		// SQLite3 is a single-writer database. For production multi-user
+		// workloads use PostgreSQL (set DB_ADAPTER=postgres).
+		// For development: WAL mode + busy_timeout makes concurrent access
+		// tolerable for a small number of users.
+		sqlite_vec.Auto()
+		// _busy_timeout: retry writes for up to 10 s before returning SQLITE_BUSY.
+		// _journal_mode=WAL: readers never block writers and vice-versa.
+		// _synchronous=NORMAL: safe durability with WAL, faster than FULL.
+		dsn := cfg.DbFileName + "?_busy_timeout=10000&_journal_mode=WAL&_synchronous=NORMAL"
+		dialector = sqlite.Open(dsn)
 	}
 
 	/// Open and assign database.
@@ -61,9 +71,31 @@ func Init() {
 	if err != nil {
 		panic("failed to get database instance")
 	}
-	sqlDB.SetMaxIdleConns(10)
-	sqlDB.SetMaxOpenConns(100)
-	sqlDB.SetConnMaxLifetime(time.Hour)
+	switch os.Getenv("DB_ADAPTER") {
+	case "mysql", "postgres":
+		sqlDB.SetMaxIdleConns(10)
+		sqlDB.SetMaxOpenConns(100)
+		sqlDB.SetConnMaxLifetime(time.Hour)
+	default:
+		// SQLite: WAL + busy_timeout + a modest pool.
+		// Pragmas are set here (in addition to the DSN) to guarantee they
+		// are applied to every connection the pool creates.
+		if _, err := sqlDB.Exec(`PRAGMA journal_mode=WAL`); err != nil {
+			log.Warnf("[DB] Could not set WAL mode: %v", err)
+		}
+		if _, err := sqlDB.Exec(`PRAGMA busy_timeout=10000`); err != nil {
+			log.Warnf("[DB] Could not set busy_timeout: %v", err)
+		}
+		if _, err := sqlDB.Exec(`PRAGMA synchronous=NORMAL`); err != nil {
+			log.Warnf("[DB] Could not set synchronous: %v", err)
+		}
+		// Keep the pool small — more connections do not help SQLite and
+		// only increase lock contention. For true multi-user workloads
+		// switch to PostgreSQL (DB_ADAPTER=postgres).
+		sqlDB.SetMaxIdleConns(2)
+		sqlDB.SetMaxOpenConns(8)
+		sqlDB.SetConnMaxLifetime(time.Hour)
+	}
 
 	migrate()
 }
@@ -123,5 +155,40 @@ func migrate() {
 
 	if err := InitSettings(); err != nil {
 		log.Panicf("[Setting] Init error: %s", err)
+	}
+
+	// Drop frame_vectors if it has an older schema. Frame vectors are
+	// derived/recomputable data so rebuilding them is safe.
+	if sqlDB, err := DB.DB(); err == nil {
+		var tableExists int
+		sqlDB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name='frame_vectors'`).Scan(&tableExists)
+		if tableExists > 0 {
+			needsRebuild := false
+
+			// Older iterations used vec0 auxiliary columns (+recording_id, +frame_index),
+			// which cannot be used in KNN WHERE constraints.
+			var tableSQL sql.NullString
+			if err := sqlDB.QueryRow(`SELECT sql FROM sqlite_master WHERE name='frame_vectors'`).Scan(&tableSQL); err == nil && tableSQL.Valid {
+				s := strings.ToLower(tableSQL.String)
+				if strings.Contains(s, "+recording_id") || strings.Contains(s, "+frame_index") || strings.Contains(s, "+frame_timestamp") {
+					needsRebuild = true
+				}
+			}
+
+			// Ensure frame_index exists for consecutive similarity queries.
+			if !needsRebuild {
+				if _, colErr := sqlDB.Exec(`SELECT frame_index FROM frame_vectors LIMIT 0`); colErr != nil {
+					needsRebuild = true
+				}
+			}
+
+			if needsRebuild {
+				if _, dropErr := sqlDB.Exec(`DROP TABLE IF EXISTS frame_vectors`); dropErr != nil {
+					log.Warnf("[Migrate] Could not drop frame_vectors for schema update: %v", dropErr)
+				} else {
+					log.Infof("[Migrate] Dropped frame_vectors for schema update (will be rebuilt on next analysis)")
+				}
+			}
+		}
 	}
 }

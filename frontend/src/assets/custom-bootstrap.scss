@@ -1,0 +1,76 @@
+$white: #ffffff;
+//$enable-rounded: false;
+
+$card-border-radius: 0.15em;
+$border-radius: 0.25em;
+
+$card-cap-padding-y: 0;
+$card-cap-padding-x: 0;
+.card-body {
+  padding: 0 !important;
+}
+
+//$theme-colors: (
+//        "primary": #3e4c5d,
+//        "secondary": #dcdcdd,
+//        "success": #5c9d1b,
+//        "info": #ab9db4,
+//"warning": #febd65,
+//        "danger": #da420d,
+//        "light": #f4f3ee,
+//        "dark": #34283b,
+//);
+
+//$form-check-input-checked-bg-color: #4b4e6d;
+//$form-check-input-checked-border-color: grey;
+
+$primary: #301240;
+$secondary: #dcdcdd;
+//$success: #54c7ba;
+$info: #a49cd7;
+//$warning: #e9c46a;
+$danger: #cc2255;
+$light: #f1f2f3;
+//$dark: #180f1d;
+
+$grid-columns: 24 !default;
+$grid-gutter-width: 1rem !default;
+
+$nav-tabs-link-active-color: $white;
+$nav-tabs-link-active-bg: $primary;
+$nav-tabs-link-active-border-color: $primary;
+
+// -----------------------------------------------------------
+// Grid breakpoints
+// -----------------------------------------------------------
+
+$grid-breakpoints: (
+  xs: 0,
+  sm: 576px,
+  md: 768px,
+  lg: 992px,
+  xl: 1200px,
+  xxl: 1600px,
+) !default;
+
+$container-max-widths: (
+  sm: 540px,
+  md: 720px,
+  lg: 960px,
+  xl: 1140px,
+  xxl: 1520px,
+) !default;
+
+// -----------------------------------------------------------
+// Bootstrap itself
+// -----------------------------------------------------------
+
+@import "bootstrap/scss/bootstrap";
+
+.bg-info-light {
+  background: tint-color($primary, 90%);
+}
+
+.bg-info-light-2 {
+  background: tint-color($primary, 98%);
+}

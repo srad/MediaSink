@@ -167,6 +167,28 @@ func RecordingsList() ([]*Recording, error) {
 	return recordings, nil
 }
 
+// FindRecordingsByIDs returns recordings for the given IDs with video previews preloaded.
+func FindRecordingsByIDs(ids []RecordingID) ([]*Recording, error) {
+	if len(ids) == 0 {
+		return []*Recording{}, nil
+	}
+	uids := make([]uint, 0, len(ids))
+	for _, id := range ids {
+		uids = append(uids, uint(id))
+	}
+
+	var recordings []*Recording
+	err := DB.Model(Recording{}).
+		Preload("VideoPreviews").
+		Where("recording_id IN ?", uids).
+		Find(&recordings).Error
+
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, err
+	}
+	return recordings, nil
+}
+
 func BookmarkList() ([]*Recording, error) {
 	var recordings []*Recording
 	err := DB.Model(Recording{}).
@@ -186,7 +208,6 @@ func GetPaths(channelName ChannelName, filename RecordingFileName) RecordingPath
 	return channelName.GetRecordingsPaths(filename)
 }
 
-
 func CreateRecording(channelId ChannelID, filename RecordingFileName, videoType string) (*Recording, error) {
 	channel, errChannel := GetChannelByID(channelId)
 	if errChannel != nil {
@@ -199,18 +220,18 @@ func CreateRecording(channelId ChannelID, filename RecordingFileName, videoType 
 	}
 
 	recording := &Recording{
-		RecordingID:   0,
-		Channel:       Channel{},
-		ChannelID:     channelId,
-		ChannelName:   channel.ChannelName,
-		Filename:      filename,
-		Bookmark:      false,
-		CreatedAt:     time.Now(),
-		VideoType:     videoType,
-		Packets:       info.PacketCount,
-		Duration:      info.Duration,
-		Size:          info.Size,
-		BitRate:       info.BitRate,
+		RecordingID:  0,
+		Channel:      Channel{},
+		ChannelID:    channelId,
+		ChannelName:  channel.ChannelName,
+		Filename:     filename,
+		Bookmark:     false,
+		CreatedAt:    time.Now(),
+		VideoType:    videoType,
+		Packets:      info.PacketCount,
+		Duration:     info.Duration,
+		Size:         info.Size,
+		BitRate:      info.BitRate,
 		Width:        info.Width,
 		Height:       info.Height,
 		PathRelative: channel.ChannelName.ChannelPath(filename),
@@ -438,7 +459,6 @@ func (recording *Recording) DestroyPreview(previewType PreviewType) error {
 
 	return fmt.Errorf("invalid preview type %s", previewType)
 }
-
 
 func DeletePreviewFiles(recordingID RecordingID, channelName ChannelName) error {
 	// Delete preview frames directory

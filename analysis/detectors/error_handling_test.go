@@ -187,10 +187,10 @@ func TestSSIMCalculation_DifferentDimensions(t *testing.T) {
 	}
 }
 
-// TestTensorFlowSceneDetector_InvalidModel tests error handling with non-existent model
-func TestTensorFlowSceneDetector_InvalidModel(t *testing.T) {
+// TestOnnxSceneDetector_InvalidModel tests error handling with non-existent model
+func TestOnnxSceneDetector_InvalidModel(t *testing.T) {
 	// Try to load a model that doesn't exist
-	_, err := scene.NewTensorFlowSceneDetector("nonexistent_model_xyz")
+	_, err := scene.NewOnnxSceneDetector("nonexistent_model_xyz")
 	if err == nil {
 		t.Errorf("Expected error for non-existent model, but got none")
 	} else {

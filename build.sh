@@ -1,5 +1,11 @@
 #!/bin/bash
 
+set -euo pipefail
+
+# Build frontend
+echo "Building frontend..."
+(cd frontend && npm install && npm run build)
+
 go install github.com/swaggo/swag/cmd/swag@latest
 swag init
 

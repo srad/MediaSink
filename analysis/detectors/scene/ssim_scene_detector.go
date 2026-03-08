@@ -1,14 +1,12 @@
 package scene
 
 import (
-	"fmt"
 	"image"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/srad/mediasink/database"
-	"github.com/srad/mediasink/analysis/threshold"
 	"github.com/srad/mediasink/analysis/metrics"
-	"gonum.org/v1/gonum/mat"
+	"github.com/srad/mediasink/analysis/threshold"
+	"github.com/srad/mediasink/database"
 )
 
 // ssimSceneDetector detects scenes using Structural Similarity Index
@@ -33,11 +31,6 @@ func (s *ssimSceneDetector) Name() string {
 // Close releases any resources held by the detector
 func (s *ssimSceneDetector) Close() error {
 	return nil
-}
-
-// ExtractFeatures is not applicable for SSIM detector
-func (s *ssimSceneDetector) ExtractFeatures(frame image.Image) (*mat.VecDense, error) {
-	return nil, fmt.Errorf("ExtractFeatures is not supported by SSIM detector")
 }
 
 // DetectScenes detects scenes using SSIM comparison with adaptive threshold

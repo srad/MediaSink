@@ -1,0 +1,53 @@
+import { DatabaseJobStatus } from "../../src/services/api/v1/MediaSinkClient";
+
+export default {
+  skip: 0,
+  take: 100,
+  totalCount: 1000,
+  jobs: [
+    {
+      active: false,
+      args: undefined,
+      channelId: 1,
+      channelName: "testChannel",
+      command: undefined,
+      completedAt: "2024-01-01T00:00:00Z",
+      createdAt: "2023-12-31T00:00:00Z",
+      filename: "test.mp4",
+      filepath: "/path/to/file.mp4",
+      info: undefined,
+      jobId: 1,
+      pid: undefined,
+      progress: "50%",
+      recordingId: 100,
+      startedAt: "2024-01-01T00:00:00Z",
+      status: DatabaseJobStatus.StatusJobOpen,
+      task: {
+        description: "test task",
+        name: "testTask",
+      },
+    },
+    {
+      active: false,
+      args: undefined,
+      channelId: 2,
+      channelName: "anotherChannel",
+      command: undefined,
+      completedAt: "2024-01-02T00:00:00Z",
+      createdAt: "2023-12-31T00:00:00Z",
+      filename: "another.mp4",
+      filepath: "/path/to/another/file.mp4",
+      info: undefined,
+      jobId: 2,
+      pid: undefined,
+      progress: "75%",
+      recordingId: 200,
+      startedAt: "2024-01-02T00:00:00Z",
+      status: DatabaseJobStatus.StatusJobOpen,
+      task: {
+        description: "another task",
+        name: "anotherTask",
+      },
+    },
+  ],
+};
