@@ -1,11 +1,11 @@
-# MediaSink.Go
+# MediaSink
 
 ![License](https://img.shields.io/badge/license-AGPL--v3-blue)
 ![Go Version](https://img.shields.io/badge/Go-1.x-blue)
 [![Build Status](https://teamcity.sedrad.com/app/rest/builds/buildType:(id:MediaSinkGo_Build)/statusIcon)](https://teamcity.sedrad.com/viewType.html?buildTypeId=MediaSinkGo_Build&guest=1)
-![Build](https://img.shields.io/github/actions/workflow/status/srad/MediaSink.Go/build.yml)
+![Build](https://img.shields.io/github/actions/workflow/status/srad/MediaSink/build.yml)
 
-MediaSink.Go is a powerful web-based video management, editing and streaming server written in Go. It provides automated stream recording capabilities and a REST API for video editing, making it an ideal solution for media-heavy applications. The Vue 3 frontend is bundled directly into the Go binary — no separate web server required.
+MediaSink is a powerful web-based video management, editing and streaming server written in Go. It provides automated stream recording capabilities and a REST API for video editing, making it an ideal solution for media-heavy applications. The Vue 3 frontend is bundled directly into the Go binary — no separate web server required.
 
 ## Features
 - **Media Management**: Scans all media and generate previews and organizes them. Allows bookmarking folders, channel, media items, and tagging the media.
@@ -52,8 +52,8 @@ source ~/.bashrc
 
 ### Clone the Repository
 ```sh
-git clone https://github.com/srad/MediaSink.Go.git
-cd MediaSink.Go
+git clone https://github.com/srad/MediaSink.git
+cd MediaSink
 ```
 
 ### Build
@@ -76,16 +76,7 @@ For ONNX-based analysis outside Docker, set `ONNXRUNTIME_LIB` if the runtime lib
 
 Builds the frontend if needed, then builds and starts the server on `http://0.0.0.0:3000`. The web UI is available at the same address.
 
-`run.sh` exports sensible local-development defaults for all required variables. For production, set them explicitly:
-
-| Variable | Description |
-|---|---|
-| `SECRET` | JWT secret (long random string) |
-| `DB_FILENAME` | SQLite file path (e.g. `/recordings/mediasink.sqlite3`) |
-| `REC_PATH` | Absolute path to recordings directory |
-| `DATA_DIR` | Preview/thumbnail directory (e.g. `.previews`) |
-| `DATA_DISK` | Disk mount path for storage queries (e.g. `/disk`) |
-| `NET_ADAPTER` | Network interface for bandwidth monitoring (e.g. `eth0`) |
+`run.sh` exports sensible local-development defaults for all required variables. The only hard requirement is `SECRET` (a JWT secret); everything else has a working default.
 
 ### Frontend development (hot-reload)
 
@@ -128,8 +119,8 @@ mount -o noatime /dev/sdX /mnt/video
 ```
 
 ### API Endpoints
-MediaSink.Go provides a REST API to manage video recording and editing. Below are some key endpoints:
-For a complete API reference, check the [API Documentation](https://github.com/srad/MediaSink.Go/wiki/API-Docs).
+MediaSink provides a REST API to manage video recording and editing. Below are some key endpoints:
+For a complete API reference, check the [API Documentation](https://github.com/srad/MediaSink/wiki/API-Docs).
 
 Visual similarity endpoints:
 - `POST /api/v1/analysis/search/image` (multipart): upload an image (`file`) and search similar videos. Supports `similarity` slider values in `0..1` or `0..100`.
@@ -141,6 +132,22 @@ The Docker image bundles the Go server, Vue frontend, FFmpeg, yt-dlp, and SQLite
 
 #### Docker Compose
 
+Minimal setup — only `SECRET` and a volume for persistent storage are required:
+
+```yaml
+services:
+  mediasink:
+    image: sedrad/mediasink
+    environment:
+      - SECRET=change-me
+    volumes:
+      - /path/to/recordings:/recordings
+    ports:
+      - "3000:3000"
+```
+
+Full setup with persistent storage and timezone:
+
 ```yaml
 services:
   mediasink:
@@ -148,35 +155,37 @@ services:
     environment:
       - TZ=${TIMEZONE}
       - SECRET=${SECRET}
-      - DB_FILENAME=/recordings/mediasink.sqlite3
-      - REC_PATH=/recordings
-      - DATA_DIR=.previews
-      - DATA_DISK=/disk
-      - NET_ADAPTER=${NET_ADAPTER}
     volumes:
       - ${DATA_PATH}:/recordings
       - ${DISK}:/disk
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     ports:
       - "3000:3000"
 ```
 
-`.env` file:
+compose variables (host-side only, not passed into the container):
 
-```
-TIMEZONE=Europe/Berlin
+| Variable | Example | Description |
+|---|---|---|
+| `TIMEZONE` | `Europe/Berlin` | Sets `TZ` inside the container |
+| `SECRET` | `change-me` | JWT signing secret — **required** |
+| `DATA_PATH` | `/path/to/your/recordings` | Host path mounted as `/recordings` |
+| `DISK` | `/mnt/disk1` | Host path mounted as `/disk` |
 
-# JWT secret — required, set to a long random string
-SECRET=change-me
+Application environment variables (passed into the container, all optional):
 
-# Path where recorded videos will be stored
-DATA_PATH=/path/to/files
-
-# Path to the disk root (used for disk status queries)
-DISK=/mnt/disk1
-
-# Network interface for bandwidth monitoring (ip link to find yours)
-NET_ADAPTER=eth0
-```
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `SECRET` | **yes** | — | JWT signing secret — use a long random string |
+| `TZ` | no | `Europe/Berlin` | Container timezone |
+| `DB_FILENAME` | no | `/recordings/mediasink.sqlite3` | SQLite database file path |
+| `REC_PATH` | no | `/recordings` | Recordings directory inside the container |
+| `DATA_DIR` | no | `.previews` | Preview/thumbnail cache directory |
+| `DATA_DISK` | no | `/disk` | Disk mount path used for storage status queries |
+| `NET_ADAPTER` | no | `eth0` | Network interface for bandwidth monitoring |
+| `DB_ADAPTER` | no | `sqlite` | Database backend (`sqlite`, `mysql`, `postgres`) |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | no | — | Required only when `DB_ADAPTER` is `mysql` or `postgres` |
 
 The web UI is available at `http://<host>:3000` and the API at `http://<host>:3000/api/v1`.
 
@@ -194,14 +203,14 @@ We welcome contributions! To get started:
 4. Submit a pull request.
 
 ## License
-MediaSink.Go is dual-licensed under the GNU Affero General Public License (AGPL) and a commercial license.
+MediaSink is dual-licensed under the GNU Affero General Public License (AGPL) and a commercial license.
 
-- **Open-Source Use (AGPL License)**: MediaSink.Go is free to use, modify, and distribute under the terms of the [GNU AGPL v3](https://www.gnu.org/licenses/agpl-3.0.html). Any modifications and derivative works must also be open-sourced under the same license.
-- **Commercial Use**: Companies that wish to use MediaSink.Go without AGPL restrictions must obtain a commercial license. For more details, please refer to the [LICENSE](LICENSE) file or contact us for licensing inquiries.
-MediaSink.Go is available for free for non-profit and educational institutions. However, a commercial license is required for companies. For more details, please refer to the [LICENSE](LICENSE) file or contact us for licensing inquiries.
+- **Open-Source Use (AGPL License)**: MediaSink is free to use, modify, and distribute under the terms of the [GNU AGPL v3](https://www.gnu.org/licenses/agpl-3.0.html). Any modifications and derivative works must also be open-sourced under the same license.
+- **Commercial Use**: Companies that wish to use MediaSink without AGPL restrictions must obtain a commercial license. For more details, please refer to the [LICENSE](LICENSE) file or contact us for licensing inquiries.
+MediaSink is available for free for non-profit and educational institutions. However, a commercial license is required for companies. For more details, please refer to the [LICENSE](LICENSE) file or contact us for licensing inquiries.
 
 ## Contact
-For issues and feature requests, please use the [GitHub Issues](https://github.com/srad/MediaSink.Go/issues) section.
+For issues and feature requests, please use the [GitHub Issues](https://github.com/srad/MediaSink/issues) section.
 
 ## Notes & Limitations
 

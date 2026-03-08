@@ -49,6 +49,23 @@ COPY frontend/ ./
 RUN npm run build
 
 # -----------------------------------------------------------------------------------
+# Stage: ONNX Runtime Installer
+# -----------------------------------------------------------------------------------
+FROM builder_base AS onnx_builder
+
+ARG TARGETARCH
+RUN ONNX_VERSION="1.24.1" && \
+    case "${TARGETARCH}" in \
+      amd64)   ONNX_ARCH="x64" ;; \
+      arm64)   ONNX_ARCH="aarch64" ;; \
+      *)       echo "Unsupported arch: ${TARGETARCH}" && exit 1 ;; \
+    esac && \
+    TARBALL="onnxruntime-linux-${ONNX_ARCH}-${ONNX_VERSION}.tgz" && \
+    curl -fsSL "https://github.com/microsoft/onnxruntime/releases/download/v${ONNX_VERSION}/${TARBALL}" -o /tmp/${TARBALL} && \
+    tar -xzf /tmp/${TARBALL} -C /tmp && \
+    find /tmp -name "libonnxruntime.so*" -exec cp {} /usr/local/lib/ \;
+
+# -----------------------------------------------------------------------------------
 # Stage: yt-dlp Installer (Replaces Youtube-DL Builder)
 # -----------------------------------------------------------------------------------
 FROM builder_base AS yt_dlp_builder
@@ -197,9 +214,11 @@ RUN go mod tidy
 RUN go mod vendor
 
 ENV CGO_ENABLED=1
-# GOOS and GOARCH are set using ARGs inherited or re-declared from global scope passed during build
 ENV GOOS=${TARGETOS}
 ENV GOARCH=${TARGETARCH}
+# Target AVX2 on amd64 for better performance on modern CPUs (Intel/AMD ~2013+).
+# Remove or set to v1 if deploying to older hardware.
+ENV GOAMD64=v3
 
 # ARM64 specific compilation (ensure relevant cross-compilers are in builder_base if needed)
 # RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then apt install gccgo-arm-linux-gnueabihf binutils-arm-linux-gnueabi gcc-aarch64-linux-gnu -y; fi
@@ -271,10 +290,13 @@ COPY --from=yt_dlp_builder /usr/local/bin/yt-dlp /usr/local/bin/yt-dlp
 COPY --from=ffmpeg_builder /usr/local/bin/ffmpeg /usr/local/bin/ffmpeg
 COPY --from=ffmpeg_builder /usr/local/bin/ffprobe /usr/local/bin/ffprobe
 
+COPY --from=onnx_builder /usr/local/lib/libonnxruntime.so* /usr/local/lib/
+RUN ldconfig
+
 # Copy assets
 COPY ./assets/DMMono-Regular.ttf /usr/share/fonts/truetype/
 COPY ./assets/live.jpg ./assets/
-COPY ./assets/models/mobilenet_v3_large.onnx ./assets/models/
+COPY --from=app_builder /app/assets/models/mobilenet_v3_large.onnx ./assets/models/
 COPY ./docker-entrypoint.sh ./docker-entrypoint.sh
 COPY ./wait-for-it.sh ./wait-for-it.sh
 RUN fc-cache -fv
@@ -286,7 +308,12 @@ RUN chmod +x /app/wait-for-it.sh
 RUN mkdir -p /recordings
 RUN mkdir -p /disk
 
-ENV SECRET ""
+ENV SECRET=""
+ENV DB_FILENAME="/recordings/mediasink.sqlite3"
+ENV REC_PATH="/recordings"
+ENV DATA_DIR=".previews"
+ENV DATA_DISK="/disk"
+ENV NET_ADAPTER="eth0"
 
 EXPOSE 3000
 

@@ -5,7 +5,6 @@ mediasink.sqlite3
 *.md
 log.sh
 test.sh
-conf/app.yml
 ffmpeg
 bin
 Dockerfile*
@@ -17,4 +16,3 @@ README.md
 LICENSE
 .vscode
 .idea
-assets/models

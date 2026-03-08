@@ -318,3 +318,121 @@ The application uses FFmpeg for video processing:
 - **CRF Values**: 15-28 range provides fine control
 - **Audio Passthrough**: Avoids audio re-encoding overhead
 - **Async Processing**: Long-running jobs run in background with progress updates
+
+---
+
+## Frontend
+
+Source lives in `frontend/`. Built with Vite + npm; output goes to `frontend/dist/` which is embedded into the Go binary at compile time.
+
+### Core Stack
+
+- **Framework**: Vue 3 (Composition API with `<script setup>`)
+- **State Management**: Pinia with persistedstate plugin
+- **Routing**: Vue Router with auth guards
+- **API Client**: Auto-generated from Swagger (`src/services/api/v1/MediaSinkClient.ts`)
+- **Real-time**: Custom WebSocket manager (`src/utils/socket.ts`)
+- **Styling**: Bootstrap 5 + SCSS variables
+- **Internationalization**: Vue i18n
+- **Testing**: Vitest (unit), Nightwatch (E2E)
+- **PWA**: Vite PWA plugin with Workbox
+
+### Directory Structure
+
+```
+src/
+├── components/       # Reusable Vue components
+│   ├── modals/       # Modal dialogs
+│   ├── channels/     # Channel-specific components
+│   ├── charts/       # CPU/Traffic chart components
+│   ├── controls/     # Control buttons and menus
+│   └── navs/         # Navigation components
+├── views/            # Page-level components (routed)
+├── router/           # Vue Router configuration and auth guards
+├── stores/           # Pinia stores (auth, channel, job, settings, toast)
+├── services/
+│   └── api/v1/       # Auto-generated Swagger API client
+├── composables/      # Vue 3 composables (socket, app config, download)
+├── layouts/          # Layout wrappers (AuthLayout, DefaultLayout, FullscreenLayout)
+├── utils/            # Utility functions (socket, error handling, datetime, etc.)
+├── types/            # TypeScript type definitions
+├── locales/          # Translation files (en/*)
+├── assets/           # Static assets and global styles
+├── main.ts           # Vue app entry point
+└── App.vue           # Root component
+```
+
+### Key Files
+
+- `src/services/api/v1/ClientFactory.ts` — API client factory with auth and server-error handling
+- `src/utils/serverError.ts` — detects network errors, logs out user, shows toast
+- `src/utils/validator.ts` — custom form validation framework
+- `src/stores/auth.ts` — authentication store
+- `src/composables/useSocket.ts` — WebSocket singleton composable
+- `src/layouts/DefaultLayout.vue` — main layout; registers/unregisters socket event handlers
+- `src/components/DataTable.vue` — sortable/searchable table with localStorage persistence
+- `src/components/VideoStripe.vue` — video timeline with frames, analysis overlays, selection markers
+- `src/components/VideoEnhancementModal.vue` — self-contained enhancement modal
+- `src/views/VideoView.vue` — video player and editor with analysis controls
+- `src/router/index.ts` — route definitions and auth guards
+- `vite.config.ts` — build and plugin configuration
+
+### Key Architectural Patterns
+
+**API client** — auto-generated from Swagger, accessed via factory:
+```typescript
+import { createClient } from "@/services/api/v1/ClientFactory";
+const client = createClient(); // auto-authenticated from auth store
+const data = await client.channels.list();
+```
+401 responses trigger automatic logout and redirect to `/login`. Server unreachability is detected in `ClientFactory.ts` and handled via `handleServerUnreachable()`.
+
+**State management** — two Pinia patterns used interchangeably:
+- Setup Store (function-based): `auth.ts`, `settings.ts`
+- Options Store (object-based): `channel.ts`, `job.ts`, `toast.ts`
+
+State persists to localStorage via `pinia-plugin-persistedstate`. All mutations must go through actions, never directly from components.
+
+**Real-time** — singleton `SocketManager` via `useSocket()` composable:
+```typescript
+const { on, off } = useSocket();
+on<DbJob>("JOB_UPDATE", (data) => { /* handle */ });
+```
+Listeners are shared across the app and not auto-cleaned on component unmount.
+
+**Routing** — `router.beforeEach` protects all routes; unauthenticated users are redirected to `/login`. Route meta carries `layout` (`auth`, `default`, `fullscreen`) and `title`.
+
+**Styling** — scoped SCSS with Bootstrap 5 variables. Import pattern:
+```scss
+@use "@/assets/custom-bootstrap.scss" as bootstrap;
+```
+Light/dark theme via `[data-bs-theme="light/dark"]` selectors.
+
+**TypeScript** — ESLint enforces double quotes. Always use `<script setup lang="ts">`. Define props with `defineProps<T>()` and emits with `defineEmits<T>()`.
+
+**Translations** — files in `src/locales/en/`. Use `{{ t("key.path") }}` in templates.
+
+### Common Tasks
+
+**Add a page**: create `.vue` in `src/views/`, add route in `src/router/index.ts` with `meta: { layout, title }`.
+
+**Add a store**: create file in `src/stores/`, use Setup or Options Store syntax, add `{ persist: true }` if localStorage persistence is needed.
+
+**Regenerate API client** (after Go swagger annotations change):
+```sh
+cd frontend && npm run client
+# or, from the repo root, run.sh does this automatically
+```
+
+**Run tests**:
+```sh
+cd frontend
+npm run test:unit   # Vitest unit tests
+npm run test:e2e    # Nightwatch E2E tests
+```
+
+### Video Analysis UI
+
+- `VideoStripe.vue` renders a scrollable frame timeline with overlaid scene boundaries (colored vertical lines) and motion highlights (colored bars), both positioned by timestamp and scaled with zoom.
+- `VideoView.vue` provides mode toggle (Highlights / Scenes), prev/next navigation, and a dropdown index selector.
+- Analysis data comes from `GET /api/v1/analysis/{recordingId}`; response includes `scenes[]` and `highlights[]` with timing and intensity. Status: `null` (not analyzed) → `pending` → `processing` → `completed`.
