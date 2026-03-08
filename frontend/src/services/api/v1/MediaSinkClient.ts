@@ -47,7 +47,7 @@ export interface CutCreateParams {
   id: number;
 }
 
-export interface DatabaseChannel {
+export interface DbChannel {
   channelId: number;
   channelName: string;
   createdAt: string;
@@ -57,7 +57,7 @@ export interface DatabaseChannel {
   isPaused: boolean;
   minDuration: number;
   /** 1:n */
-  recordings?: DatabaseRecording[];
+  recordings?: DbRecording[];
   /** Only for query result. */
   recordingsCount: number;
   recordingsSize: number;
@@ -66,7 +66,7 @@ export interface DatabaseChannel {
   url: string;
 }
 
-export interface DatabaseHighlightInfo {
+export interface DbHighlightInfo {
   /** 0-1, higher = more activity */
   intensity?: number;
   timestamp?: number;
@@ -74,7 +74,7 @@ export interface DatabaseHighlightInfo {
   type?: string;
 }
 
-export interface DatabaseJob {
+export interface DbJob {
   active: boolean;
   args?: string;
   channelId: number;
@@ -91,21 +91,21 @@ export interface DatabaseJob {
   jobId: number;
   /** Additional information */
   pid?: number;
-  priority: DatabaseJobPriority;
+  priority: DbJobPriority;
   progress?: string;
   recordingId: number;
   startedAt?: string;
-  status: DatabaseJobStatus;
+  status: DbJobStatus;
   /** Default values only not to break migrations. */
-  task: DatabaseJobTask;
+  task: DbJobTask;
 }
 
-export enum DatabaseJobOrder {
+export enum DbJobOrder {
   JobOrderASC = "ASC",
   JobOrderDESC = "DESC",
 }
 
-export enum DatabaseJobPriority {
+export enum DbJobPriority {
   /** Fast jobs: preview frames */
   PriorityHigh = 1,
   /** Medium jobs: cut, merge, analyze */
@@ -114,14 +114,14 @@ export enum DatabaseJobPriority {
   PriorityLow = 5,
 }
 
-export enum DatabaseJobStatus {
+export enum DbJobStatus {
   StatusJobCompleted = "completed",
   StatusJobOpen = "open",
   StatusJobError = "error",
   StatusJobCanceled = "canceled",
 }
 
-export enum DatabaseJobTask {
+export enum DbJobTask {
   TaskConvert = "convert",
   TaskPreviewFrames = "preview-frames",
   TaskAnalyzeFrames = "analyze-frames",
@@ -130,7 +130,7 @@ export enum DatabaseJobTask {
   TaskEnhanceVideo = "enhance-video",
 }
 
-export interface DatabaseRecording {
+export interface DbRecording {
   bitRate: number;
   bookmark: boolean;
   /** @min 0 */
@@ -146,19 +146,19 @@ export interface DatabaseRecording {
   /** @min 0 */
   recordingId: number;
   size: number;
-  videoPreview?: DatabaseVideoPreview;
+  videoPreview?: DbVideoPreview;
   videoType: string;
   width: number;
 }
 
-export interface DatabaseSceneInfo {
+export interface DbSceneInfo {
   /** 0-1, higher = more change */
   changeIntensity?: number;
   endTime?: number;
   startTime?: number;
 }
 
-export interface DatabaseVideoPreview {
+export interface DbVideoPreview {
   createdAt: string;
   frameCount: number;
   frameInterval: number;
@@ -195,36 +195,6 @@ export interface FavPartialUpdateParams2 {
   id: number;
 }
 
-export interface HelpersCPUInfo {
-  loadCpu: HelpersCPULoad[];
-}
-
-export interface HelpersCPULoad {
-  cpu: string;
-  createdAt: string;
-  load: number;
-}
-
-export interface HelpersDiskInfo {
-  availFormattedGb: number;
-  pcent: number;
-  sizeFormattedGb: number;
-  usedFormattedGb: number;
-}
-
-export interface HelpersNetInfo {
-  createdAt: string;
-  dev: string;
-  receiveBytes: number;
-  transmitBytes: number;
-}
-
-export interface HelpersSysInfo {
-  cpuInfo: HelpersCPUInfo;
-  diskInfo: HelpersDiskInfo;
-  netInfo: HelpersNetInfo;
-}
-
 export interface InfoDetailParams {
   /** Number of seconds to measure */
   seconds: number;
@@ -245,6 +215,11 @@ export interface MergeCreateParams {
   id: number;
 }
 
+export enum ModelsSortOrder {
+  SortAsc = "asc",
+  SortDesc = "desc",
+}
+
 export interface PauseCreateParams {
   /** Channel id */
   id: number;
@@ -253,11 +228,6 @@ export interface PauseCreateParams {
 export interface PreviewCreateParams {
   /** videos item id */
   id: number;
-}
-
-export enum QueriesSortOrder {
-  SortAsc = "asc",
-  SortDesc = "desc",
 }
 
 export interface RandomDetailParams {
@@ -371,8 +341,8 @@ export enum RequestsEstimateEnhancementRequestTargetResolutionEnum {
 
 export interface RequestsJobsRequest {
   skip?: number;
-  sortOrder: DatabaseJobOrder;
-  states: DatabaseJobStatus[];
+  sortOrder: DbJobOrder;
+  states: DbJobStatus[];
   take?: number;
 }
 
@@ -396,7 +366,7 @@ export interface RequestsSimilarityGroupRequest {
 export interface RequestsVideoFilterRequest {
   skip?: number;
   sortColumn: RequestsVideoSortColumn;
-  sortOrder: QueriesSortOrder;
+  sortOrder: ModelsSortOrder;
   take?: number;
 }
 
@@ -408,9 +378,9 @@ export enum RequestsVideoSortColumn {
 
 export interface ResponsesAnalysisResponse {
   analysisId: number;
-  highlights?: DatabaseHighlightInfo[];
+  highlights?: DbHighlightInfo[];
   recordingId: number;
-  scenes?: DatabaseSceneInfo[];
+  scenes?: DbSceneInfo[];
   status: string;
 }
 
@@ -475,7 +445,7 @@ export interface ResponsesJobWorkerStatus {
 }
 
 export interface ResponsesJobsResponse {
-  jobs?: DatabaseJob[];
+  jobs?: DbJob[];
   skip: number;
   take: number;
   totalCount: number;
@@ -511,12 +481,12 @@ export interface ResponsesServerInfoResponse {
 export interface ResponsesSimilarVideoGroup {
   groupId?: number;
   maxSimilarity?: number;
-  videos?: DatabaseRecording[];
+  videos?: DbRecording[];
 }
 
 export interface ResponsesSimilarVideoMatch {
   bestTimestamp?: number;
-  recording?: DatabaseRecording;
+  recording?: DbRecording;
   similarity?: number;
 }
 
@@ -532,7 +502,7 @@ export interface ResponsesVideoFilterResponse {
   skip: number;
   take: number;
   totalCount: number;
-  videos?: DatabaseRecording[];
+  videos?: DbRecording[];
 }
 
 export interface ResponsesVisualSearchResponse {
@@ -573,7 +543,7 @@ export interface ServicesChannelInfo {
   minRecording: number;
   preview: string;
   /** 1:n */
-  recordings?: DatabaseRecording[];
+  recordings?: DbRecording[];
   /** Only for query result. */
   recordingsCount: number;
   recordingsSize: number;
@@ -625,6 +595,36 @@ export interface UploadCreateParams {
 export interface UploadCreatePayload {
   /** Video file to upload */
   file: File;
+}
+
+export interface UtilCPUInfo {
+  loadCpu: UtilCPULoad[];
+}
+
+export interface UtilCPULoad {
+  cpu: string;
+  createdAt: string;
+  load: number;
+}
+
+export interface UtilDiskInfo {
+  availFormattedGb: number;
+  pcent: number;
+  sizeFormattedGb: number;
+  usedFormattedGb: number;
+}
+
+export interface UtilNetInfo {
+  createdAt: string;
+  dev: string;
+  receiveBytes: number;
+  transmitBytes: number;
+}
+
+export interface UtilSysInfo {
+  cpuInfo: UtilCPUInfo;
+  diskInfo: UtilDiskInfo;
+  netInfo: UtilNetInfo;
 }
 
 export interface VideosDeleteParams {
@@ -927,7 +927,7 @@ export namespace Channels {
    * @name ChannelsPartialUpdate
    * @summary Update channel data
    * @request PATCH:/channels/{id}
-   * @response `200` `DatabaseChannel` OK
+   * @response `200` `DbChannel` OK
    * @response `400` `any` Bad Request
    * @response `500` `any` Internal Server Error
    */
@@ -939,7 +939,7 @@ export namespace Channels {
     export type RequestQuery = {};
     export type RequestBody = RequestsChannelRequest;
     export type RequestHeaders = {};
-    export type ResponseBody = DatabaseChannel;
+    export type ResponseBody = DbChannel;
   }
 
   /**
@@ -969,7 +969,7 @@ export namespace Channels {
    * @name MergeCreate
    * @summary Merge multiple videos
    * @request POST:/channels/{id}/merge
-   * @response `200` `DatabaseJob` OK
+   * @response `200` `DbJob` OK
    * @response `400` `any` Error message
    * @response `500` `any` Error message
    */
@@ -981,7 +981,7 @@ export namespace Channels {
     export type RequestQuery = {};
     export type RequestBody = RequestsMergeRequest;
     export type RequestHeaders = {};
-    export type ResponseBody = DatabaseJob;
+    export type ResponseBody = DbJob;
   }
 
   /**
@@ -1074,7 +1074,7 @@ export namespace Channels {
    * @name UploadCreate
    * @summary Upload video file to channel
    * @request POST:/channels/{id}/upload
-   * @response `200` `DatabaseRecording` OK
+   * @response `200` `DbRecording` OK
    * @response `400` `any` Bad Request
    * @response `500` `any` Internal Server Error
    */
@@ -1086,7 +1086,7 @@ export namespace Channels {
     export type RequestQuery = {};
     export type RequestBody = UploadCreatePayload;
     export type RequestHeaders = {};
-    export type ResponseBody = DatabaseRecording;
+    export type ResponseBody = DbRecording;
   }
 }
 
@@ -1097,7 +1097,7 @@ export namespace Info {
    * @name DiskList
    * @summary Get disk information
    * @request GET:/info/disk
-   * @response `200` `HelpersDiskInfo` OK
+   * @response `200` `UtilDiskInfo` OK
    * @response `500` `any` Internal Server Error
    */
   export namespace DiskList {
@@ -1105,7 +1105,7 @@ export namespace Info {
     export type RequestQuery = {};
     export type RequestBody = never;
     export type RequestHeaders = {};
-    export type ResponseBody = HelpersDiskInfo;
+    export type ResponseBody = UtilDiskInfo;
   }
 
   /**
@@ -1114,7 +1114,7 @@ export namespace Info {
    * @name InfoDetail
    * @summary Get system metrics
    * @request GET:/info/{seconds}
-   * @response `200` `HelpersSysInfo` OK
+   * @response `200` `UtilSysInfo` OK
    * @response `500` `any` Internal Server Error
    */
   export namespace InfoDetail {
@@ -1125,7 +1125,7 @@ export namespace Info {
     export type RequestQuery = {};
     export type RequestBody = never;
     export type RequestHeaders = {};
-    export type ResponseBody = HelpersSysInfo;
+    export type ResponseBody = UtilSysInfo;
   }
 }
 
@@ -1226,7 +1226,7 @@ export namespace Jobs {
    * @name JobsCreate
    * @summary Enqueue a preview job
    * @request POST:/jobs/{id}
-   * @response `200` `(DatabaseJob)[]` OK
+   * @response `200` `(DbJob)[]` OK
    * @response `400` `any` Error message
    * @response `500` `any` Error message
    */
@@ -1238,7 +1238,7 @@ export namespace Jobs {
     export type RequestQuery = {};
     export type RequestBody = never;
     export type RequestHeaders = {};
-    export type ResponseBody = DatabaseJob[];
+    export type ResponseBody = DbJob[];
   }
 
   /**
@@ -1398,7 +1398,7 @@ export namespace Videos {
    * @name VideosList
    * @summary Return a list of videos
    * @request GET:/videos
-   * @response `200` `(DatabaseRecording)[]` OK
+   * @response `200` `(DbRecording)[]` OK
    * @response `500` `any` Error message
    */
   export namespace VideosList {
@@ -1406,7 +1406,7 @@ export namespace Videos {
     export type RequestQuery = {};
     export type RequestBody = never;
     export type RequestHeaders = {};
-    export type ResponseBody = DatabaseRecording[];
+    export type ResponseBody = DbRecording[];
   }
 
   /**
@@ -1415,7 +1415,7 @@ export namespace Videos {
    * @name BookmarksList
    * @summary Returns all bookmarked videos.
    * @request GET:/videos/bookmarks
-   * @response `200` `(DatabaseRecording)[]` OK
+   * @response `200` `(DbRecording)[]` OK
    * @response `500` `any` Error message
    */
   export namespace BookmarksList {
@@ -1423,7 +1423,7 @@ export namespace Videos {
     export type RequestQuery = {};
     export type RequestBody = never;
     export type RequestHeaders = {};
-    export type ResponseBody = DatabaseRecording[];
+    export type ResponseBody = DbRecording[];
   }
 
   /**
@@ -1484,7 +1484,7 @@ export namespace Videos {
    * @name RandomDetail
    * @summary Get random videos
    * @request GET:/videos/random/{limit}
-   * @response `200` `(DatabaseRecording)[]` OK
+   * @response `200` `(DbRecording)[]` OK
    * @response `400` `any` Error message
    * @response `500` `any` Error message
    */
@@ -1496,7 +1496,7 @@ export namespace Videos {
     export type RequestQuery = {};
     export type RequestBody = never;
     export type RequestHeaders = {};
-    export type ResponseBody = DatabaseRecording[];
+    export type ResponseBody = DbRecording[];
   }
 
   /**
@@ -1522,7 +1522,7 @@ export namespace Videos {
    * @name VideosDetail
    * @summary Return a list of videos for a particular channel
    * @request GET:/videos/{id}
-   * @response `200` `DatabaseRecording` OK
+   * @response `200` `DbRecording` OK
    * @response `400` `any` Error message
    * @response `500` `any` Error message
    */
@@ -1534,7 +1534,7 @@ export namespace Videos {
     export type RequestQuery = {};
     export type RequestBody = never;
     export type RequestHeaders = {};
-    export type ResponseBody = DatabaseRecording;
+    export type ResponseBody = DbRecording;
   }
 
   /**
@@ -1564,7 +1564,7 @@ export namespace Videos {
    * @name CutCreate
    * @summary Cut a video and merge all defined segments
    * @request POST:/videos/{id}/cut
-   * @response `200` `DatabaseJob` OK
+   * @response `200` `DbJob` OK
    * @response `400` `any` Error message
    * @response `500` `any` Error message
    */
@@ -1576,7 +1576,7 @@ export namespace Videos {
     export type RequestQuery = {};
     export type RequestBody = RequestsCutRequest;
     export type RequestHeaders = {};
-    export type ResponseBody = DatabaseJob;
+    export type ResponseBody = DbJob;
   }
 
   /**
@@ -1606,7 +1606,7 @@ export namespace Videos {
    * @name EnhanceCreate
    * @summary Enhance video quality
    * @request POST:/videos/{id}/enhance
-   * @response `200` `DatabaseJob` OK
+   * @response `200` `DbJob` OK
    * @response `400` `any` Error message
    * @response `500` `any` Error message
    */
@@ -1618,7 +1618,7 @@ export namespace Videos {
     export type RequestQuery = {};
     export type RequestBody = RequestsEnhanceRequest;
     export type RequestHeaders = {};
-    export type ResponseBody = DatabaseJob;
+    export type ResponseBody = DbJob;
   }
 
   /**
@@ -1669,7 +1669,7 @@ export namespace Videos {
    * @name PreviewCreate
    * @summary Generate preview for a certain video in a channel
    * @request POST:/videos/{id}/preview
-   * @response `200` `(DatabaseJob)[]` OK
+   * @response `200` `(DbJob)[]` OK
    * @response `400` `any` Error message
    * @response `500` `any` Error message
    */
@@ -1681,7 +1681,7 @@ export namespace Videos {
     export type RequestQuery = {};
     export type RequestBody = never;
     export type RequestHeaders = {};
-    export type ResponseBody = DatabaseJob[];
+    export type ResponseBody = DbJob[];
   }
 
   /**
@@ -1711,7 +1711,7 @@ export namespace Videos {
    * @name ConvertCreate
    * @summary Cut a video and merge all defined segments
    * @request POST:/videos/{id}/{mediaType}/convert
-   * @response `200` `DatabaseJob` OK
+   * @response `200` `DbJob` OK
    * @response `400` `any` Error message
    * @response `500` `any` Error message
    */
@@ -1725,7 +1725,7 @@ export namespace Videos {
     export type RequestQuery = {};
     export type RequestBody = never;
     export type RequestHeaders = {};
-    export type ResponseBody = DatabaseJob;
+    export type ResponseBody = DbJob;
   }
 }
 
@@ -2331,7 +2331,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @name ChannelsPartialUpdate
      * @summary Update channel data
      * @request PATCH:/channels/{id}
-     * @response `200` `DatabaseChannel` OK
+     * @response `200` `DbChannel` OK
      * @response `400` `any` Bad Request
      * @response `500` `any` Internal Server Error
      */
@@ -2340,7 +2340,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
       ChannelRequest: RequestsChannelRequest,
       params: RequestParams = {},
     ) =>
-      this.http.request<DatabaseChannel, any>({
+      this.http.request<DbChannel, any>({
         path: `/channels/${id}`,
         method: "PATCH",
         body: ChannelRequest,
@@ -2379,7 +2379,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @name MergeCreate
      * @summary Merge multiple videos
      * @request POST:/channels/{id}/merge
-     * @response `200` `DatabaseJob` OK
+     * @response `200` `DbJob` OK
      * @response `400` `any` Error message
      * @response `500` `any` Error message
      */
@@ -2388,7 +2388,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
       MergeRequest: RequestsMergeRequest,
       params: RequestParams = {},
     ) =>
-      this.http.request<DatabaseJob, any>({
+      this.http.request<DbJob, any>({
         path: `/channels/${id}/merge`,
         method: "POST",
         body: MergeRequest,
@@ -2497,7 +2497,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @name UploadCreate
      * @summary Upload video file to channel
      * @request POST:/channels/{id}/upload
-     * @response `200` `DatabaseRecording` OK
+     * @response `200` `DbRecording` OK
      * @response `400` `any` Bad Request
      * @response `500` `any` Internal Server Error
      */
@@ -2506,7 +2506,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
       data: UploadCreatePayload,
       params: RequestParams = {},
     ) =>
-      this.http.request<DatabaseRecording, any>({
+      this.http.request<DbRecording, any>({
         path: `/channels/${id}/upload`,
         method: "POST",
         body: data,
@@ -2523,11 +2523,11 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @name DiskList
      * @summary Get disk information
      * @request GET:/info/disk
-     * @response `200` `HelpersDiskInfo` OK
+     * @response `200` `UtilDiskInfo` OK
      * @response `500` `any` Internal Server Error
      */
     diskList: (params: RequestParams = {}) =>
-      this.http.request<HelpersDiskInfo, any>({
+      this.http.request<UtilDiskInfo, any>({
         path: `/info/disk`,
         method: "GET",
         type: ContentType.Json,
@@ -2542,14 +2542,14 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @name InfoDetail
      * @summary Get system metrics
      * @request GET:/info/{seconds}
-     * @response `200` `HelpersSysInfo` OK
+     * @response `200` `UtilSysInfo` OK
      * @response `500` `any` Internal Server Error
      */
     infoDetail: (
       { seconds, ...query }: InfoDetailParams,
       params: RequestParams = {},
     ) =>
-      this.http.request<HelpersSysInfo, any>({
+      this.http.request<UtilSysInfo, any>({
         path: `/info/${seconds}`,
         method: "GET",
         type: ContentType.Json,
@@ -2669,7 +2669,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @name JobsCreate
      * @summary Enqueue a preview job
      * @request POST:/jobs/{id}
-     * @response `200` `(DatabaseJob)[]` OK
+     * @response `200` `(DbJob)[]` OK
      * @response `400` `any` Error message
      * @response `500` `any` Error message
      */
@@ -2677,7 +2677,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
       { id, ...query }: JobsCreateParams,
       params: RequestParams = {},
     ) =>
-      this.http.request<DatabaseJob[], any>({
+      this.http.request<DbJob[], any>({
         path: `/jobs/${id}`,
         method: "POST",
         type: ContentType.Json,
@@ -2854,11 +2854,11 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @name VideosList
      * @summary Return a list of videos
      * @request GET:/videos
-     * @response `200` `(DatabaseRecording)[]` OK
+     * @response `200` `(DbRecording)[]` OK
      * @response `500` `any` Error message
      */
     videosList: (params: RequestParams = {}) =>
-      this.http.request<DatabaseRecording[], any>({
+      this.http.request<DbRecording[], any>({
         path: `/videos`,
         method: "GET",
         type: ContentType.Json,
@@ -2873,11 +2873,11 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @name BookmarksList
      * @summary Returns all bookmarked videos.
      * @request GET:/videos/bookmarks
-     * @response `200` `(DatabaseRecording)[]` OK
+     * @response `200` `(DbRecording)[]` OK
      * @response `500` `any` Error message
      */
     bookmarksList: (params: RequestParams = {}) =>
-      this.http.request<DatabaseRecording[], any>({
+      this.http.request<DbRecording[], any>({
         path: `/videos/bookmarks`,
         method: "GET",
         type: ContentType.Json,
@@ -2954,7 +2954,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @name RandomDetail
      * @summary Get random videos
      * @request GET:/videos/random/{limit}
-     * @response `200` `(DatabaseRecording)[]` OK
+     * @response `200` `(DbRecording)[]` OK
      * @response `400` `any` Error message
      * @response `500` `any` Error message
      */
@@ -2962,7 +2962,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
       { limit, ...query }: RandomDetailParams,
       params: RequestParams = {},
     ) =>
-      this.http.request<DatabaseRecording[], any>({
+      this.http.request<DbRecording[], any>({
         path: `/videos/random/${limit}`,
         method: "GET",
         type: ContentType.Json,
@@ -2996,7 +2996,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @name VideosDetail
      * @summary Return a list of videos for a particular channel
      * @request GET:/videos/{id}
-     * @response `200` `DatabaseRecording` OK
+     * @response `200` `DbRecording` OK
      * @response `400` `any` Error message
      * @response `500` `any` Error message
      */
@@ -3004,7 +3004,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
       { id, ...query }: VideosDetailParams,
       params: RequestParams = {},
     ) =>
-      this.http.request<DatabaseRecording, any>({
+      this.http.request<DbRecording, any>({
         path: `/videos/${id}`,
         method: "GET",
         type: ContentType.Json,
@@ -3041,7 +3041,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @name CutCreate
      * @summary Cut a video and merge all defined segments
      * @request POST:/videos/{id}/cut
-     * @response `200` `DatabaseJob` OK
+     * @response `200` `DbJob` OK
      * @response `400` `any` Error message
      * @response `500` `any` Error message
      */
@@ -3050,7 +3050,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
       CutRequest: RequestsCutRequest,
       params: RequestParams = {},
     ) =>
-      this.http.request<DatabaseJob, any>({
+      this.http.request<DbJob, any>({
         path: `/videos/${id}/cut`,
         method: "POST",
         body: CutRequest,
@@ -3088,7 +3088,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @name EnhanceCreate
      * @summary Enhance video quality
      * @request POST:/videos/{id}/enhance
-     * @response `200` `DatabaseJob` OK
+     * @response `200` `DbJob` OK
      * @response `400` `any` Error message
      * @response `500` `any` Error message
      */
@@ -3097,7 +3097,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
       EnhanceRequest: RequestsEnhanceRequest,
       params: RequestParams = {},
     ) =>
-      this.http.request<DatabaseJob, any>({
+      this.http.request<DbJob, any>({
         path: `/videos/${id}/enhance`,
         method: "POST",
         body: EnhanceRequest,
@@ -3161,7 +3161,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @name PreviewCreate
      * @summary Generate preview for a certain video in a channel
      * @request POST:/videos/{id}/preview
-     * @response `200` `(DatabaseJob)[]` OK
+     * @response `200` `(DbJob)[]` OK
      * @response `400` `any` Error message
      * @response `500` `any` Error message
      */
@@ -3169,7 +3169,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
       { id, ...query }: PreviewCreateParams,
       params: RequestParams = {},
     ) =>
-      this.http.request<DatabaseJob[], any>({
+      this.http.request<DbJob[], any>({
         path: `/videos/${id}/preview`,
         method: "POST",
         type: ContentType.Json,
@@ -3207,7 +3207,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @name ConvertCreate
      * @summary Cut a video and merge all defined segments
      * @request POST:/videos/{id}/{mediaType}/convert
-     * @response `200` `DatabaseJob` OK
+     * @response `200` `DbJob` OK
      * @response `400` `any` Error message
      * @response `500` `any` Error message
      */
@@ -3215,7 +3215,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
       { id, mediaType, ...query }: ConvertCreateParams,
       params: RequestParams = {},
     ) =>
-      this.http.request<DatabaseJob, any>({
+      this.http.request<DbJob, any>({
         path: `/videos/${id}/${mediaType}/convert`,
         method: "POST",
         type: ContentType.Json,

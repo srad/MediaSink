@@ -22,7 +22,7 @@
 
 <script setup lang="ts">
 import JobStatus from "./JobStatus.vue";
-import type { DatabaseJob } from "../services/api/v1/MediaSinkClient";
+import type { DbJob } from "../services/api/v1/MediaSinkClient";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 
@@ -36,7 +36,7 @@ const emit = defineEmits<{
 }>();
 
 const props = defineProps<{
-  jobs: DatabaseJob[];
+  jobs: DbJob[];
   isRecording: boolean;
   totalCount: number;
 }>();

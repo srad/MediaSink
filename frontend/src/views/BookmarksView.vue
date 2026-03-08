@@ -21,7 +21,7 @@
 </template>
 
 <script setup lang="ts">
-import type { DatabaseRecording } from "../services/api/v1/MediaSinkClient";
+import type { DbRecording } from "../services/api/v1/MediaSinkClient";
 import VideoItem from "../components/VideoItem.vue";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
@@ -33,14 +33,14 @@ import FillNotice from "@/components/FillNotice.vue";
 // --------------------------------------------------------------------------------------
 
 const { t } = useI18n();
-const videos = ref<DatabaseRecording[]>([]);
+const videos = ref<DbRecording[]>([]);
 const filterChannel = ref("");
 
 // --------------------------------------------------------------------------------------
 // Computes
 // --------------------------------------------------------------------------------------
 
-const filter = computed(() => Array.from(new Set(videos.value.map((x: DatabaseRecording) => x.channelName))));
+const filter = computed(() => Array.from(new Set(videos.value.map((x: DbRecording) => x.channelName))));
 
 const filteredVideos = computed(() => {
   if (filterChannel.value === "") {
@@ -53,20 +53,20 @@ const filteredVideos = computed(() => {
 // Functions
 // --------------------------------------------------------------------------------------
 
-const removeItem = (recording: DatabaseRecording) => {
+const removeItem = (recording: DbRecording) => {
   const i = videos.value.findIndex((r) => r.filename === recording.filename);
   if (i !== -1) {
     videos.value.splice(i, 1);
   }
 };
 
-const bookmark = (recording: DatabaseRecording) => {
+const bookmark = (recording: DbRecording) => {
   if (!recording.bookmark) {
     removeItem(recording);
   }
 };
 
-const destroyRecording = async (recording: DatabaseRecording) => {
+const destroyRecording = async (recording: DbRecording) => {
   if (!window.confirm(t("crud.destroy", [recording.filename]))) {
     return;
   }
@@ -87,6 +87,6 @@ const destroyRecording = async (recording: DatabaseRecording) => {
 onMounted(async () => {
   const client = createClient();
   const data = await client.videos.bookmarksList();
-  videos.value = (data || []) as DatabaseRecording[];
+  videos.value = (data || []) as DbRecording[];
 });
 </script>

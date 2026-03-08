@@ -31,7 +31,7 @@
 
 <script setup lang="ts">
 import VideoItem from "@/components/VideoItem.vue";
-import type { DatabaseRecording as RecordingResponse } from "@/services/api/v1/MediaSinkClient";
+import type { DbRecording as RecordingResponse } from "@/services/api/v1/MediaSinkClient";
 import { onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
 import { createClient } from "@/services/api/v1/ClientFactory";

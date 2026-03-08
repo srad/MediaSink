@@ -164,7 +164,7 @@
 </template>
 
 <script setup lang="ts">
-import type { DatabaseRecording, ResponsesAnalysisResponse } from "@/services/api/v1/MediaSinkClient";
+import type { DbRecording, ResponsesAnalysisResponse } from "@/services/api/v1/MediaSinkClient";
 import VideoStripe, { type Selection } from "@/components/VideoStripe.vue";
 import BusyOverlay from "@/components/BusyOverlay.vue";
 import { computed, inject, onMounted, onUnmounted, ref, watch } from "vue";
@@ -209,7 +209,7 @@ const playbackSpeed = ref(1.0);
 const markings = ref<Selection[]>([]);
 const timeCode = ref<number>(0);
 const duration = ref<number>(0);
-const recording = ref<DatabaseRecording | null>(null);
+const recording = ref<DbRecording | null>(null);
 const id = ref<number | null>(null);
 const busy = ref(false);
 const showConfirmDialog = ref(false);

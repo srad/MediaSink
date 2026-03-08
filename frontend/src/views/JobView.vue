@@ -115,7 +115,7 @@
 </template>
 
 <script setup lang="ts">
-import { DatabaseJobOrder, DatabaseJobStatus } from "../services/api/v1/MediaSinkClient";
+import { DbJobOrder, DbJobStatus } from "../services/api/v1/MediaSinkClient";
 import { useJobStore } from "../stores/job";
 import ModalConfirmDialog from "../components/modals/ModalConfirmDialog.vue";
 import { computed, onMounted, ref, watch } from "vue";
@@ -124,7 +124,7 @@ import { createClient } from "../services/api/v1/ClientFactory";
 import DataTable from "../components/DataTable.vue";
 import type { Column, TableRow } from "../types/table";
 import { useI18n } from "vue-i18n";
-import { type DatabaseJob } from "../services/api/v1/MediaSinkClient";
+import { type DbJob } from "../services/api/v1/MediaSinkClient";
 
 const jobStore = useJobStore();
 const route = useRoute();
@@ -147,17 +147,17 @@ watch(tab, (tab: JobType) => {
 
 type JobType = "open" | "processing" | "completed" | "canceled" | "error";
 
-const tabToJobType: { [key: string]: DatabaseJobStatus } = {
-  open: DatabaseJobStatus.StatusJobOpen,
-  processing: DatabaseJobStatus.StatusJobOpen,
-  completed: DatabaseJobStatus.StatusJobCompleted,
-  canceled: DatabaseJobStatus.StatusJobCanceled,
-  error: DatabaseJobStatus.StatusJobError,
+const tabToJobType: { [key: string]: DbJobStatus } = {
+  open: DbJobStatus.StatusJobOpen,
+  processing: DbJobStatus.StatusJobOpen,
+  completed: DbJobStatus.StatusJobCompleted,
+  canceled: DbJobStatus.StatusJobCanceled,
+  error: DbJobStatus.StatusJobError,
 };
 
 const jobs = computed(() => jobStore.withTime);
 
-export type JobTableItem = DatabaseJob & {
+export type JobTableItem = DbJob & {
   createdAtFromNow: string;
   startedFromNow?: string;
   completedAtFromNow?: string;
@@ -246,7 +246,7 @@ const load = async () => {
     open: false,
   };
 
-  await jobStore.load([tabToJobType[tab.value]], DatabaseJobOrder.JobOrderDESC, activeLookup[tab.value]);
+  await jobStore.load([tabToJobType[tab.value]], DbJobOrder.JobOrderDESC, activeLookup[tab.value]);
 };
 
 const destroy = (id: number) => {

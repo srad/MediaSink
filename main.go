@@ -12,9 +12,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
-	"github.com/srad/mediasink/controllers"
-	"github.com/srad/mediasink/database"
-	"github.com/srad/mediasink/services"
+	"github.com/srad/mediasink/internal/api"
+	"github.com/srad/mediasink/internal/db"
+	"github.com/srad/mediasink/internal/services"
 )
 
 var (
@@ -74,8 +74,8 @@ func main() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
-	database.Init()
-	// models.StartMetrics(conf.AppCfg.NetworkDev)
+	db.Init()
+	// models.StartMetrics(config.AppCfg.NetworkDev)
 	setupFolders()
 
 	services.StartUpJobs()
@@ -89,7 +89,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:           endPoint,
-		Handler:        controllers.Setup(Version, Commit, ApiVersion, frontendFS),
+		Handler:        api.Setup(Version, Commit, ApiVersion, frontendFS),
 		ReadTimeout:    12 * time.Hour,
 		WriteTimeout:   12 * time.Hour,
 		MaxHeaderBytes: 0,
@@ -118,7 +118,7 @@ func cleanup() {
 }
 
 func setupFolders() {
-	channels, err := database.ChannelList()
+	channels, err := db.ChannelList()
 	if err != nil {
 		log.Errorln(err)
 		return

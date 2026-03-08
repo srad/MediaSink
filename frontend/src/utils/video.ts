@@ -1,13 +1,13 @@
-import type { DatabaseRecording } from "../services/api/v1/MediaSinkClient";
+import type { DbRecording } from "../services/api/v1/MediaSinkClient";
 
-export const videoCover = (video: DatabaseRecording): string => {
+export const videoCover = (video: DbRecording): string => {
   if (video.videoPreview) {
     return video.videoPreview?.previewPath + "/0.jpg";
   }
   return video.channelName + "/.previews/live.jpg";
 };
 
-export const mapVideoFrames = (serverPath: string, video: DatabaseRecording): string[] => {
+export const mapVideoFrames = (serverPath: string, video: DbRecording): string[] => {
   if (video.videoPreview) {
     // intervals allow limiting the number of frames for browser performance reasons.
     const intervals = 2;

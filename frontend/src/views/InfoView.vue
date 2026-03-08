@@ -25,7 +25,7 @@
 </template>
 
 <script setup lang="ts">
-import type { HelpersCPUInfo, HelpersDiskInfo, HelpersNetInfo } from "@/services/api/v1/MediaSinkClient";
+import type { UtilCPUInfo, UtilDiskInfo, UtilNetInfo } from "@/services/api/v1/MediaSinkClient";
 import { inject, onMounted, type Ref, ref } from "vue";
 import { onBeforeRouteLeave } from "vue-router";
 import { createClient } from "@/services/api/v1/ClientFactory";
@@ -33,9 +33,9 @@ import { createClient } from "@/services/api/v1/ClientFactory";
 const build = inject("build") as string;
 const version = inject("version") as string;
 
-const cpuInfo = ref<HelpersCPUInfo | undefined>(undefined);
-const diskInfo = ref<HelpersDiskInfo | undefined>(undefined);
-const netInfo = ref<HelpersNetInfo | undefined>(undefined);
+const cpuInfo = ref<UtilCPUInfo | undefined>(undefined);
+const diskInfo = ref<UtilDiskInfo | undefined>(undefined);
+const netInfo = ref<UtilNetInfo | undefined>(undefined);
 
 const id = ref<number>(0);
 

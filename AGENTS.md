@@ -16,32 +16,34 @@ MediaSink.Go is a Go-based web server for video management, stream recording, an
 
 - **main.go**: Entry point that initializes database, services, and HTTP server
 - **frontend_embed.go**: Embeds `frontend/dist` into the Go binary at compile time via `go:embed`
-- **controllers/**: HTTP request handlers organized by domain (auth, channels, videos, jobs, etc.)
-  - **controllers/api/v1/**: API v1 handlers
-  - **controllers/router.go**: Route setup and middleware configuration
-  - **controllers/frontend.go**: Serves embedded frontend — `/env.js`, `/build.js`, and SPA catch-all
-- **services/**: Business logic for core features
+- **config/**: Configuration — reads exclusively from environment variables (`config.Read()` is cached via `sync.Once`)
+- **internal/api/**: HTTP request handlers organized by domain (auth, channels, videos, jobs, etc.)
+  - **internal/api/v1/**: API v1 handlers (11 handler files)
+  - **internal/api/router.go**: Route setup and middleware configuration
+  - **internal/api/frontend.go**: Serves embedded frontend — `/env.js`, `/build.js`, and SPA catch-all
+- **internal/services/**: Business logic for core features
   - `recording_service.go`: Video information updates and metadata
   - `recorder_service.go`: Recording orchestration and lifecycle
   - `channel_service.go`: Channel management
   - `job_service.go`: Background job processing (video enhancement, previews, merges)
   - `streaming_service.go`: Stream capture logic
   - `startup_service.go`: Application startup/recovery procedures
-- **database/**: Data access layer using GORM ORM
+- **internal/db/**: Data access layer using GORM ORM
   - Models for: channels, recordings, users, jobs, tags, settings
   - Database initialization and connection handling
-- **models/**: Data structures
-  - **models/requests/**: Request DTOs with validation tags
-  - **models/responses/**: Response DTOs
-- **analysis/**: Video analysis pipeline components
-  - **analysis/detectors/**: Scene/highlight detectors (SSIM, frame-diff, ONNX)
-  - **analysis/threshold/**: Adaptive threshold strategies
-  - **analysis/smoothing/**: Similarity smoothing methods
-- **middlewares/**: HTTP middleware (authentication, authorization)
-- **workers/**: Background tasks and utilities (metrics collection)
-- **helpers/**: Utility functions
-- **patterns/**: Pattern matching and stream detection logic
-- **conf/**: Configuration file (app.yml) and config loading
+- **internal/models/**: Data structures
+  - **internal/models/requests/**: Request DTOs with validation tags
+  - **internal/models/responses/**: Response DTOs
+- **internal/analysis/**: Video analysis pipeline components
+  - **internal/analysis/detectors/**: Scene/highlight detectors (SSIM, frame-diff, ONNX)
+  - **internal/analysis/threshold/**: Adaptive threshold strategies
+  - **internal/analysis/smoothing/**: Similarity smoothing methods
+- **internal/middleware/**: HTTP middleware (authentication, authorization)
+- **internal/jobs/**: Background job executor and worker pool; absorbs metrics helpers
+  - **internal/jobs/handlers/**: Per-job-type handler implementations
+- **internal/util/**: Utility functions (FFmpeg cmd, video probing, string/sys helpers)
+- **internal/ws/**: WebSocket event types and broadcasting
+- **internal/app/**: HTTP-layer helpers (request validation, response formatting, error shapes)
 - **frontend/**: Vue 3 TypeScript frontend (source lives here; see `frontend/CLAUDE.md` for details)
   - Built with Vite + npm; output goes to `frontend/dist/`
   - `frontend/dist/` is gitignored (build artifact) except for `frontend/dist/.gitkeep`
@@ -98,22 +100,21 @@ Runs all Go tests in the project. Sets test environment variables for database a
 - **WebSocket**: Real-time communication via `gorilla/websocket`
 - **Swagger**: API documentation via `swaggo`
 - **Logrus**: Structured logging
-- **Viper**: Configuration management
 
 ## Core Architecture
 
 ### Request Flow
-1. Routes defined in `controllers/router.go` with middleware stack
-2. `/env.js` and `/build.js` served dynamically by `controllers/frontend.go` (no auth required)
-3. `/api/v1/*` routes handled by `controllers/api/v1/*` with JWT auth middleware
+1. Routes defined in `internal/api/router.go` with middleware stack
+2. `/env.js` and `/build.js` served dynamically by `internal/api/frontend.go` (no auth required)
+3. `/api/v1/*` routes handled by `internal/api/v1/*` with JWT auth middleware
 4. `/videos/*` served as static files from the recordings directory
 5. `/swagger/*` serves Swagger UI
 6. All other paths fall through to the SPA handler which serves `frontend/dist/index.html`
-7. Services (`services/*`) contain business logic
-8. Database layer (`database/*`) handles persistence via GORM
+7. Services (`internal/services/*`) contain business logic
+8. Database layer (`internal/db/*`) handles persistence via GORM
 
 ### Frontend Integration
-The Vue 3 frontend is embedded into the Go binary at compile time using `go:embed all:frontend/dist` in `frontend_embed.go`. The embedded FS is passed to `controllers.Setup()` which registers three frontend-related handlers:
+The Vue 3 frontend is embedded into the Go binary at compile time using `go:embed all:frontend/dist` in `frontend_embed.go`. The embedded FS is passed to `api.Setup()` which registers three frontend-related handlers:
 
 - **`GET /env.js`**: Dynamically generated JavaScript that sets `window.APP_*` globals. Derives API and WebSocket URLs from the incoming request's `Host` header, so the binary works on any hostname without reconfiguration. Uses `wss://` automatically when the request arrived over TLS or behind a proxy that sets `X-Forwarded-Proto: https`.
 - **`GET /build.js`**: Dynamically generated JavaScript that sets `window.APP_VERSION`, `window.APP_BUILD`, and `window.APP_API_VERSION` from the Go binary's ldflags values.
@@ -130,7 +131,7 @@ The `Dockerfile` uses a multi-stage build:
 ### Authentication
 - JWT-based authentication
 - `SECRET` environment variable required (checked in `main.go` init)
-- Middleware: `middlewares.CheckAuthorizationHeader`
+- Middleware: `middleware.CheckAuthorizationHeader`
 
 ### Services & Background Processing
 - **Startup**: `services.StartUpJobs()` - recovery from crashes, integrity checks
@@ -139,7 +140,7 @@ The `Dockerfile` uses a multi-stage build:
 - All services gracefully shut down on SIGTERM/SIGINT
 
 ### Database
-- Initialized via `database.Init()` in main
+- Initialized via `db.Init()` in main
 - Supports SQLite (default), MySQL, or PostgreSQL via `DB_ADAPTER` env var
 - SQLite mode auto-registers `sqlite-vec` for vec0 virtual table support
 - Uses GORM models for type safety
@@ -149,13 +150,21 @@ The `Dockerfile` uses a multi-stage build:
 
 ## Configuration
 
-Located in `conf/app.*` (for example `conf/app.default.yml` and `conf/app.docker.yml`). Key environment variables:
-- `SECRET`: JWT secret (required)
-- `DB_ADAPTER`: Database type (mysql/postgres, default: sqlite)
-- `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_PORT`: Database credentials
-- `DB_FILENAME`: SQLite database file path (if using SQLite)
-- `REC_PATH`: Recordings directory (must exist, defaults to `/recordings`)
-- `DATA_DISK`: Disk root for storage status queries (must exist, defaults to `/disk`)
+All configuration is read from environment variables — there is no config file. `config.Read()` in `config/config.go` reads the variables once and caches the result.
+
+Required environment variables:
+- `SECRET`: JWT secret (required, checked at startup)
+- `DB_FILENAME`: SQLite database file path (required when using SQLite)
+- `REC_PATH`: Absolute path to the recordings directory (must exist)
+- `DATA_DIR`: Directory for preview/thumbnail data (e.g. `.previews`)
+- `DATA_DISK`: Disk mount path used for storage status queries (must exist)
+- `NET_ADAPTER`: Network interface name for bandwidth monitoring (e.g. `eth0`)
+
+Optional / database-specific:
+- `DB_ADAPTER`: Database type (`mysql`, `postgres`, or omit for SQLite)
+- `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_PORT`: Credentials for MySQL/PostgreSQL
+
+ONNX runtime:
 - `ONNXRUNTIME_LIB`: Path to `libonnxruntime.so`. Auto-detected by `run.sh` from common local paths; required version **1.24.1** (matches `yalue/onnxruntime_go v1.27.0`). Install via `./install-onnxruntime.sh`.
 
 Video analysis model path:
@@ -165,7 +174,7 @@ Default detector configuration (falls back to SSIM/FrameDiff when ONNX is unavai
 - Scene detector: `onnx_mobilenet_v3_large`
 - Highlight detector: `onnx_mobilenet_v3_large`
 
-ONNX tensor format: **NCHW** `(1, 3, H, W)` — `ImageToTensorNCHW()` in `analysis/preprocessing/conversion.go`.
+ONNX tensor format: **NCHW** `(1, 3, H, W)` — `ImageToTensorNCHW()` in `internal/analysis/preprocessing/conversion.go`.
 
 ## File System Requirements
 

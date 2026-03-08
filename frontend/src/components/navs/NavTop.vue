@@ -113,7 +113,7 @@ import DiskStatus from "../DiskStatus.vue";
 import VideoControls from "../VideoControls.vue";
 import AppBrand from "../AppBrand.vue";
 import ModalConfirmDialog from "../modals/ModalConfirmDialog.vue";
-import type { HelpersDiskInfo } from "../../services/api/v1/MediaSinkClient";
+import type { UtilDiskInfo } from "../../services/api/v1/MediaSinkClient";
 import { createClient } from "../../services/api/v1/ClientFactory";
 import { useAuthStore } from "../../stores/auth";
 import UserDropDown from "../navs/UserDropDown.vue";
@@ -179,7 +179,7 @@ const jobsCount = computed(() => jobStore.jobsCount);
 
 const query = async () => {
   const client = createClient();
-  const [recRes, diskRes] = await Promise.all<[Promise<boolean>, Promise<HelpersDiskInfo>]>([client.isRecording(), client.info.diskList()]);
+  const [recRes, diskRes] = await Promise.all<[Promise<boolean>, Promise<UtilDiskInfo>]>([client.isRecording(), client.info.diskList()]);
   isRecording.value = recRes;
   diskAvailablePercentage.value = diskRes.pcent;
 };
@@ -204,7 +204,7 @@ const record = async () => {
 
 const initialLoad = async () => {
   const client = createClient();
-  const res = await Promise.all<[Promise<boolean>, Promise<HelpersDiskInfo>]>([client.isRecording(), client.info.diskList()]);
+  const res = await Promise.all<[Promise<boolean>, Promise<UtilDiskInfo>]>([client.isRecording(), client.info.diskList()]);
   const [recRes, diskRes] = res;
   diskAvailablePercentage.value = diskRes.pcent;
   isRecording.value = recRes;

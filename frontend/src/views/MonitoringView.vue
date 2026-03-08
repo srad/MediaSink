@@ -33,7 +33,7 @@
 </template>
 
 <script setup lang="ts">
-import type { HelpersCPUInfo, HelpersDiskInfo, HelpersNetInfo } from "@/services/api/v1/MediaSinkClient";
+import type { UtilCPUInfo, UtilDiskInfo, UtilNetInfo } from "@/services/api/v1/MediaSinkClient";
 import TrafficChart from "@/components/charts/TrafficChart.vue";
 import CPUChart from "@/components/charts/CPUChart.vue";
 import { onMounted, ref } from "vue";
@@ -47,9 +47,9 @@ const importSize = ref(0);
 const trafficSeries = ref<{ in: number; out: number; time: number }[]>([]);
 const cpuLoadSeries = ref<{ load: number; time: number }[]>([]);
 
-const cpuInfo = ref<HelpersCPUInfo | undefined>(undefined);
-const diskInfo = ref<HelpersDiskInfo | undefined>(undefined);
-const netInfo = ref<HelpersNetInfo | undefined>(undefined);
+const cpuInfo = ref<UtilCPUInfo | undefined>(undefined);
+const diskInfo = ref<UtilDiskInfo | undefined>(undefined);
+const netInfo = ref<UtilNetInfo | undefined>(undefined);
 
 const id = ref<number>(0);
 
