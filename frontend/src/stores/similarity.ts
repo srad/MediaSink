@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
 import type {
-  DatabaseRecording,
+  DbRecording,
   ResponsesSimilarityGroupsResponse,
   ResponsesVisualSearchResponse,
 } from "@/services/api/v1/MediaSinkClient";
@@ -16,7 +16,7 @@ export const useSimilarityStore = defineStore(
     const searchSimilarity = ref(0.8);
     const searchLimit = ref(50);
     const searchResults = ref<ResponsesVisualSearchResponse | null>(null);
-    const selectedRecording = ref<DatabaseRecording | null>(null);
+    const selectedRecording = ref<DbRecording | null>(null);
     const previewDataUrl = ref<string | null>(null);
 
     // Group

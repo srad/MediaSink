@@ -42,7 +42,7 @@
 import VideoInfo from "./VideoInfo.vue";
 import VideoPreview from "./VideoPreview.vue";
 import VideoEnhancementModal from "./VideoEnhancementModal.vue";
-import type { DatabaseRecording as RecordingResponse } from "../services/api/v1/MediaSinkClient";
+import type { DbRecording as RecordingResponse } from "../services/api/v1/MediaSinkClient";
 import { computed, inject, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";

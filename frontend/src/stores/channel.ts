@@ -1,4 +1,4 @@
-import type { DatabaseChannel as ChannelResponse, DatabaseChannel, DatabaseRecording, RequestsChannelRequest, RequestsChannelRequest as ChannelRequest, ServicesChannelInfo as ChannelInfo } from "../services/api/v1/MediaSinkClient";
+import type { DbChannel as ChannelResponse, DbChannel, DbRecording, RequestsChannelRequest, RequestsChannelRequest as ChannelRequest, ServicesChannelInfo as ChannelInfo } from "../services/api/v1/MediaSinkClient";
 import { defineStore } from "pinia";
 import { createClient } from "../services/api/v1/ClientFactory";
 import { useJobStore } from "../stores/job";
@@ -28,7 +28,7 @@ export const useChannelStore = defineStore("channel", {
     },
   },
   actions: {
-    addRecording(r: DatabaseRecording) {
+    addRecording(r: DbRecording) {
       const channel = this.channels.find((ch) => ch.channelId === r.channelId);
       if (channel) {
         if (!channel.recordings) {
@@ -48,7 +48,7 @@ export const useChannelStore = defineStore("channel", {
       this.add(res);
       return res;
     },
-    async save(id: number, channel: RequestsChannelRequest): Promise<DatabaseChannel> {
+    async save(id: number, channel: RequestsChannelRequest): Promise<DbChannel> {
       const update = await createClient().channels.channelsPartialUpdate({ id }, channel);
       this.update(update);
       return update;
@@ -84,7 +84,7 @@ export const useChannelStore = defineStore("channel", {
         this.channels.push(channel);
       }
     },
-    update(channel: DatabaseChannel) {
+    update(channel: DbChannel) {
       const ch = this.channels.find((c) => c.channelId === channel.channelId);
       if (ch) {
         Object.assign(ch, channel);

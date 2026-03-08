@@ -82,7 +82,7 @@
 
 <script setup lang="ts">
 import { ref, watch } from "vue";
-import type { DatabaseRecording as RecordingResponse, RequestsEnhanceRequestEncodingPresetEnum, RequestsEnhanceRequestTargetResolutionEnum, RequestsEstimateEnhancementRequestEncodingPresetEnum, RequestsEstimateEnhancementRequestTargetResolutionEnum, ResponsesEnhancementDescriptions } from "../services/api/v1/MediaSinkClient";
+import type { DbRecording as RecordingResponse, RequestsEnhanceRequestEncodingPresetEnum, RequestsEnhanceRequestTargetResolutionEnum, RequestsEstimateEnhancementRequestEncodingPresetEnum, RequestsEstimateEnhancementRequestTargetResolutionEnum, ResponsesEnhancementDescriptions } from "../services/api/v1/MediaSinkClient";
 import { createClient } from "../services/api/v1/ClientFactory";
 import { createValidator, type ValidationMessage } from "../utils/validator";
 import AppAlert from "./AppAlert.vue";

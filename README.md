@@ -64,7 +64,7 @@ Builds the frontend and then the Go binary (self-contained, no separate web serv
 ./build.sh
 ```
 
-Configuration is loaded from `conf/app.*` (e.g. `conf/app.default.yml` and `conf/app.docker.yml`) and can be overridden with environment variables.
+All configuration is provided via environment variables (see the **Run** section below). There is no config file.
 
 For ONNX-based analysis outside Docker, set `ONNXRUNTIME_LIB` if the runtime library is not on your default linker path.
 
@@ -75,6 +75,17 @@ For ONNX-based analysis outside Docker, set `ONNXRUNTIME_LIB` if the runtime lib
 ```
 
 Builds the frontend if needed, then builds and starts the server on `http://0.0.0.0:3000`. The web UI is available at the same address.
+
+`run.sh` exports sensible local-development defaults for all required variables. For production, set them explicitly:
+
+| Variable | Description |
+|---|---|
+| `SECRET` | JWT secret (long random string) |
+| `DB_FILENAME` | SQLite file path (e.g. `/recordings/mediasink.sqlite3`) |
+| `REC_PATH` | Absolute path to recordings directory |
+| `DATA_DIR` | Preview/thumbnail directory (e.g. `.previews`) |
+| `DATA_DISK` | Disk mount path for storage queries (e.g. `/disk`) |
+| `NET_ADAPTER` | Network interface for bandwidth monitoring (e.g. `eth0`) |
 
 ### Frontend development (hot-reload)
 
@@ -137,6 +148,11 @@ services:
     environment:
       - TZ=${TIMEZONE}
       - SECRET=${SECRET}
+      - DB_FILENAME=/recordings/mediasink.sqlite3
+      - REC_PATH=/recordings
+      - DATA_DIR=.previews
+      - DATA_DISK=/disk
+      - NET_ADAPTER=${NET_ADAPTER}
     volumes:
       - ${DATA_PATH}:/recordings
       - ${DISK}:/disk
@@ -157,6 +173,9 @@ DATA_PATH=/path/to/files
 
 # Path to the disk root (used for disk status queries)
 DISK=/mnt/disk1
+
+# Network interface for bandwidth monitoring (ip link to find yours)
+NET_ADAPTER=eth0
 ```
 
 The web UI is available at `http://<host>:3000` and the API at `http://<host>:3000/api/v1`.

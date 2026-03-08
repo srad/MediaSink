@@ -1,8 +1,0 @@
-db:
-  filename: '/recordings/mediasink.sqlite3'
-dirs:
-  recordings: '/recordings'
-  data: '.previews'
-sys:
-  network: 'eth2'
-  disk: '/disk'

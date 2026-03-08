@@ -41,7 +41,7 @@
 </template>
 
 <script setup lang="ts">
-import { type DatabaseRecording, type DatabaseRecording as RecordingResponse, QueriesSortOrder, RequestsVideoSortColumn } from "../services/api/v1/MediaSinkClient";
+import { type DbRecording, type DbRecording as RecordingResponse, ModelsSortOrder, RequestsVideoSortColumn } from "../services/api/v1/MediaSinkClient";
 import VideoItem from "../components/VideoItem.vue";
 import { ref, useTemplateRef, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
@@ -68,17 +68,17 @@ const filterOrder = ref("desc");
 const filterColumn = ref("created_at");
 const filterLimit = ref("100");
 
-const fetch = async (column?: RequestsVideoSortColumn, order?: QueriesSortOrder, limit?: number) => {
+const fetch = async (column?: RequestsVideoSortColumn, order?: ModelsSortOrder, limit?: number) => {
   isLoading.value = true;
   const client = createClient();
   const data = await client.videos.filterCreate({
     skip: 0,
     take: limit || 100,
     sortColumn: column || RequestsVideoSortColumn.SortColumnCreatedAt,
-    sortOrder: order || QueriesSortOrder.SortDesc,
+    sortOrder: order || ModelsSortOrder.SortDesc,
   });
   videos.value =
-    (data.videos ?? []).map((video: DatabaseRecording) => ({
+    (data.videos ?? []).map((video: DbRecording) => ({
       video: video,
       jobTask: jobStore.isProcessing(video.recordingId),
     })) || [];
@@ -93,7 +93,7 @@ watch(
   ],
   async () => {
     const column = route.query.column as RequestsVideoSortColumn;
-    const order = route.query.order as QueriesSortOrder;
+    const order = route.query.order as ModelsSortOrder;
     const limit = parseInt(route.query.limit as string) || settingsStore.filterPageSize;
     await fetch(column, order, limit);
   },

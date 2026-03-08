@@ -39,7 +39,7 @@
 <script setup lang="ts">
 import { onMounted, ref, useTemplateRef } from "vue";
 
-import type { DatabaseChannel } from "@/services/api/v1/MediaSinkClient";
+import type { DbChannel } from "@/services/api/v1/MediaSinkClient";
 import { createClient } from "@/services/api/v1/ClientFactory";
 import { downloadObjectAsJson } from "@/utils/file";
 import LoadIndicator from "@/components/LoadIndicator.vue";
@@ -97,7 +97,7 @@ const inputFileChanged = (event: Event) => {
     .then((channels) => importChannels(channels));
 };
 
-const importChannels = async (channelsResponse: DatabaseChannel[]) => {
+const importChannels = async (channelsResponse: DbChannel[]) => {
   isImporting.value = true;
   const client = createClient();
 

@@ -346,7 +346,7 @@
 import { computed, inject, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 import { createClient } from "@/services/api/v1/ClientFactory";
-import type { DatabaseRecording } from "@/services/api/v1/MediaSinkClient";
+import type { DbRecording } from "@/services/api/v1/MediaSinkClient";
 import { useJobStore } from "@/stores/job";
 import { useSimilarityStore } from "@/stores/similarity";
 import { videoCover } from "@/utils/video";
@@ -367,7 +367,7 @@ const analysisProgress = computed(() => {
 });
 
 // ─── Shared library ────────────────────────────────────────────────────────────
-const library = ref<DatabaseRecording[]>([]);
+const library = ref<DbRecording[]>([]);
 const loadingLibrary = ref(false);
 
 onMounted(async () => {

@@ -1,4 +1,4 @@
-import { type DatabaseRecording as RecordingResponse, HttpClient, MediaSinkClient } from "./MediaSinkClient";
+import { type DbRecording as RecordingResponse, HttpClient, MediaSinkClient } from "./MediaSinkClient";
 import { useAuthStore } from "../../../stores/auth";
 import { handlePotentialServerError } from "../../../utils/serverError";
 

@@ -190,12 +190,8 @@ COPY --from=frontend_builder /app/dist ./frontend/dist
 RUN chmod a+x wait-for-it.sh
 RUN chmod a+x docker-entrypoint.sh
 
-COPY conf/app.docker.yml conf/app.yml
-# Assets like fonts will be copied in the final stage
-
 RUN go install github.com/swaggo/swag/cmd/swag@latest
-# Ensure swag is in PATH or use full path. $(go env GOPATH)/bin is usually in PATH.
-RUN $(go env GOPATH)/bin/swag init
+RUN $(go env GOPATH)/bin/swag init --parseDependency --parseInternal -g main.go -o docs
 
 RUN go mod tidy
 RUN go mod vendor
@@ -264,12 +260,6 @@ RUN apt-get -y install \
       yasm \
       zlib1g-dev
 
-# Install libtensorflow C library (required for TensorFlow Go bindings at runtime)
-RUN curl -L https://storage.googleapis.com/tensorflow/versions/2.18.0/libtensorflow-cpu-linux-x86_64.tar.gz | \
-    tar xz --directory /usr/local && \
-    ln -s /usr/local/external/local_tsl/tsl /usr/local/include/tsl && \
-    ldconfig
-
 WORKDIR /app
 
 # Copy built artifacts from builder stages
@@ -284,25 +274,10 @@ COPY --from=ffmpeg_builder /usr/local/bin/ffprobe /usr/local/bin/ffprobe
 # Copy assets
 COPY ./assets/DMMono-Regular.ttf /usr/share/fonts/truetype/
 COPY ./assets/live.jpg ./assets/
+COPY ./assets/models/mobilenet_v3_large.onnx ./assets/models/
 COPY ./docker-entrypoint.sh ./docker-entrypoint.sh
 COPY ./wait-for-it.sh ./wait-for-it.sh
-COPY ./conf/app.docker.yml conf/app.yml
 RUN fc-cache -fv
-
-# Download MobileNet-v2 SavedModel for TensorFlow-based video analysis
-RUN mkdir -p ./assets/models/mobilenet_v2 && \
-    curl -L "https://tfhub.dev/google/imagenet/mobilenet_v2_100_224/feature_vector/5?tf-hub-format=compressed" | \
-    tar -xz -C ./assets/models/mobilenet_v2
-
-# Download MobileNetV3-Large SavedModel for TensorFlow-based video analysis
-RUN mkdir -p ./assets/models/mobilenet_v3_large && \
-    curl -L "https://tfhub.dev/google/imagenet/mobilenet_v3_large_100_224/classification/5?tf-hub-format=compressed" | \
-    tar -xz -C ./assets/models/mobilenet_v3_large
-
-# Download MobileViT-XXS SavedModel for TensorFlow-based video analysis
-RUN mkdir -p ./assets/models/mobilevit && \
-    curl -L "https://www.kaggle.com/models/kaggle/mobilevit/TensorFlow2/xxs-1k-256/1?tf-hub-format=compressed" | \
-    tar -xz -C ./assets/models/mobilevit
 
 # Ensure scripts are executable
 RUN chmod +x /app/docker-entrypoint.sh

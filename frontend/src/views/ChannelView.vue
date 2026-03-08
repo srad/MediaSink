@@ -108,7 +108,7 @@
 
 <script setup lang="ts">
 import VideoItem from "../components/VideoItem.vue";
-import type { DatabaseRecording, DatabaseRecording as RecordingResponse, ServicesChannelInfo } from "../services/api/v1/MediaSinkClient";
+import type { DbRecording, DbRecording as RecordingResponse, ServicesChannelInfo } from "../services/api/v1/MediaSinkClient";
 import { computed, inject, onMounted, onUnmounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { MessageType, SocketManager } from "../utils/socket";
@@ -214,7 +214,7 @@ const destroySelection = async () => {
     for (let i = 0; i < selectedRecordings.value.length; i++) {
       const rec = selectedRecordings.value[i] as RecordingResponse;
       await client.videos.videosDelete({ id: rec.recordingId });
-      const index = channel.value?.recordings?.findIndex((x: DatabaseRecording) => x.recordingId === rec.recordingId);
+      const index = channel.value?.recordings?.findIndex((x: DbRecording) => x.recordingId === rec.recordingId);
       if (index && index !== -1) {
         channel.value?.recordings?.splice(index, 1);
       }

@@ -10,7 +10,7 @@
 </template>
 
 <script setup lang="ts">
-import { type DatabaseJob, type RequestsChannelRequest as ChannelRequest } from "@/services/api/v1/MediaSinkClient";
+import { type DbJob, type RequestsChannelRequest as ChannelRequest } from "@/services/api/v1/MediaSinkClient";
 import { MessageType } from "@/utils/socket";
 import { useSocket } from "@/composables/useSocket";
 import ChannelModal from "@/components/modals/ChannelModal.vue";
@@ -117,11 +117,11 @@ const handleJobStart = (message: unknown) => {
 };
 
 const handleJobCreate = (data: unknown) => {
-  const job = data as DatabaseJob;
+  const job = data as DbJob;
   jobStore.add(job);
   toastStore.success({
     title: "Job created",
-    message: `File ${(job as DatabaseJob).filename} in ${(job as DatabaseJob).channelName}`,
+    message: `File ${(job as DbJob).filename} in ${(job as DbJob).channelName}`,
   });
 };
 

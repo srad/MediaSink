@@ -1,4 +1,4 @@
-import { type DatabaseJob, type DatabaseJob as Job, DatabaseJobOrder, DatabaseJobStatus } from "../services/api/v1/MediaSinkClient";
+import { type DbJob, type DbJob as Job, DbJobOrder, DbJobStatus } from "../services/api/v1/MediaSinkClient";
 import { defineStore } from "pinia";
 import { createClient } from "../services/api/v1/ClientFactory";
 import type { JobTableItem } from "../views/JobView.vue";
@@ -47,7 +47,7 @@ export const useJobStore = defineStore("job", {
     withTime: (state: JobState): JobTableItem[] =>
       state.jobs
         .sort((a, b) => +b.active - +a.active)
-        .map(function (job: DatabaseJob) {
+        .map(function (job: DbJob) {
           return {
             ...job,
             createdAtFromNow: fromNow(Date.parse(job.createdAt)),
@@ -60,7 +60,7 @@ export const useJobStore = defineStore("job", {
       return state.jobs || [];
     },
     open: (state: JobState): Job[] => {
-      return (state.jobs || []).filter((x: Job) => x.status === DatabaseJobStatus.StatusJobOpen);
+      return (state.jobs || []).filter((x: Job) => x.status === DbJobStatus.StatusJobOpen);
     },
     // A little function acrobatics: getters are treated as functions and immediately called.
     isProcessing: (state: JobState): ((recordingId: number) => string | null) => {
@@ -68,7 +68,7 @@ export const useJobStore = defineStore("job", {
     },
   },
   actions: {
-    async load(states: DatabaseJobStatus[] = [DatabaseJobStatus.StatusJobOpen], sortOrder: DatabaseJobOrder = DatabaseJobOrder.JobOrderASC, active?: boolean) {
+    async load(states: DbJobStatus[] = [DbJobStatus.StatusJobOpen], sortOrder: DbJobOrder = DbJobOrder.JobOrderASC, active?: boolean) {
       const client = createClient();
 
       const response = await client.jobs.listCreate({
