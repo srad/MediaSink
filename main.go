@@ -32,7 +32,17 @@ func init() {
 	log.Infoln("OK: JWT SECRET environment variable is set.")
 
 	// 2. File paths
-	directories := []string{"/disk", "/recordings"}
+	// Respect configured env paths so local/dev runs do not require root-level
+	// /disk and /recordings directories.
+	dataDisk := os.Getenv("DATA_DISK")
+	if dataDisk == "" {
+		dataDisk = "/disk"
+	}
+	recPath := os.Getenv("REC_PATH")
+	if recPath == "" {
+		recPath = "/recordings"
+	}
+	directories := []string{dataDisk, recPath}
 	for _, path := range directories {
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			log.Fatalf("ERROR: Path %s does not exist.", path)
@@ -79,7 +89,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:           endPoint,
-		Handler:        controllers.Setup(Version, Commit, ApiVersion),
+		Handler:        controllers.Setup(Version, Commit, ApiVersion, frontendFS),
 		ReadTimeout:    12 * time.Hour,
 		WriteTimeout:   12 * time.Hour,
 		MaxHeaderBytes: 0,

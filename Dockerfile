@@ -36,6 +36,19 @@ RUN sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
 ENV LANG=en_US.UTF-8
 
 # -----------------------------------------------------------------------------------
+# Stage: Frontend Builder
+# -----------------------------------------------------------------------------------
+FROM node:22-bookworm AS frontend_builder
+
+WORKDIR /app
+
+COPY frontend/package*.json ./
+RUN npm install
+
+COPY frontend/ ./
+RUN npm run build
+
+# -----------------------------------------------------------------------------------
 # Stage: yt-dlp Installer (Replaces Youtube-DL Builder)
 # -----------------------------------------------------------------------------------
 FROM builder_base AS yt_dlp_builder
@@ -163,12 +176,6 @@ RUN apt-get update && \
       curl \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install libtensorflow C library (required for TensorFlow Go bindings)
-RUN curl -L https://storage.googleapis.com/tensorflow/versions/2.18.0/libtensorflow-cpu-linux-x86_64.tar.gz | \
-    tar xz --directory /usr/local && \
-    ln -s /usr/local/external/local_tsl/tsl /usr/local/include/tsl && \
-    ldconfig
-
 WORKDIR /app
 RUN mkdir -p docs
 
@@ -176,6 +183,9 @@ COPY go.mod go.sum ./
 RUN go mod download && go mod verify
 
 COPY . .
+
+# Overlay the pre-built frontend so go:embed picks it up
+COPY --from=frontend_builder /app/dist ./frontend/dist
 
 RUN chmod a+x wait-for-it.sh
 RUN chmod a+x docker-entrypoint.sh

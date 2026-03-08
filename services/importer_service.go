@@ -86,26 +86,26 @@ func ImportChannels(context.Context) error {
 			continue
 		}
 
-		newChannel, err4 := database.CreateChannel(channelName, channelName.String(), "https://"+channelName.String())
-		if err4 != nil {
-			log.Errorf("[Import/%s (%d/%d)] Error creating channel: %v", channelName, importProgress, importSize, err4)
-		// Skip this channel if it cannot be created
-		continue
-	}
+		newChannel, errCreate := database.CreateChannel(channelName, channelName.String(), "https://"+channelName.String())
+		if errCreate != nil {
+			log.Errorf("[Import/%s (%d/%d)] Error creating channel: %v", channelName, importProgress, importSize, errCreate)
+			// Skip this channel if it cannot be created.
+			continue
+		}
 
-	// ---------------------------------------------------------------------------------
-	// Import individual files
-	// ---------------------------------------------------------------------------------
-	files, err2 := os.ReadDir(channelName.AbsoluteChannelPath())
-		if err2 != nil {
-			log.Errorf("[Import/%s] Error reading: %s", channelName, err2)
+		// ---------------------------------------------------------------------------------
+		// Import individual files
+		// ---------------------------------------------------------------------------------
+		files, errReadDir := os.ReadDir(channelName.AbsoluteChannelPath())
+		if errReadDir != nil {
+			log.Errorf("[Import/%s] Error reading: %s", channelName, errReadDir)
 			continue
 		}
 
 		// ---------------------------------------------------------------------------------
 		// Traverse all mp4 files and add to models if not existent
 		// ---------------------------------------------------------------------------------
-		var j = 0
+		j := 0
 		log.Infof("[Import/%s (%d/%d)] Traverse all mp4 files and add to models if not existent (files: %d) ...", channelName, importProgress, importSize, len(files))
 		for _, file := range files {
 			j++
@@ -136,15 +136,21 @@ func ImportChannels(context.Context) error {
 				continue
 			}
 
-			// Check if preview frames exist (both database entry and physical folder)
 			previewFramesPath := newRecording.RecordingID.GetPreviewFramesPath(newRecording.ChannelName)
 			_, dbErr := database.FindVideoPreviewByRecordingID(newRecording.RecordingID)
-			_, folderErr := os.Stat(previewFramesPath)
+			hasDBEntry := dbErr == nil
 
-			needsPreview := dbErr != nil || folderErr != nil
+			needsPreview, reason, errValidate := validatePreviewFrames(previewFramesPath, hasDBEntry)
+			if errValidate != nil {
+				log.Errorf("[Import/%s] Preview validation error for recording %d: %v", channelName, newRecording.RecordingID, errValidate)
+				needsPreview = true
+				if reason == "" {
+					reason = previewValidationUnknown
+				}
+			}
 
 			if needsPreview {
-				// Preview doesn't exist or frames folder is missing, enqueue preview frames job
+				log.Infof("[Import/%s] Preview regeneration required for recording %d (%s)", channelName, newRecording.RecordingID, reason)
 				if _, err := newRecording.EnqueuePreviewFramesJob(); err != nil {
 					log.Errorf("[Import/%s] Error enqueueing preview frames job: %s", channelName, err)
 				}

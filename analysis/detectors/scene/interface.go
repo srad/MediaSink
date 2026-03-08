@@ -4,7 +4,6 @@ import (
 	"image"
 
 	"github.com/srad/mediasink/database"
-	"gonum.org/v1/gonum/mat"
 )
 
 // SceneDetector defines the interface for scene detection algorithms
@@ -18,7 +17,4 @@ type SceneDetector interface {
 
 	// Close releases any resources held by the detector
 	Close() error
-
-	// ExtractFeatures extracts a feature vector from a frame
-	ExtractFeatures(frame image.Image) (*mat.VecDense, error)
 }

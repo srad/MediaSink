@@ -11,6 +11,33 @@ import (
 	"github.com/srad/mediasink/services"
 )
 
+// AnalyzeAllVideos godoc
+// @Summary     Enqueue analysis jobs for all recordings
+// @Description Enqueues a video analysis job for every recording in the library.
+// @Tags        analysis
+// @Produce     json
+// @Success     200 {object} responses.EnqueueAllResponse
+// @Failure     500 {} string "Error message"
+// @Router      /analysis/all [post]
+func AnalyzeAllVideos(c *gin.Context) {
+	appG := app.Gin{C: c}
+
+	recordings, err := database.RecordingsList()
+	if err != nil {
+		appG.Error(http.StatusInternalServerError, err)
+		return
+	}
+
+	enqueued := 0
+	for _, rec := range recordings {
+		if _, err := rec.EnqueueAnalysisJob(); err == nil {
+			enqueued++
+		}
+	}
+
+	appG.Response(http.StatusOK, responses.EnqueueAllResponse{Enqueued: enqueued})
+}
+
 // AnalyzeVideo godoc
 // @Summary     Analyze video frames for scenes and highlights
 // @Description Analyze preview frames to detect scenes and highlights. Runs in background as a job.

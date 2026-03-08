@@ -1,0 +1,15 @@
+export default {
+  orderBy: "Order by",
+  order: "Order",
+  limit: "Limit",
+  reset: "Reset",
+  createdAt: "Created At",
+  fileSize: "File size",
+  duration: "Duration",
+  asc: "Asc",
+  desc: "Desc",
+  25: "25",
+  50: "50",
+  100: "100",
+  200: "200",
+};
