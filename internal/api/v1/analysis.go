@@ -30,6 +30,18 @@ func AnalyzeAllVideos(c *gin.Context) {
 
 	enqueued := 0
 	for _, rec := range recordings {
+		// Skip if already analyzed successfully
+		analysis, err := db.GetAnalysisByRecordingID(rec.RecordingID)
+		if err == nil && analysis != nil && analysis.Status == db.AnalysisCompleted {
+			continue
+		}
+
+		// Skip if analysis job already queued
+		_, exists, err := db.JobExists(rec.RecordingID, db.TaskAnalyzeFrames)
+		if err == nil && exists {
+			continue
+		}
+
 		if _, err := rec.EnqueueAnalysisJob(); err == nil {
 			enqueued++
 		}

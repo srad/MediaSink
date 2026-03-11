@@ -314,6 +314,7 @@ ENV REC_PATH="/recordings"
 ENV DATA_DIR=".previews"
 ENV DATA_DISK="/disk"
 ENV NET_ADAPTER="eth0"
+ENV ONNXRUNTIME_LIB="/usr/local/lib/libonnxruntime.so"
 
 EXPOSE 3000
 

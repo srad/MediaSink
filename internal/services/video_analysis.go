@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/srad/mediasink/internal/analysis/detectors"
@@ -83,133 +82,91 @@ func AnalyzeVideoFramesWithConfig(recordingID db.RecordingID, channelName db.Cha
 		handlers.EmitJobProgress(job, 10, 100, fmt.Sprintf("Found %d frames", len(framePaths)))
 	}
 
-	useOnnx := strings.Contains(sceneDetector.Name(), "onnx") || strings.Contains(highlightDetector.Name(), "onnx")
-
 	var scenes []db.SceneInfo
 	var highlights []db.HighlightInfo
 
-	if useOnnx {
-		log.Infof("[AnalyzeVideoFrames] Using ONNX streaming processing with sqlite-vec")
+	log.Infof("[AnalyzeVideoFrames] Using ONNX streaming processing with sqlite-vec")
 
-		var featureExtractor FeatureExtractor
-		if fx, ok := sceneDetector.(FeatureExtractor); ok {
-			featureExtractor = fx
-		} else if fx, ok := highlightDetector.(FeatureExtractor); ok {
-			featureExtractor = fx
-		}
-		if featureExtractor == nil {
-			return fmt.Errorf("no FeatureExtractor available from ONNX detectors")
-		}
+	var featureExtractor FeatureExtractor
+	if fx, ok := sceneDetector.(FeatureExtractor); ok {
+		featureExtractor = fx
+	} else if fx, ok := highlightDetector.(FeatureExtractor); ok {
+		featureExtractor = fx
+	}
+	if featureExtractor == nil {
+		return fmt.Errorf("no FeatureExtractor available from ONNX detectors")
+	}
 
-		// Phase 1: run ONNX inference with no DB connection held.
-		// Vectors are accumulated in memory so the database is never locked
-		// during the CPU-intensive extraction step.
-		type frameVec struct {
-			vec       []float32
-			timestamp float64
-		}
-		vecs := make([]frameVec, 0, len(framePaths))
-		for i, path := range framePaths {
-			frame, err := loadFrame(path)
-			if err != nil {
-				log.Warnf("[AnalyzeVideoFrames] Failed to load frame %s: %v", path, err)
-				continue
-			}
-
-			vec, err := featureExtractor.ExtractFeatures(frame)
-			if err != nil {
-				return fmt.Errorf("feature extraction failed for frame %s: %w", path, err)
-			}
-			vecs = append(vecs, frameVec{vec: vec, timestamp: frameTimestamps[i]})
-
-			if job != nil && i%50 == 0 {
-				progress := uint64(10 + int(float64(i)/float64(len(framePaths))*30))
-				handlers.EmitJobProgress(job, progress, 100, fmt.Sprintf("Extracting features: %d/%d frames", i+1, len(framePaths)))
-			}
+	// Phase 1: run ONNX inference with no DB connection held.
+	// Vectors are accumulated in memory so the database is never locked
+	// during the CPU-intensive extraction step.
+	type frameVec struct {
+		vec       []float32
+		timestamp float64
+	}
+	vecs := make([]frameVec, 0, len(framePaths))
+	for i, path := range framePaths {
+		frame, err := loadFrame(path)
+		if err != nil {
+			log.Warnf("[AnalyzeVideoFrames] Failed to load frame %s: %v", path, err)
+			continue
 		}
 
-		// Phase 2: write all vectors in a single short transaction.
-		if len(vecs) > 0 {
-			writer, err := db.NewFrameVectorWriter(recordingID, len(vecs[0].vec))
-			if err != nil {
-				log.Warnf("[AnalyzeVideoFrames] Failed to create vector writer: %v", err)
-			} else {
-				for i, fv := range vecs {
-					if err := writer.Write(fv.vec, fv.timestamp); err != nil {
-						writer.Rollback()
-						return fmt.Errorf("failed to write frame vector %d: %w", i, err)
-					}
-				}
-				if err := writer.Commit(); err != nil {
-					return fmt.Errorf("failed to commit frame vectors: %w", err)
+		vec, err := featureExtractor.ExtractFeatures(frame)
+		if err != nil {
+			return fmt.Errorf("feature extraction failed for frame %s: %w", path, err)
+		}
+		vecs = append(vecs, frameVec{vec: vec, timestamp: frameTimestamps[i]})
+
+		if job != nil && i%50 == 0 {
+			progress := uint64(10 + int(float64(i)/float64(len(framePaths))*30))
+			handlers.EmitJobProgress(job, progress, 100, fmt.Sprintf("Extracting features: %d/%d frames", i+1, len(framePaths)))
+		}
+	}
+
+	// Phase 2: write all vectors in a single short transaction.
+	if len(vecs) > 0 {
+		writer, err := db.NewFrameVectorWriter(recordingID, len(vecs[0].vec))
+		if err != nil {
+			log.Warnf("[AnalyzeVideoFrames] Failed to create vector writer: %v", err)
+		} else {
+			for i, fv := range vecs {
+				if err := writer.Write(fv.vec, fv.timestamp); err != nil {
+					writer.Rollback()
+					return fmt.Errorf("failed to write frame vector %d: %w", i, err)
 				}
 			}
-		}
-		log.Infof("[AnalyzeVideoFrames] Saved frame vectors to sqlite-vec")
-
-		if job != nil {
-			handlers.EmitJobProgress(job, 40, 100, "Features extracted, querying similarities")
-		}
-
-		// Query consecutive cosine similarities directly from sqlite-vec.
-		simTimestamps, similarities, err := db.QueryConsecutiveSimilarities(recordingID)
-		if err != nil {
-			return fmt.Errorf("failed to query consecutive similarities: %w", err)
-		}
-
-		scenes, err = detectScenesFromSimilarities(similarities, simTimestamps, job)
-		if err != nil {
-			log.Errorf("[AnalyzeVideoFrames] Scene detection failed: %v", err)
-			return err
-		}
-
-		if job != nil {
-			handlers.EmitJobProgress(job, 60, 100, fmt.Sprintf("Detected %d scenes", len(scenes)))
-		}
-
-		highlights, err = detectHighlightsFromSimilarities(similarities, simTimestamps, job)
-		if err != nil {
-			log.Errorf("[AnalyzeVideoFrames] Highlight detection failed: %v", err)
-			return err
-		}
-	} else {
-		// Single-pass approach: load all frames for non-ONNX detectors (SSIM, FrameDiff).
-		log.Infof("[AnalyzeVideoFrames] Loading all frames for non-ONNX detector")
-
-		var frames []image.Image
-		for i, path := range framePaths {
-			frame, err := loadFrame(path)
-			if err != nil {
-				log.Warnf("[AnalyzeVideoFrames] Failed to load frame %s: %v", path, err)
-				continue
-			}
-			frames = append(frames, frame)
-
-			if job != nil && i%50 == 0 {
-				progress := uint64(10 + int(float64(i)/float64(len(framePaths))*30))
-				handlers.EmitJobProgress(job, progress, 100, fmt.Sprintf("Loading frames: %d/%d", i+1, len(framePaths)))
+			if err := writer.Commit(); err != nil {
+				return fmt.Errorf("failed to commit frame vectors: %w", err)
 			}
 		}
+	}
+	log.Infof("[AnalyzeVideoFrames] Saved frame vectors to sqlite-vec")
 
-		if job != nil {
-			handlers.EmitJobProgress(job, 40, 100, fmt.Sprintf("Loaded %d frames", len(frames)))
-		}
+	if job != nil {
+		handlers.EmitJobProgress(job, 40, 100, "Features extracted, querying similarities")
+	}
 
-		scenes, err = sceneDetector.DetectScenes(frames, frameTimestamps)
-		if err != nil {
-			log.Errorf("[AnalyzeVideoFrames] Scene detection failed (%s): %v", sceneDetector.Name(), err)
-			return err
-		}
+	// Query consecutive cosine similarities directly from sqlite-vec.
+	simTimestamps, similarities, err := db.QueryConsecutiveSimilarities(recordingID)
+	if err != nil {
+		return fmt.Errorf("failed to query consecutive similarities: %w", err)
+	}
 
-		if job != nil {
-			handlers.EmitJobProgress(job, 60, 100, fmt.Sprintf("Detected %d scenes", len(scenes)))
-		}
+	scenes, err = detectScenesFromSimilarities(similarities, simTimestamps, job)
+	if err != nil {
+		log.Errorf("[AnalyzeVideoFrames] Scene detection failed: %v", err)
+		return err
+	}
 
-		highlights, err = highlightDetector.DetectHighlights(frames, frameTimestamps)
-		if err != nil {
-			log.Errorf("[AnalyzeVideoFrames] Highlight detection failed (%s): %v", highlightDetector.Name(), err)
-			return err
-		}
+	if job != nil {
+		handlers.EmitJobProgress(job, 60, 100, fmt.Sprintf("Detected %d scenes", len(scenes)))
+	}
+
+	highlights, err = detectHighlightsFromSimilarities(similarities, simTimestamps, job)
+	if err != nil {
+		log.Errorf("[AnalyzeVideoFrames] Highlight detection failed: %v", err)
+		return err
 	}
 
 	if job != nil {

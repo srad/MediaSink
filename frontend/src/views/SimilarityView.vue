@@ -30,7 +30,7 @@
     <div v-show="sim.tab === 'search'">
       <div class="row g-4">
         <!-- Controls -->
-        <div class="col-12 col-lg-4 col-xl-3">
+        <div class="col-12 col-xl-4 col-xxl-3">
           <div class="panel">
             <!-- Source toggle -->
             <div class="panel-section">
@@ -145,7 +145,7 @@
         </div>
 
         <!-- Results -->
-        <div class="col-12 col-lg-8 col-xl-9">
+        <div class="col-12 col-xl-8 col-xxl-9">
           <div v-if="!sim.searchResults && !searching" class="empty-state">
             <i class="bi bi-images empty-icon"></i>
             <div class="empty-title">Ready to search</div>
@@ -208,7 +208,7 @@
     <div v-show="sim.tab === 'group'">
       <div class="row g-4">
       <!-- Controls -->
-      <div class="col-12 col-lg-4 col-xl-3">
+      <div class="col-12 col-xl-4 col-xxl-3">
         <div class="panel">
           <!-- Threshold slider -->
           <div class="panel-section">
@@ -261,7 +261,7 @@
       </div>
 
       <!-- Group results -->
-      <div class="col-12 col-lg-8 col-xl-9">
+      <div class="col-12 col-xl-8 col-xxl-9">
         <div v-if="!sim.groupResults && !grouping" class="empty-state">
           <i class="bi bi-collection empty-icon"></i>
           <div class="empty-title">No groups yet</div>

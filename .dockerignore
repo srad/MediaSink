@@ -12,7 +12,10 @@ docker-compose*
 .dockerignore
 .git
 .gitignore
-README.md
 LICENSE
 .vscode
 .idea
+.claude
+.gemini
+.runtime
+frontend/node_modules

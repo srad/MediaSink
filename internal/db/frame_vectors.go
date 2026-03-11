@@ -5,7 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math"
-	"os"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -43,13 +43,6 @@ type RecordingSimilarityEdge struct {
 // than a hard failure — the table is created lazily on first analysis.
 func isNoSuchTable(err error) bool {
 	return err != nil && strings.Contains(strings.ToLower(err.Error()), "no such table")
-}
-
-// isSQLite reports whether the configured database adapter is SQLite.
-// The frame_vectors vec0 virtual table is SQLite-only.
-func isSQLite() bool {
-	a := os.Getenv("DB_ADAPTER")
-	return a == "" || a == "sqlite" || a == "sqlite3"
 }
 
 // serializeFloat32 encodes a float32 slice to the raw IEEE 754 little-endian
@@ -103,9 +96,6 @@ type FrameVectorWriter struct {
 // NewFrameVectorWriter opens a transaction and prepares the insert statement.
 // Returns nil, nil when the database is not SQLite (no-op path).
 func NewFrameVectorWriter(recordingID RecordingID, dim int) (*FrameVectorWriter, error) {
-	if !isSQLite() {
-		return nil, nil
-	}
 	if err := ensureVecTable(dim); err != nil {
 		return nil, fmt.Errorf("NewFrameVectorWriter: table init: %w", err)
 	}
@@ -162,9 +152,6 @@ func (w *FrameVectorWriter) Rollback() {
 // given recording. Called before re-running analysis on a recording so stale
 // vectors do not accumulate.
 func DeleteFrameVectorsByRecordingID(recordingID RecordingID) error {
-	if !isSQLite() {
-		return nil
-	}
 	sqlDB, err := DB.DB()
 	if err != nil {
 		return err
@@ -181,9 +168,6 @@ func DeleteFrameVectorsByRecordingID(recordingID RecordingID) error {
 // Returns (timestamps, similarities) where timestamps[i] is the timestamp of
 // the second frame in pair i (i.e. frameTimestamps[i+1] in the original list).
 func QueryConsecutiveSimilarities(recordingID RecordingID) ([]float64, []float64, error) {
-	if !isSQLite() {
-		return nil, nil, fmt.Errorf("QueryConsecutiveSimilarities requires SQLite")
-	}
 	sqlDB, err := DB.DB()
 	if err != nil {
 		return nil, nil, err
@@ -221,9 +205,6 @@ func QueryConsecutiveSimilarities(recordingID RecordingID) ([]float64, []float64
 // SearchSimilarFrames performs a K-nearest-neighbour search over all stored
 // frame vectors and returns the k closest frames by L2 distance.
 func SearchSimilarFrames(queryVector []float32, k int) ([]FrameVectorResult, error) {
-	if !isSQLite() {
-		return nil, fmt.Errorf("SearchSimilarFrames requires SQLite")
-	}
 	if err := ensureVecTable(len(queryVector)); err != nil {
 		return nil, fmt.Errorf("SearchSimilarFrames: table init: %w", err)
 	}
@@ -247,9 +228,6 @@ func SearchSimilarFrames(queryVector []float32, k int) ([]FrameVectorResult, err
 
 // SearchSimilarFramesByRecording performs KNN restricted to a single recording.
 func SearchSimilarFramesByRecording(recordingID RecordingID, queryVector []float32, k int) ([]FrameVectorResult, error) {
-	if !isSQLite() {
-		return nil, fmt.Errorf("SearchSimilarFramesByRecording requires SQLite")
-	}
 	if err := ensureVecTable(len(queryVector)); err != nil {
 		return nil, fmt.Errorf("SearchSimilarFramesByRecording: table init: %w", err)
 	}
@@ -289,9 +267,6 @@ func scanVectorResults(rows *sql.Rows) ([]FrameVectorResult, error) {
 // SearchSimilarRecordingsByVector returns one best-matching frame per recording,
 // sorted by cosine similarity descending.
 func SearchSimilarRecordingsByVector(queryVector []float32, minSimilarity float64, limit int) ([]SimilarRecordingResult, error) {
-	if !isSQLite() {
-		return nil, fmt.Errorf("SearchSimilarRecordingsByVector requires SQLite")
-	}
 	if len(queryVector) == 0 {
 		return nil, fmt.Errorf("query vector must not be empty")
 	}
@@ -306,12 +281,17 @@ func SearchSimilarRecordingsByVector(queryVector []float32, minSimilarity float6
 		return nil, err
 	}
 
+	// Use sqlite-vec's optimized MATCH index with a safely bounded k=4000.
+	// The maximum allowed limit for k in sqlite-vec is 4096.
+	// This retrieves the 4000 closest frames instantly, which we then group
+	// by recording_id to return the top distinct matching videos.
 	rows, err := sqlDB.Query(`
-		WITH scored AS (
+		WITH knn AS (
 		  SELECT recording_id,
 		         frame_timestamp,
-		         1.0 - vec_distance_cosine(embedding, ?) AS similarity
+		         1.0 - distance AS similarity
 		  FROM frame_vectors
+		  WHERE embedding MATCH ? AND k = 4000
 		),
 		ranked AS (
 		  SELECT recording_id,
@@ -321,7 +301,7 @@ func SearchSimilarRecordingsByVector(queryVector []float32, minSimilarity float6
 		           PARTITION BY recording_id
 		           ORDER BY similarity DESC
 		         ) AS rn
-		  FROM scored
+		  FROM knn
 		  WHERE similarity >= ?
 		)
 		SELECT recording_id, frame_timestamp, similarity
@@ -351,9 +331,6 @@ func SearchSimilarRecordingsByVector(queryVector []float32, minSimilarity float6
 // ListRecordingIDsWithFrameVectors returns distinct recording IDs that have
 // stored frame vectors.
 func ListRecordingIDsWithFrameVectors(limit int) ([]RecordingID, error) {
-	if !isSQLite() {
-		return nil, fmt.Errorf("ListRecordingIDsWithFrameVectors requires SQLite")
-	}
 	if limit <= 0 {
 		limit = 500
 	}
@@ -387,12 +364,9 @@ func ListRecordingIDsWithFrameVectors(limit int) ([]RecordingID, error) {
 }
 
 // QueryRecordingSimilarityEdges computes pairwise recording similarities by
-// taking the best frame-to-frame cosine similarity between each recording pair.
-// If recordingIDs is non-empty, only those recordings are considered.
+// fetching a small sample of frame vectors for each recording into Go memory,
+// and manually calculating the distance array to avoid O(N^2) SQLite joins.
 func QueryRecordingSimilarityEdges(minSimilarity float64, recordingIDs []RecordingID, limit int) ([]RecordingSimilarityEdge, error) {
-	if !isSQLite() {
-		return nil, fmt.Errorf("QueryRecordingSimilarityEdges requires SQLite")
-	}
 	if limit <= 0 {
 		limit = 20000
 	}
@@ -401,60 +375,132 @@ func QueryRecordingSimilarityEdges(minSimilarity float64, recordingIDs []Recordi
 		return nil, err
 	}
 
-	var b strings.Builder
-	args := make([]interface{}, 0, len(recordingIDs)*2+2)
-
-	b.WriteString(`
-		SELECT f1.recording_id AS recording_a,
-		       f2.recording_id AS recording_b,
-		       MAX(1.0 - vec_distance_cosine(f1.embedding, f2.embedding)) AS similarity
-		FROM frame_vectors f1
-		JOIN frame_vectors f2
-		  ON f1.recording_id < f2.recording_id
-	`)
-
-	if len(recordingIDs) > 0 {
-		ids := make([]interface{}, 0, len(recordingIDs))
-		ph := make([]string, 0, len(recordingIDs))
-		for _, id := range recordingIDs {
-			ph = append(ph, "?")
-			ids = append(ids, uint(id))
-		}
-		inList := strings.Join(ph, ",")
-		b.WriteString(` WHERE f1.recording_id IN (` + inList + `) AND f2.recording_id IN (` + inList + `)`)
-		args = append(args, ids...)
-		args = append(args, ids...)
-	}
-
-	b.WriteString(`
-		GROUP BY f1.recording_id, f2.recording_id
-		HAVING similarity >= ?
-		ORDER BY similarity DESC
-		LIMIT ?
-	`)
-	args = append(args, minSimilarity, limit)
-
-	rows, err := sqlDB.Query(b.String(), args...)
-	if isNoSuchTable(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var out []RecordingSimilarityEdge
-	for rows.Next() {
-		var a, c uint
-		var sim float64
-		if err := rows.Scan(&a, &c, &sim); err != nil {
+	// 1. If recordingIDs is empty, fetch all distinct recording IDs.
+	if len(recordingIDs) == 0 {
+		ids, err := ListRecordingIDsWithFrameVectors(0)
+		if err != nil {
 			return nil, err
 		}
-		out = append(out, RecordingSimilarityEdge{
-			RecordingA: RecordingID(a),
-			RecordingB: RecordingID(c),
-			Similarity: sim,
-		})
+		recordingIDs = ids
 	}
-	return out, rows.Err()
+
+	if len(recordingIDs) < 2 {
+		return nil, nil // Nothing to group
+	}
+
+	// Make a set of valid recording IDs for fast filtering
+	validRecs := make(map[RecordingID]bool, len(recordingIDs))
+	for _, id := range recordingIDs {
+		validRecs[id] = true
+	}
+
+	// 2. Fetch up to 5 evenly spaced sample vectors for each requested recording
+	samples := make(map[RecordingID][][]float32)
+	for _, recID := range recordingIDs {
+		var maxIndex sql.NullInt32
+		err := sqlDB.QueryRow("SELECT MAX(frame_index) FROM frame_vectors WHERE recording_id = ?", uint(recID)).Scan(&maxIndex)
+		if err != nil || !maxIndex.Valid {
+			if isNoSuchTable(err) {
+				return nil, nil
+			}
+			continue
+		}
+
+		step := int(maxIndex.Int32) / 5
+		if step == 0 {
+			step = 1
+		}
+
+		rows, err := sqlDB.Query(`
+			SELECT embedding FROM frame_vectors 
+			WHERE recording_id = ? AND frame_index IN (?, ?, ?, ?, ?)
+		`, uint(recID), 0, step, step*2, step*3, step*4)
+
+		if err != nil {
+			continue
+		}
+
+		for rows.Next() {
+			var b []byte
+			if err := rows.Scan(&b); err == nil {
+				// Convert raw IEEE-754 bytes to float32
+				floats := make([]float32, len(b)/4)
+				for i := range floats {
+					floats[i] = math.Float32frombits(uint32(b[i*4]) | uint32(b[i*4+1])<<8 | uint32(b[i*4+2])<<16 | uint32(b[i*4+3])<<24)
+				}
+				samples[recID] = append(samples[recID], floats)
+			}
+		}
+		rows.Close()
+	}
+
+	// 3. Compute cosine similarity in memory
+	var out []RecordingSimilarityEdge
+
+	// Create predictable slice for pair computation (i < j)
+	var validIDs []RecordingID
+	for id := range samples {
+		validIDs = append(validIDs, id)
+	}
+
+	for i := 0; i < len(validIDs); i++ {
+		recA := validIDs[i]
+		sA := samples[recA]
+
+		for j := i + 1; j < len(validIDs); j++ {
+			recB := validIDs[j]
+			sB := samples[recB]
+
+			maxSim := -1.0
+			for _, a := range sA {
+				for _, b := range sB {
+					// Cosine similarity
+					var dot float64
+					var normA float64
+					var normB float64
+
+					for k := 0; k < len(a) && k < len(b); k++ {
+						vA, vB := float64(a[k]), float64(b[k])
+						dot += vA * vB
+						normA += vA * vA
+						normB += vB * vB
+					}
+
+					var sim float64
+					if normA > 0 && normB > 0 {
+						sim = dot / (math.Sqrt(normA) * math.Sqrt(normB))
+					}
+
+					if sim > maxSim {
+						maxSim = sim
+					}
+				}
+			}
+
+			if maxSim >= minSimilarity {
+				var rA, rB RecordingID
+				if recA < recB {
+					rA, rB = recA, recB
+				} else {
+					rA, rB = recB, recA
+				}
+				out = append(out, RecordingSimilarityEdge{
+					RecordingA: rA,
+					RecordingB: rB,
+					Similarity: maxSim,
+				})
+			}
+		}
+	}
+
+	// Sort by similarity descending
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Similarity > out[j].Similarity
+	})
+
+	if len(out) > limit {
+		out = out[:limit]
+	}
+
+	return out, nil
 }
