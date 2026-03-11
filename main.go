@@ -12,15 +12,16 @@ import (
 
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
+	"github.com/srad/mediasink/internal/analysis/detectors/onnx"
 	"github.com/srad/mediasink/internal/api"
 	"github.com/srad/mediasink/internal/db"
 	"github.com/srad/mediasink/internal/services"
 )
 
 var (
-	Version    string
-	Commit     string
-	ApiVersion string
+	Version     string
+	Commit      string
+	ApiVersion  string
 	cleanupOnce sync.Once
 )
 
@@ -60,6 +61,21 @@ func init() {
 		}
 		log.Debugf("OK: Found executable '%s' at '%s'", app, path)
 	}
+
+	// 4. Require SQLite
+	adapter := os.Getenv("DB_ADAPTER")
+	if adapter != "" && adapter != "sqlite" && adapter != "sqlite3" {
+		log.Fatalf("FATAL: This application requires SQLite for vector embeddings. Currently configured adapter: %s", adapter)
+	}
+
+	// 5. Require ONNX
+	if err := onnx.EnsureInitialized(); err != nil {
+		log.Fatalf("FATAL: Failed to initialize ONNX runtime (required for video analysis): %v", err)
+	}
+	if _, err := onnx.GetModelPath("mobilenet_v3_large"); err != nil {
+		log.Fatalf("FATAL: Required ONNX model 'mobilenet_v3_large' not found: %v", err)
+	}
+	log.Infoln("OK: ONNX runtime and models verified.")
 
 	log.Infoln("All init checks passed.")
 }

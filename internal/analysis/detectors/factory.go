@@ -5,7 +5,6 @@ import (
 	"sync"
 
 	"github.com/srad/mediasink/internal/analysis/detectors/highlight"
-	"github.com/srad/mediasink/internal/analysis/detectors/onnx"
 	"github.com/srad/mediasink/internal/analysis/detectors/scene"
 )
 
@@ -19,8 +18,6 @@ var (
 type DetectorType string
 
 const (
-	DetectorTypeSSIM                 DetectorType = "ssim"
-	DetectorTypeFrameDiff            DetectorType = "frame_diff"
 	DetectorTypeOnnxMobileNetV3Large DetectorType = "onnx_mobilenet_v3_large"
 )
 
@@ -31,21 +28,10 @@ type DetectorConfig struct {
 }
 
 // DefaultDetectorConfig returns the default detector configuration.
-// It prefers ONNX when the runtime and model are available, and falls back to
-// classical detectors (SSIM / FrameDiff) when onnxruntime.so is missing or the
-// model file cannot be found.
 func DefaultDetectorConfig() *DetectorConfig {
-	if onnx.EnsureInitialized() == nil {
-		if _, err := onnx.GetModelPath("mobilenet_v3_large"); err == nil {
-			return &DetectorConfig{
-				SceneDetector:     DetectorTypeOnnxMobileNetV3Large,
-				HighlightDetector: DetectorTypeOnnxMobileNetV3Large,
-			}
-		}
-	}
 	return &DetectorConfig{
-		SceneDetector:     DetectorTypeSSIM,
-		HighlightDetector: DetectorTypeFrameDiff,
+		SceneDetector:     DetectorTypeOnnxMobileNetV3Large,
+		HighlightDetector: DetectorTypeOnnxMobileNetV3Large,
 	}
 }
 
@@ -61,8 +47,6 @@ func CreateSceneDetector(detectorType DetectorType) (SceneDetector, error) {
 
 	var err error
 	switch detectorType {
-	case DetectorTypeSSIM:
-		sceneDetector = scene.NewSSIMSceneDetector()
 	case DetectorTypeOnnxMobileNetV3Large:
 		sceneDetector, err = scene.NewOnnxSceneDetector("mobilenet_v3_large")
 	default:
@@ -88,8 +72,6 @@ func CreateHighlightDetector(detectorType DetectorType) (HighlightDetector, erro
 
 	var err error
 	switch detectorType {
-	case DetectorTypeFrameDiff:
-		highlightDetector = highlight.NewFrameDiffHighlightDetector()
 	case DetectorTypeOnnxMobileNetV3Large:
 		highlightDetector, err = highlight.NewOnnxHighlightDetector("mobilenet_v3_large")
 	default:
@@ -121,7 +103,6 @@ func CreateDetectors(config *DetectorConfig) (SceneDetector, HighlightDetector, 
 // AvailableSceneDetectors returns the list of available scene detector names.
 func AvailableSceneDetectors() []string {
 	return []string{
-		string(DetectorTypeSSIM),
 		string(DetectorTypeOnnxMobileNetV3Large),
 	}
 }
@@ -129,7 +110,6 @@ func AvailableSceneDetectors() []string {
 // AvailableHighlightDetectors returns the list of available highlight detector names.
 func AvailableHighlightDetectors() []string {
 	return []string{
-		string(DetectorTypeFrameDiff),
 		string(DetectorTypeOnnxMobileNetV3Large),
 	}
 }

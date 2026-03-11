@@ -229,6 +229,7 @@ func TestSearchSimilarRecordingsByVector(t *testing.T) {
 	wB.Write(unitVec(1), 20.0)
 	wB.Commit()
 
+	// Test 1: Ensure it finds the exact match correctly with high k internally
 	results, err := SearchSimilarRecordingsByVector(unitVec(0), 0.8, 10)
 	if err != nil {
 		t.Fatalf("SearchSimilarRecordingsByVector: %v", err)
@@ -241,6 +242,14 @@ func TestSearchSimilarRecordingsByVector(t *testing.T) {
 	}
 	if math.Abs(results[0].Similarity-1.0) > 0.001 {
 		t.Fatalf("expected similarity ~1.0, got %.4f", results[0].Similarity)
+	}
+
+	// Test 2: Regression test to ensure the max k value doesn't cause a failure
+	// We call the query directly to guarantee it doesn't return an error from the sqlite-vec extension.
+	// If the k-limit is violated, err will be non-nil.
+	_, err = SearchSimilarRecordingsByVector(unitVec(0), 0.0, 50)
+	if err != nil {
+		t.Fatalf("SearchSimilarRecordingsByVector returned error on wide search (regression): %v", err)
 	}
 }
 
