@@ -5,7 +5,7 @@
 [![Build Status](https://teamcity.sedrad.com/app/rest/builds/buildType:(id:MediaSinkGo_Build)/statusIcon)](https://teamcity.sedrad.com/viewType.html?buildTypeId=MediaSinkGo_Build&guest=1)
 ![Build](https://img.shields.io/github/actions/workflow/status/srad/MediaSink/build.yml)
 
-MediaSink is a powerful web-based video management, editing and streaming server written in Go. It provides automated stream recording capabilities and a REST API for video editing, making it an ideal solution for media-heavy applications. The Vue 3 frontend is bundled directly into the Go binary — no separate web server required.
+MediaSink is a powerful web-based video management, editing and streaming server written in Go. It provides automated stream recording capabilities and a REST API for video editing, making it an ideal solution for media-heavy applications. The Vue 3 frontend is bundled directly into the Go binary, and the repository also includes a standalone Rust terminal client under [`cli/`](./cli) for terminal-first access to the same MediaSink server.
 
 ## Features
 - **Media Management**: Scans all media and generate previews and organizes them. Allows bookmarking folders, channel, media items, and tagging the media.
@@ -13,6 +13,7 @@ MediaSink is a powerful web-based video management, editing and streaming server
 - **REST API for Video Editing**: Perform video editing tasks programmatically.
 - **Video Analysis (ONNX + sqlite-vec)**: Detect scenes and highlights from preview frames using ONNX feature extraction and sqlite-vec similarity queries.
 - **Integrated Web UI**: Vue 3 frontend embedded directly in the binary — served from the same port as the API, no nginx or separate deployment needed.
+- **Integrated Terminal UI**: Separate Rust CLI under `cli/` with login, live workspace views, WebSocket updates, themes, forms, and popup video playback.
 - **Scalable & Lightweight**: Optimized for performance with a minimal resource footprint.
 - **Easy Integration**: RESTful API for seamless integration with other applications.
 - **Disaster Recovery**: If the system crashes during recordings or while processing background jobs, it will recover on the next restart and check the media files for integrity.
@@ -24,6 +25,7 @@ This is mainly for development purposes. In production you'd use the Docker imag
 ### Prerequisites
 - Go 1.x or later
 - Node.js 22+ and npm (for building the frontend)
+- Rust + Cargo (only if you want to build or run `cli/`)
 - FFmpeg (for video processing)
 - yt-dlp
 - FFprobe
@@ -86,10 +88,47 @@ cd frontend && npm run dev
 
 Runs the Vite dev server (typically `http://localhost:5173`) with hot module replacement. Copy `frontend/public/env.js.default` to `frontend/public/env.js` if you haven't already, and make sure the Go server is running on `:3000`.
 
+### CLI
+
+The terminal client lives in `cli/` and is built separately from the Go server and Vue frontend.
+
+Run it with npm:
+
+```sh
+cd cli && npm start
+```
+
+or directly with Cargo:
+
+```sh
+cd cli && cargo run
+```
+
+CLI build/test:
+
+```sh
+cd cli && cargo build --locked
+cd cli && cargo test --locked
+```
+
+CLI notes:
+
+- Rust-first project layout under `cli/src`
+- Minimal npm wrapper only for packaging/distribution
+- Full-screen `ratatui` TUI with login/registration, themes, live views, confirm dialogs, mouse support, and popup video playback
+- Reads runtime settings from the target server's `/env.js` and `/build.js`
+- Rejects incompatible MediaSink servers when the exposed `APP_API_VERSION` is missing or does not match
+
 ### Run Tests
 
 ```sh
 go test ./...
+```
+
+CLI tests:
+
+```sh
+cd cli && cargo test --locked
 ```
 
 ## Usage

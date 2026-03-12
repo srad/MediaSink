@@ -1,0 +1,26 @@
+{
+  "name": "mediasink-cli",
+  "version": "0.1.0",
+  "description": "Ratatui terminal client for the MediaSink API",
+  "type": "module",
+  "bin": {
+    "mediasink": "./bin/mediasink.mjs"
+  },
+  "files": [
+    "bin",
+    "Cargo.toml",
+    "Cargo.lock",
+    "src",
+    "README.md"
+  ],
+  "license": "UNLICENSED",
+  "private": false,
+  "scripts": {
+    "build": "node bin/mediasink.mjs --wrapper build",
+    "start": "node bin/mediasink.mjs --wrapper run",
+    "test": "node bin/mediasink.mjs --wrapper test"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
