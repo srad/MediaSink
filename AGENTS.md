@@ -11,6 +11,7 @@ MediaSink.Go is a Go-based web server for video management, stream recording, an
 - WebSocket support for real-time updates
 - Swagger API documentation
 - Integrated Vue 3 frontend served directly from the Go binary via `go:embed`
+- Standalone Rust terminal client under `cli/` for terminal-first access to the same server
 
 ## Project Structure
 
@@ -47,6 +48,11 @@ MediaSink.Go is a Go-based web server for video management, stream recording, an
 - **frontend/**: Vue 3 TypeScript frontend (source lives here; see `frontend/CLAUDE.md` for details)
   - Built with Vite + npm; output goes to `frontend/dist/`
   - `frontend/dist/` is gitignored (build artifact) except for `frontend/dist/.gitkeep`
+- **cli/**: standalone Rust terminal client
+  - `Cargo.toml` + `src/`: native `ratatui` CLI application
+  - `bin/mediasink.mjs` + `package.json`: minimal npm wrapper for packaging and `npm start`
+  - Talks to the same `/api/v1` backend and WebSocket server as the Vue frontend
+  - Reads `/env.js` and `/build.js` from the server at runtime and rejects incompatible `APP_API_VERSION` values
 
 ## Building and Running
 
@@ -81,11 +87,30 @@ cd frontend && npm run dev
 ```
 Runs the Vite dev server (typically `localhost:5173`) with hot module replacement. It reads API/WebSocket URLs from `frontend/public/env.js` — copy `frontend/public/env.js.default` to `frontend/public/env.js` if it doesn't exist. The Go server must be running separately on `:3000` for API calls to work.
 
+### CLI development
+```sh
+cd cli && cargo build
+cd cli && cargo test
+cd cli && npm start
+```
+The CLI is a separate Rust project. Do not treat it as part of the Vue frontend toolchain. It has its own `Cargo.toml`, source tree, and npm wrapper.
+
+CLI notes:
+- The npm layer is only a distribution/launcher wrapper; `/cli` should be treated as a Rust crate first.
+- Use Cargo for normal development tasks unless the user specifically wants npm-package behavior.
+- The CLI depends on the server exposing `/env.js` and `/build.js`.
+- The CLI hard-rejects servers whose `APP_API_VERSION` is missing or does not match the client.
+
 ### Tests
 ```sh
 ./test.sh
 ```
 Runs all Go tests in the project. Sets test environment variables for database and file paths.
+
+CLI-specific tests:
+```sh
+cd cli && cargo test --locked
+```
 
 ### Linting
 ```sh
@@ -423,6 +448,12 @@ Light/dark theme via `[data-bs-theme="light/dark"]` selectors.
 cd frontend && npm run client
 # or, from the repo root, run.sh does this automatically
 ```
+
+### CLI notes
+
+- The CLI source of truth is Rust under `cli/src`, not TypeScript.
+- The npm layer in `/cli` is intentionally thin and should stay secondary to the Rust project.
+- The CLI validates the server `APP_API_VERSION` during login/startup and rejects incompatible servers instead of trying to run against mismatched payloads.
 
 **Run tests**:
 ```sh
