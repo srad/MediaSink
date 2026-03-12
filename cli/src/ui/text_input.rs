@@ -115,6 +115,8 @@ impl TextInput {
 
     pub fn handle_key(&mut self, key: KeyEvent, clipboard: &str) -> TextInputAction {
         let modifiers = key.modifiers;
+        let control_shortcut =
+            modifiers.contains(KeyModifiers::CONTROL) && !modifiers.contains(KeyModifiers::ALT);
         match key.code {
             KeyCode::Left => {
                 self.move_cursor_left(modifiers.contains(KeyModifiers::SHIFT));
@@ -147,31 +149,31 @@ impl TextInput {
                 self.replace_selection(clipboard);
                 TextInputAction::Handled
             }
-            KeyCode::Char('a') if modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Char('a') if control_shortcut => {
                 self.anchor = Some(0);
                 self.cursor = self.value.chars().count();
                 TextInputAction::Handled
             }
-            KeyCode::Char('c') if modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Char('c') if control_shortcut => {
                 if let Some(selection) = self.selected_text() {
                     TextInputAction::Copied(selection)
                 } else {
                     TextInputAction::Ignored
                 }
             }
-            KeyCode::Char('x') if modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Char('x') if control_shortcut => {
                 if let Some(selection) = self.delete_selection() {
                     TextInputAction::Copied(selection)
                 } else {
                     TextInputAction::Ignored
                 }
             }
-            KeyCode::Char('v') if modifiers.contains(KeyModifiers::CONTROL) => {
+            KeyCode::Char('v') if control_shortcut => {
                 self.replace_selection(clipboard);
                 TextInputAction::Handled
             }
             KeyCode::Char(character) => {
-                if modifiers.contains(KeyModifiers::CONTROL) {
+                if control_shortcut {
                     return TextInputAction::Ignored;
                 }
                 self.replace_selection(&character.to_string());
@@ -310,5 +312,20 @@ mod tests {
         );
 
         assert_eq!(input.text(), "XYllo");
+    }
+
+    #[test]
+    fn altgr_printable_character_is_inserted() {
+        let mut input = TextInput::new("");
+
+        assert_eq!(
+            input.handle_key(
+                KeyEvent::new(KeyCode::Char('@'), KeyModifiers::CONTROL | KeyModifiers::ALT),
+                "",
+            ),
+            TextInputAction::Handled
+        );
+
+        assert_eq!(input.text(), "@");
     }
 }

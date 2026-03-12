@@ -1,6 +1,6 @@
 use crate::{
-    LoginField, LoginMouseAction, WorkspaceHeaderAction,
     app::{StreamTab, View},
+    tui::{LoginField, LoginMouseAction, WorkspaceHeaderAction},
 };
 use ratatui::layout::Rect;
 
@@ -63,7 +63,7 @@ fn contains(rect: Rect, column: u16, row: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{PopupId, UiRegion, UiRegions};
-    use crate::{LoginField, app::View};
+    use crate::{app::View, tui::LoginField};
     use ratatui::layout::Rect;
 
     #[test]
