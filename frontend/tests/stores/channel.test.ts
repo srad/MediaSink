@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { useChannelStore } from "../../src/stores/channel";
 import { createPinia, setActivePinia } from "pinia";
-import type { DatabaseRecording } from "../../src/services/api/v1/MediaSinkClient";
+import type { DbRecording } from "../../src/services/api/v2/MediaSinkClient";
 
 describe("Channel Store", () => {
   beforeEach(() => {
@@ -95,7 +95,7 @@ describe("Channel Store", () => {
       },
     ];
 
-    const recording: DatabaseRecording = {
+    const recording: DbRecording = {
       bitRate: 1000,
       bookmark: true,
       channelId: 1,

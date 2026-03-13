@@ -10,7 +10,7 @@
 </template>
 
 <script setup lang="ts">
-import { type DbJob, type RequestsChannelRequest as ChannelRequest } from "@/services/api/v1/MediaSinkClient";
+import { type DbJob, type RequestsChannelRequest as ChannelRequest } from "@/services/api/v2/MediaSinkClient";
 import { MessageType } from "@/utils/socket";
 import { useSocket } from "@/composables/useSocket";
 import ChannelModal from "@/components/modals/ChannelModal.vue";

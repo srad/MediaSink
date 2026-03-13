@@ -115,16 +115,16 @@
 </template>
 
 <script setup lang="ts">
-import { DbJobOrder, DbJobStatus } from "../services/api/v1/MediaSinkClient";
+import { DbJobOrder, DbJobStatus } from "../services/api/v2/MediaSinkClient";
 import { useJobStore } from "../stores/job";
 import ModalConfirmDialog from "../components/modals/ModalConfirmDialog.vue";
 import { computed, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { createClient } from "../services/api/v1/ClientFactory";
+import { createClient } from "../services/api/v2/ClientFactory";
 import DataTable from "../components/DataTable.vue";
 import type { Column, TableRow } from "../types/table";
 import { useI18n } from "vue-i18n";
-import { type DbJob } from "../services/api/v1/MediaSinkClient";
+import { type DbJob } from "../services/api/v2/MediaSinkClient";
 
 const jobStore = useJobStore();
 const route = useRoute();

@@ -25,10 +25,10 @@ func serveFrontend(router *gin.Engine, frontendFS embed.FS, version, commit, api
 		}
 		c.Header("Content-Type", "application/javascript; charset=utf-8")
 		c.Header("Cache-Control", "no-store")
-		fmt.Fprintf(c.Writer, `window.APP_APIURL = "/api/v1";
+		fmt.Fprintf(c.Writer, `window.APP_APIURL = "/api/v2";
 window.APP_BASE = "";
 window.APP_NAME = "MediaSink";
-window.APP_SOCKETURL = "%s://%s/api/v1/ws";
+window.APP_SOCKETURL = "%s://%s/api/v2/ws";
 window.APP_FILEURL = "/videos";
 `, wsProto, c.Request.Host)
 	})
@@ -60,7 +60,7 @@ window.APP_API_VERSION = "%s";
 		// SPA fallback: any unmatched path serves index.html for client-side routing.
 		indexContent, err := fs.ReadFile(distFS, "index.html")
 		if err != nil {
-			c.String(http.StatusServiceUnavailable, "Frontend not built. Run: cd frontend && pnpm install && pnpm build")
+			c.String(http.StatusServiceUnavailable, "Frontend not built. Run: cd frontend && npm install && npm run build")
 			return
 		}
 		c.Data(http.StatusOK, "text/html; charset=utf-8", indexContent)

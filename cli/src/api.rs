@@ -530,7 +530,7 @@ pub async fn resolve_runtime_config(
             env_values
                 .get("APP_APIURL")
                 .map(String::as_str)
-                .unwrap_or("/api/v1"),
+                .unwrap_or("/api/v2"),
         )?
         .to_string();
     let file_url = Url::parse(base_url)?
@@ -545,7 +545,7 @@ pub async fn resolve_runtime_config(
     let socket_url = env_values
         .get("APP_SOCKETURL")
         .cloned()
-        .unwrap_or_else(|| format!("{base_url}/api/v1/ws"))
+        .unwrap_or_else(|| format!("{base_url}/api/v2/ws"))
         .replacen("http", "ws", 1);
 
     let client_api_version = expected_api_version(profile_api_version);
@@ -1033,7 +1033,7 @@ mod tests {
     #[tokio::test]
     async fn authenticate_posts_login_and_returns_token() -> Result<()> {
         let responses = vec![
-            ("200 OK", "application/javascript", "window.APP_APIURL='/api/v1'; window.APP_FILEURL='/videos'; window.APP_SOCKETURL='ws://127.0.0.1/ws';".to_string()),
+            ("200 OK", "application/javascript", "window.APP_APIURL='/api/v2'; window.APP_FILEURL='/videos'; window.APP_SOCKETURL='ws://127.0.0.1/ws';".to_string()),
             ("200 OK", "application/javascript", "window.APP_API_VERSION='0.1.0';".to_string()),
             ("200 OK", "application/json", json!({ "token": "session-token" }).to_string()),
         ];
@@ -1050,7 +1050,7 @@ mod tests {
         assert_eq!(requests[0].path, "/env.js");
         assert_eq!(requests[1].path, "/build.js");
         assert_eq!(requests[2].method, "POST");
-        assert_eq!(requests[2].path, "/api/v1/auth/login");
+        assert_eq!(requests[2].path, "/api/v2/auth/login");
         assert_eq!(
             serde_json::from_str::<Value>(&requests[2].body)?,
             json!({
@@ -1072,7 +1072,7 @@ mod tests {
             (
                 "200 OK",
                 "application/javascript",
-                "window.APP_APIURL='/api/v1';".to_string(),
+                "window.APP_APIURL='/api/v2';".to_string(),
             ),
             (
                 "200 OK",
@@ -1095,8 +1095,8 @@ mod tests {
         let requests = requests.lock().expect("request lock poisoned").clone();
         assert_eq!(success.token, "new-token");
         assert_eq!(success.runtime.api_version, "fallback-v1");
-        assert_eq!(requests[2].path, "/api/v1/auth/signup");
-        assert_eq!(requests[3].path, "/api/v1/auth/login");
+        assert_eq!(requests[2].path, "/api/v2/auth/signup");
+        assert_eq!(requests[3].path, "/api/v2/auth/login");
 
         Ok(())
     }
@@ -1107,7 +1107,7 @@ mod tests {
             (
                 "200 OK",
                 "application/javascript",
-                "window.APP_APIURL='/api/v1';".to_string(),
+                "window.APP_APIURL='/api/v2';".to_string(),
             ),
             (
                 "200 OK",
@@ -1135,7 +1135,7 @@ mod tests {
             (
                 "200 OK",
                 "application/javascript",
-                "window.APP_APIURL='/api/v1';".to_string(),
+                "window.APP_APIURL='/api/v2';".to_string(),
             ),
             (
                 "200 OK",
@@ -1168,7 +1168,7 @@ mod tests {
             (
                 "200 OK",
                 "application/javascript",
-                "window.APP_APIURL='/api/v1';".to_string(),
+                "window.APP_APIURL='/api/v2';".to_string(),
             ),
             (
                 "200 OK",

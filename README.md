@@ -5,7 +5,7 @@
 [![Build Status](https://teamcity.sedrad.com/app/rest/builds/buildType:(id:MediaSinkGo_Build)/statusIcon)](https://teamcity.sedrad.com/viewType.html?buildTypeId=MediaSinkGo_Build&guest=1)
 ![Build](https://img.shields.io/github/actions/workflow/status/srad/MediaSink/build.yml)
 
-MediaSink is a powerful web-based video management, editing and streaming server written in Go. It provides automated stream recording capabilities and a REST API for video editing, making it an ideal solution for media-heavy applications. The Vue 3 frontend is bundled directly into the Go binary, and the repository also includes a standalone Rust terminal client under [`cli/`](./cli) for terminal-first access to the same MediaSink server.
+MediaSink is a powerful web-based video management, editing and streaming server written in Go. It provides automated stream recording capabilities and a versioned REST API at `/api/v2`, making it an ideal solution for media-heavy applications. The Vue 3 frontend is bundled directly into the Go binary, and the repository also includes a standalone Rust terminal client under [`cli/`](./cli) for terminal-first access to the same MediaSink server.
 
 ## Features
 - **Media Management**: Scans all media and generate previews and organizes them. Allows bookmarking folders, channel, media items, and tagging the media.
@@ -33,6 +33,8 @@ This is mainly for development purposes. In production you'd use the Docker imag
 - ONNX Runtime shared library (for ONNX-based video analysis)
 
 If you run the application outside of Docker, you must manually install the above dependencies.
+
+JavaScript tooling in this repository is npm-only. Do not use pnpm for frontend or CLI wrapper tasks.
 
 Debian setup:
 
@@ -76,7 +78,7 @@ For ONNX-based analysis outside Docker, set `ONNXRUNTIME_LIB` if the runtime lib
 ./run.sh
 ```
 
-Builds the frontend if needed, then builds and starts the server on `http://0.0.0.0:3000`. The web UI is available at the same address.
+Builds the frontend if needed, regenerates the Swagger spec and the frontend v2 API client, then builds and starts the server on `http://0.0.0.0:3000`. The web UI is available at the same address.
 
 `run.sh` exports sensible local-development defaults for all required variables. The only hard requirement is `SECRET` (a JWT secret); everything else has a working default.
 
@@ -118,6 +120,7 @@ CLI notes:
 - Full-screen `ratatui` TUI with login/registration, themes, live views, confirm dialogs, mouse support, and popup video playback
 - Reads runtime settings from the target server's `/env.js` and `/build.js`
 - Rejects incompatible MediaSink servers when the exposed `APP_API_VERSION` is missing or does not match
+- See [`cli/README.md`](./cli/README.md) for CLI-specific shortcuts, features, and packaging details
 
 ### Run Tests
 
@@ -161,9 +164,11 @@ mount -o noatime /dev/sdX /mnt/video
 MediaSink provides a REST API to manage video recording and editing. Below are some key endpoints:
 For a complete API reference, check the [API Documentation](https://github.com/srad/MediaSink/wiki/API-Docs).
 
+The current public API base path is `/api/v2`.
+
 Visual similarity endpoints:
-- `POST /api/v1/analysis/search/image` (multipart): upload an image (`file`) and search similar videos. Supports `similarity` slider values in `0..1` or `0..100`.
-- `POST /api/v1/analysis/group` (json): group similar videos by similarity threshold. Supports optional `recordingIds`, `pairLimit`, and `includeSingletons`.
+- `POST /api/v2/analysis/search/image` (multipart): upload an image (`file`) and search similar videos. Supports `similarity` slider values in `0..1` or `0..100`.
+- `POST /api/v2/analysis/group` (json): group similar videos by similarity threshold. Supports optional `recordingIds`, `pairLimit`, and `includeSingletons`.
 
 ## Docker
 
@@ -223,10 +228,10 @@ Application environment variables (passed into the container, all optional):
 | `DATA_DIR` | no | `.previews` | Preview/thumbnail cache directory |
 | `DATA_DISK` | no | `/disk` | Disk mount path used for storage status queries |
 | `NET_ADAPTER` | no | `eth0` | Network interface for bandwidth monitoring |
-| `DB_ADAPTER` | no | `sqlite` | Database backend (`sqlite`, `mysql`, `postgres`) |
-| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | no | — | Required only when `DB_ADAPTER` is `mysql` or `postgres` |
+| `DB_ADAPTER` | no | `sqlite` | Relational adapter setting. The shipped v2 server currently boots a SQLite/sqlite-vec-backed vector pipeline and should be treated as SQLite-first. |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | no | — | Relevant only for non-SQLite adapters in the lower DB layer; they are not part of the primary v2 runtime path. |
 
-The web UI is available at `http://<host>:3000` and the API at `http://<host>:3000/api/v1`.
+The web UI is available at `http://<host>:3000` and the API at `http://<host>:3000/api/v2`.
 
 #### Deploy
 

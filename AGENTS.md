@@ -2,26 +2,30 @@
 
 This file provides guidance to coding agents working with code in this repository.
 
+JavaScript package-manager rule: use `npm` only in this repository. Do not introduce or recommend `pnpm`.
+
 ## Overview
 
 MediaSink.Go is a Go-based web server for video management, stream recording, and editing. It provides:
 - Automated stream recording from various sources
-- REST API for video editing and media management
-- SQLite/MySQL/PostgreSQL support for persistence
+- Versioned REST API for video editing and media management, served publicly at `/api/v2`
+- SQLite/sqlite-vec-backed persistence in the current runtime
 - WebSocket support for real-time updates
-- Swagger API documentation
+- Swagger/OpenAPI documentation
 - Integrated Vue 3 frontend served directly from the Go binary via `go:embed`
 - Standalone Rust terminal client under `cli/` for terminal-first access to the same server
 
 ## Project Structure
 
-- **main.go**: Entry point that initializes database, services, and HTTP server
+- **main.go**: Thin bootstrap that delegates process setup and shutdown to `app.InitializeApp(...)` and `App.Run()`
+- **app/**: Composition root and lifecycle management for startup validation, DB/vector-store init, and graceful shutdown
 - **frontend_embed.go**: Embeds `frontend/dist` into the Go binary at compile time via `go:embed`
 - **config/**: Configuration — reads exclusively from environment variables (`config.Read()` is cached via `sync.Once`)
-- **internal/api/**: HTTP request handlers organized by domain (auth, channels, videos, jobs, etc.)
-  - **internal/api/v1/**: API v1 handlers (11 handler files)
-  - **internal/api/router.go**: Route setup and middleware configuration
+- **internal/api/**: Active public HTTP layer
+  - **internal/api/v1/**: Legacy handler implementations still mounted under the public `/api/v2` routes
+  - **internal/api/router.go**: Route setup and middleware configuration for the shipped server
   - **internal/api/frontend.go**: Serves embedded frontend — `/env.js`, `/build.js`, and SPA catch-all
+- **internal/http/v2/**: Refactored v2 handler slice and dependencies; currently present in the repo but not wired as the active public router
 - **internal/services/**: Business logic for core features
   - `recording_service.go`: Video information updates and metadata
   - `recorder_service.go`: Recording orchestration and lifecycle
@@ -32,6 +36,7 @@ MediaSink.Go is a Go-based web server for video management, stream recording, an
 - **internal/db/**: Data access layer using GORM ORM
   - Models for: channels, recordings, users, jobs, tags, settings
   - Database initialization and connection handling
+- **internal/store/**: Newer relational/vector store abstractions used by the refactored app slice
 - **internal/models/**: Data structures
   - **internal/models/requests/**: Request DTOs with validation tags
   - **internal/models/responses/**: Response DTOs
@@ -50,8 +55,9 @@ MediaSink.Go is a Go-based web server for video management, stream recording, an
   - `frontend/dist/` is gitignored (build artifact) except for `frontend/dist/.gitkeep`
 - **cli/**: standalone Rust terminal client
   - `Cargo.toml` + `src/`: native `ratatui` CLI application
+  - `src/app`, `src/ui`, `src/overlays`: current high-level Rust module split
   - `bin/mediasink.mjs` + `package.json`: minimal npm wrapper for packaging and `npm start`
-  - Talks to the same `/api/v1` backend and WebSocket server as the Vue frontend
+  - Talks to the same `/api/v2` backend and WebSocket server as the Vue frontend
   - Reads `/env.js` and `/build.js` from the server at runtime and rejects incompatible `APP_API_VERSION` values
 
 ## Building and Running
@@ -74,12 +80,12 @@ Key build flags:
 ```
 Performs a full rebuild and starts the server on `0.0.0.0:3000` in this order:
 1. `swag init` — regenerates `docs/swagger.json` from Go annotations (installs `swag` automatically if missing)
-2. `SWAGGER_INPUT=docs/swagger.json node swagger.js` — generates `src/services/api/v1/MediaSinkClient.ts` from the local spec (no running server required)
+2. `SWAGGER_INPUT=docs/swagger.json node swagger.js` — generates `src/services/api/v2/MediaSinkClient.ts` from the local spec (no running server required)
 3. `npm run build` — builds the Vue frontend
 4. `go build` — compiles the Go binary with the embedded frontend
 5. `./main` — starts the server
 
-The `SWAGGER_INPUT` env var in `frontend/swagger.js` lets it consume a local swagger.json file instead of fetching from a live server. When omitted (e.g. running `pnpm client` manually) it falls back to `http://localhost:3000/swagger/doc.json`.
+The `SWAGGER_INPUT` env var in `frontend/swagger.js` lets it consume a local swagger.json file instead of fetching from a live server. When omitted (e.g. running `npm run client` manually) it falls back to `http://localhost:3000/swagger/doc.json`.
 
 ### Frontend development (hot-reload)
 ```sh
@@ -89,8 +95,8 @@ Runs the Vite dev server (typically `localhost:5173`) with hot module replacemen
 
 ### CLI development
 ```sh
-cd cli && cargo build
-cd cli && cargo test
+cd cli && cargo build --locked
+cd cli && cargo test --locked
 cd cli && npm start
 ```
 The CLI is a separate Rust project. Do not treat it as part of the Vue frontend toolchain. It has its own `Cargo.toml`, source tree, and npm wrapper.
@@ -123,7 +129,7 @@ cd cli && cargo test --locked
 - **GORM**: ORM for database operations (supports SQLite, MySQL, PostgreSQL)
 - **JWT**: Authentication via `golang-jwt/jwt/v4`
 - **WebSocket**: Real-time communication via `gorilla/websocket`
-- **Swagger**: API documentation via `swaggo`
+- **Swagger/OpenAPI**: API documentation via `swaggo`
 - **Logrus**: Structured logging
 
 ## Core Architecture
@@ -131,7 +137,7 @@ cd cli && cargo test --locked
 ### Request Flow
 1. Routes defined in `internal/api/router.go` with middleware stack
 2. `/env.js` and `/build.js` served dynamically by `internal/api/frontend.go` (no auth required)
-3. `/api/v1/*` routes handled by `internal/api/v1/*` with JWT auth middleware
+3. Public `/api/v2/*` routes are currently handled by `internal/api/v1/*`, mounted under the v2 base path with JWT auth middleware
 4. `/videos/*` served as static files from the recordings directory
 5. `/swagger/*` serves Swagger UI
 6. All other paths fall through to the SPA handler which serves `frontend/dist/index.html`
@@ -147,7 +153,7 @@ The Vue 3 frontend is embedded into the Go binary at compile time using `go:embe
 
 ### Docker
 The `Dockerfile` uses a multi-stage build:
-1. `frontend_builder` (Node 22): runs `npm install && npm run build` in `frontend/`, outputs `dist/`
+1. `frontend_builder` (Node 22): runs `npm ci && npm run build` in `frontend/`, outputs `dist/`
 2. `ffmpeg_builder`: compiles FFmpeg from source
 3. `yt_dlp_builder`: downloads yt-dlp binary
 4. `app_builder` (Go): copies all source, overlays `frontend/dist` from `frontend_builder`, runs `swag init` and `go build`
@@ -159,18 +165,20 @@ The `Dockerfile` uses a multi-stage build:
 - Middleware: `middleware.CheckAuthorizationHeader`
 
 ### Services & Background Processing
+- Lifecycle is coordinated by `app.App`; `main.go` no longer assembles the server directly.
 - **Startup**: `services.StartUpJobs()` - recovery from crashes, integrity checks
 - **Recording**: `services.StartRecorder()` - manages active recordings
 - **Job Processing**: `services.StartJobProcessing()` - async background tasks
 - All services gracefully shut down on SIGTERM/SIGINT
 
 ### Database
-- Initialized via `db.Init()` in main
-- Supports SQLite (default), MySQL, or PostgreSQL via `DB_ADAPTER` env var
+- Initialized inside `app.InitializeApp()` via `db.Init()`
+- The shipped runtime currently initializes `internal/store/vector.SQLiteVecStore` and should be treated as SQLite/sqlite-vec-first
+- The lower `internal/db` layer still contains MySQL/PostgreSQL adapter support, but that is not the primary v2 runtime path
 - SQLite mode auto-registers `sqlite-vec` for vec0 virtual table support
 - Uses GORM models for type safety
 - Foreign key constraints enabled during migrations
-- **SQLite concurrency**: WAL journal mode + `busy_timeout=10000` + pool size 8. SQLite is a single-writer database — for production multi-user workloads use PostgreSQL (`DB_ADAPTER=postgres`)
+- **SQLite concurrency**: WAL journal mode + `busy_timeout=10000` + pool size 8. SQLite is a single-writer database. The lower relational layer can target PostgreSQL, but the shipped runtime still assumes the SQLite/sqlite-vec analysis path.
 - **frame_vectors**: SQLite-only vec0 virtual table created lazily on first analysis run. All frame vector writes happen in a single short transaction *after* ONNX inference completes (never while holding the lock during CPU-intensive work)
 
 ## Configuration
@@ -186,16 +194,16 @@ Required environment variables:
 - `NET_ADAPTER`: Network interface name for bandwidth monitoring (e.g. `eth0`)
 
 Optional / database-specific:
-- `DB_ADAPTER`: Database type (`mysql`, `postgres`, or omit for SQLite)
-- `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_PORT`: Credentials for MySQL/PostgreSQL
+- `DB_ADAPTER`: Current runtime should be considered `sqlite`; alternative relational adapters are not the primary supported v2 path
+- `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_PORT`: Credentials for non-SQLite relational adapters if you are working on that lower-layer support
 
 ONNX runtime:
-- `ONNXRUNTIME_LIB`: Path to `libonnxruntime.so`. Auto-detected by `run.sh` from common local paths; required version **1.24.1** (matches `yalue/onnxruntime_go v1.27.0`). Install via `./install-onnxruntime.sh`.
+- `ONNXRUNTIME_LIB`: Path to `libonnxruntime.so`. Auto-detected by `run.sh` from common local paths; required version **1.24.1** (matches `yalue/onnxruntime_go v1.27.0`). Install via `./install-onnxruntime.sh`. The current startup path hard-requires ONNX initialization and the Mobilenet model.
 
 Video analysis model path:
 - `assets/models/mobilenet_v3_large.onnx`
 
-Default detector configuration (falls back to SSIM/FrameDiff when ONNX is unavailable):
+Default detector configuration:
 - Scene detector: `onnx_mobilenet_v3_large`
 - Highlight detector: `onnx_mobilenet_v3_large`
 
@@ -209,7 +217,7 @@ The application expects these directories to exist:
 
 ## API Documentation
 
-Swagger documentation available at `/swagger/index.html` after starting the server. API base path is `/api/v1`.
+Swagger documentation available at `/swagger/index.html` after starting the server. API base path is `/api/v2`.
 
 Main endpoint groups:
 - `/auth`: User signup, login, logout
@@ -355,7 +363,7 @@ Source lives in `frontend/`. Built with Vite + npm; output goes to `frontend/dis
 - **Framework**: Vue 3 (Composition API with `<script setup>`)
 - **State Management**: Pinia with persistedstate plugin
 - **Routing**: Vue Router with auth guards
-- **API Client**: Auto-generated from Swagger (`src/services/api/v1/MediaSinkClient.ts`)
+- **API Client**: Auto-generated from Swagger (`src/services/api/v2/MediaSinkClient.ts`)
 - **Real-time**: Custom WebSocket manager (`src/utils/socket.ts`)
 - **Styling**: Bootstrap 5 + SCSS variables
 - **Internationalization**: Vue i18n
@@ -376,7 +384,7 @@ src/
 ├── router/           # Vue Router configuration and auth guards
 ├── stores/           # Pinia stores (auth, channel, job, settings, toast)
 ├── services/
-│   └── api/v1/       # Auto-generated Swagger API client
+│   └── api/v2/       # Auto-generated Swagger API client
 ├── composables/      # Vue 3 composables (socket, app config, download)
 ├── layouts/          # Layout wrappers (AuthLayout, DefaultLayout, FullscreenLayout)
 ├── utils/            # Utility functions (socket, error handling, datetime, etc.)
@@ -389,7 +397,7 @@ src/
 
 ### Key Files
 
-- `src/services/api/v1/ClientFactory.ts` — API client factory with auth and server-error handling
+- `src/services/api/v2/ClientFactory.ts` — API client factory with auth and server-error handling
 - `src/utils/serverError.ts` — detects network errors, logs out user, shows toast
 - `src/utils/validator.ts` — custom form validation framework
 - `src/stores/auth.ts` — authentication store
@@ -406,7 +414,7 @@ src/
 
 **API client** — auto-generated from Swagger, accessed via factory:
 ```typescript
-import { createClient } from "@/services/api/v1/ClientFactory";
+import { createClient } from "@/services/api/v2/ClientFactory";
 const client = createClient(); // auto-authenticated from auth store
 const data = await client.channels.list();
 ```
@@ -466,4 +474,4 @@ npm run test:e2e    # Nightwatch E2E tests
 
 - `VideoStripe.vue` renders a scrollable frame timeline with overlaid scene boundaries (colored vertical lines) and motion highlights (colored bars), both positioned by timestamp and scaled with zoom.
 - `VideoView.vue` provides mode toggle (Highlights / Scenes), prev/next navigation, and a dropdown index selector.
-- Analysis data comes from `GET /api/v1/analysis/{recordingId}`; response includes `scenes[]` and `highlights[]` with timing and intensity. Status: `null` (not analyzed) → `pending` → `processing` → `completed`.
+- Analysis data comes from `GET /api/v2/analysis/{recordingId}`; response includes `scenes[]` and `highlights[]` with timing and intensity. Status: `null` (not analyzed) → `pending` → `processing` → `completed`.

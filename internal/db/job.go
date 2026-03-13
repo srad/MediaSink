@@ -56,13 +56,13 @@ type Job struct {
 	Task   JobTask   `json:"task" gorm:"not null;default:preview" extensions:"!x-nullable"`
 	Status JobStatus `json:"status" gorm:"not null;default:completed" extensions:"!x-nullable"`
 
-	Priority JobPriority `json:"priority" gorm:"not null;default:5;index:idx_priority" extensions:"!x-nullable"`
-	Filepath string      `json:"filepath" gorm:"not null;default:null;" extensions:"!x-nullable"`
-	Active      bool       `json:"active" gorm:"not null;default:false" extensions:"!x-nullable"`
-	CreatedAt   time.Time  `json:"createdAt" gorm:"not null;default:current_timestamp;index:idx_create_at" extensions:"!x-nullable"`
-	StartedAt   *time.Time `json:"startedAt" gorm:"default:null"`
-	CompletedAt *time.Time `json:"completedAt" gorm:"default:null"`
-	DurationMs  *uint64    `json:"durationMs" gorm:"default:null"` // Duration in milliseconds
+	Priority    JobPriority `json:"priority" gorm:"not null;default:5;index:idx_priority" extensions:"!x-nullable"`
+	Filepath    string      `json:"filepath" gorm:"not null;default:null;" extensions:"!x-nullable"`
+	Active      bool        `json:"active" gorm:"not null;default:false" extensions:"!x-nullable"`
+	CreatedAt   time.Time   `json:"createdAt" gorm:"not null;default:current_timestamp;index:idx_create_at" extensions:"!x-nullable"`
+	StartedAt   *time.Time  `json:"startedAt" gorm:"default:null"`
+	CompletedAt *time.Time  `json:"completedAt" gorm:"default:null"`
+	DurationMs  *uint64     `json:"durationMs" gorm:"default:null"` // Duration in milliseconds
 
 	// Additional information
 	Pid      *int    `json:"pid" gorm:"default:null"`
@@ -392,6 +392,13 @@ func (recording *Recording) EnqueueCuttingJob(args *util.CutArgs) (*Job, error) 
 }
 
 func (recording *Recording) EnqueueAnalysisJob() (*Job, error) {
+	job, exists, err := JobExists(recording.RecordingID, TaskAnalyzeFrames)
+	if err != nil {
+		return job, err
+	}
+	if exists {
+		return job, nil
+	}
 	return enqueueJob[*any](recording, TaskAnalyzeFrames, nil)
 }
 

@@ -1,5 +1,5 @@
 import { useJobStore } from "../../src/stores/job";
-import { DatabaseJobStatus } from "../../src/services/api/v1/MediaSinkClient";
+import { DbJobStatus } from "../../src/services/api/v2/MediaSinkClient";
 import { describe, expect, it, beforeEach } from "vitest";
 import { createPinia, setActivePinia } from "pinia";
 import jobsData from "../mocks/jobs";
@@ -50,7 +50,7 @@ describe("Job Store", () => {
       progress: "25%",
       recordingId: 300,
       startedAt: "2024-01-03T00:00:00Z",
-      status: DatabaseJobStatus.StatusJobOpen,
+      status: DbJobStatus.StatusJobOpen,
       task: {
         description: "new task",
         name: "newTask",

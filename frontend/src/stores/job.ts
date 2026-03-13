@@ -1,6 +1,6 @@
-import { type DbJob, type DbJob as Job, DbJobOrder, DbJobStatus } from "../services/api/v1/MediaSinkClient";
+import { type DbJob, type DbJob as Job, DbJobOrder, DbJobStatus } from "../services/api/v2/MediaSinkClient";
 import { defineStore } from "pinia";
-import { createClient } from "../services/api/v1/ClientFactory";
+import { createClient } from "../services/api/v2/ClientFactory";
 import type { JobTableItem } from "../views/JobView.vue";
 import { fromNow, humanizeMs } from "../utils/datetime";
 

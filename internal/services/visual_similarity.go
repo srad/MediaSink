@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"image"
 	"io"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/srad/mediasink/internal/analysis/detectors"
 	"github.com/srad/mediasink/internal/db"
+	"github.com/srad/mediasink/internal/store/vector"
 )
 
 // SimilarRecordingMatch is an aggregated recording-level similarity result.
@@ -59,7 +61,7 @@ func SearchSimilarRecordingsByImage(r io.Reader, minSimilarity float64, limit in
 		return nil, fmt.Errorf("failed to extract query embedding: %w", err)
 	}
 
-	results, err := db.SearchSimilarRecordingsByVector(vec, minSimilarity, limit)
+	results, err := vector.Default().SearchSimilarRecordings(context.Background(), vec, minSimilarity, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +81,7 @@ func SearchSimilarRecordingsByImage(r io.Reader, minSimilarity float64, limit in
 func GroupSimilarRecordings(minSimilarity float64, recordingIDs []db.RecordingID, pairLimit int, includeSingletons bool) ([]SimilarRecordingGroup, error) {
 	ids := recordingIDs
 	if len(ids) == 0 {
-		autoIDs, err := db.ListRecordingIDsWithFrameVectors(1000)
+		autoIDs, err := vector.Default().ListRecordingIDs(context.Background(), 1000)
 		if err != nil {
 			return nil, err
 		}
@@ -89,7 +91,7 @@ func GroupSimilarRecordings(minSimilarity float64, recordingIDs []db.RecordingID
 		return []SimilarRecordingGroup{}, nil
 	}
 
-	edges, err := db.QueryRecordingSimilarityEdges(minSimilarity, ids, pairLimit)
+	edges, err := vector.Default().QueryRecordingSimilarityEdges(context.Background(), minSimilarity, ids, pairLimit)
 	if err != nil {
 		return nil, err
 	}

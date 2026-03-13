@@ -59,10 +59,10 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import { useRouter } from "vue-router";
-import type { ServicesChannelInfo as ChannelResponse } from "../services/api/v1/MediaSinkClient";
+import type { ServicesChannelInfo as ChannelResponse } from "../services/api/v2/MediaSinkClient";
 import { validTag } from "../utils/parser";
 import FavButton from "./controls/FavButton.vue";
-import { createClient } from "../services/api/v1/ClientFactory";
+import { createClient } from "../services/api/v2/ClientFactory";
 
 // --------------------------------------------------------------------------------------
 // Props

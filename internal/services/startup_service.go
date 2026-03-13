@@ -1,14 +1,16 @@
 package services
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 
 	"github.com/astaxie/beego/utils"
 	log "github.com/sirupsen/logrus"
-	"github.com/srad/mediasink/internal/analysis/detectors/onnx"
 	"github.com/srad/mediasink/config"
+	"github.com/srad/mediasink/internal/analysis/detectors/onnx"
 	"github.com/srad/mediasink/internal/db"
+	"github.com/srad/mediasink/internal/store/vector"
 	"github.com/srad/mediasink/internal/util"
 )
 
@@ -118,8 +120,9 @@ func resetOrphanedJobs() error {
 	return nil
 }
 
-// enqueueUnanalyzedRecordings enqueues analysis jobs for any recordings that do not
-// yet have stored frame vectors. Only runs if ONNX runtime and a model are available.
+// enqueueUnanalyzedRecordings decides the next deterministic step for each recording.
+// Missing/invalid previews enqueue preview generation. Valid previews without stored
+// vectors enqueue analysis. Fully analyzed recordings enqueue nothing.
 func enqueueUnanalyzedRecordings() {
 	if err := onnx.EnsureInitialized(); err != nil {
 		log.Infof("[StartUpJobs] ONNX not available, skipping auto-analysis: %v", err)
@@ -130,7 +133,7 @@ func enqueueUnanalyzedRecordings() {
 		return
 	}
 
-	analyzedIDs, err := db.ListRecordingIDsWithFrameVectors(1000000)
+	analyzedIDs, err := vector.Default().ListRecordingIDs(context.Background(), 1000000)
 	if err != nil {
 		log.Errorf("[StartUpJobs] Failed to list analyzed recordings: %v", err)
 		return
@@ -146,20 +149,27 @@ func enqueueUnanalyzedRecordings() {
 		return
 	}
 
-	enqueued := 0
+	previewJobs := 0
+	analysisJobs := 0
 	for _, rec := range recordings {
+		previewState, validationErr := ValidateRecordingPreview(rec)
+		if validationErr != nil {
+			log.Warnf("[StartUpJobs] Preview validation for recording %d returned %v", rec.RecordingID, validationErr)
+		}
+		if previewState.NeedsRegeneration {
+			if _, err := rec.EnqueuePreviewFramesJob(); err == nil {
+				previewJobs++
+			}
+			continue
+		}
 		if _, done := analyzedSet[rec.RecordingID]; done {
 			continue
 		}
 		if _, err := rec.EnqueueAnalysisJob(); err == nil {
-			enqueued++
+			analysisJobs++
 		}
 	}
-	if enqueued > 0 {
-		log.Infof("[StartUpJobs] Enqueued %d analysis job(s) for unanalyzed recordings", enqueued)
-	} else {
-		log.Infof("[StartUpJobs] All recordings already analyzed")
-	}
+	log.Infof("[StartUpJobs] Enqueued %d preview job(s) and %d analysis job(s) during startup backfill", previewJobs, analysisJobs)
 }
 
 // cleanupDeprecatedPreviewArtifacts removes old preview folders and files that

@@ -1,4 +1,4 @@
-import { DatabaseJobStatus } from "../../src/services/api/v1/MediaSinkClient";
+import { DbJobStatus } from "../../src/services/api/v2/MediaSinkClient";
 
 export default {
   skip: 0,
@@ -21,7 +21,7 @@ export default {
       progress: "50%",
       recordingId: 100,
       startedAt: "2024-01-01T00:00:00Z",
-      status: DatabaseJobStatus.StatusJobOpen,
+      status: DbJobStatus.StatusJobOpen,
       task: {
         description: "test task",
         name: "testTask",
@@ -43,7 +43,7 @@ export default {
       progress: "75%",
       recordingId: 200,
       startedAt: "2024-01-02T00:00:00Z",
-      status: DatabaseJobStatus.StatusJobOpen,
+      status: DbJobStatus.StatusJobOpen,
       task: {
         description: "another task",
         name: "anotherTask",

@@ -108,7 +108,7 @@
 
 <script setup lang="ts">
 import VideoItem from "../components/VideoItem.vue";
-import type { DbRecording, DbRecording as RecordingResponse, ServicesChannelInfo } from "../services/api/v1/MediaSinkClient";
+import type { DbRecording, DbRecording as RecordingResponse, ServicesChannelInfo } from "../services/api/v2/MediaSinkClient";
 import { computed, inject, onMounted, onUnmounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { MessageType, SocketManager } from "../utils/socket";
@@ -119,7 +119,7 @@ import { useJobStore } from "../stores/job";
 import OptionsMenu from "@/components/controls/OptionsMenu.vue";
 import ModalConfirmDialog from "@/components/modals/ModalConfirmDialog.vue";
 import ChannelModal from "@/components/modals/ChannelModal.vue";
-import { createClient } from "@/services/api/v1/ClientFactory";
+import { createClient } from "@/services/api/v2/ClientFactory";
 import LoadIndicator from "@/components/LoadIndicator.vue";
 import JsConfirmDialog from "@/components/modals/JsConfirmDialog.vue";
 import FavButton from "@/components/controls/FavButton.vue";

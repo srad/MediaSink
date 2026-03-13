@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"image"
 	"image/jpeg"
@@ -15,6 +16,7 @@ import (
 	"github.com/srad/mediasink/internal/db"
 	"github.com/srad/mediasink/internal/jobs"
 	"github.com/srad/mediasink/internal/jobs/handlers"
+	"github.com/srad/mediasink/internal/store/vector"
 	"github.com/srad/mediasink/internal/ws"
 )
 
@@ -48,11 +50,13 @@ func AnalyzeVideoFramesWithConfig(recordingID db.RecordingID, channelName db.Cha
 		handlers.EmitJobProgress(job, 0, 100, "Initializing analysis")
 	}
 
+	vectorStore := vector.Default()
+
 	// Delete any existing analysis and stored frame vectors for this recording.
 	if err := db.DeleteAnalysisByRecordingID(recordingID); err != nil {
 		log.Warnf("[AnalyzeVideoFrames] Failed to delete existing analysis: %v", err)
 	}
-	if err := db.DeleteFrameVectorsByRecordingID(recordingID); err != nil {
+	if err := vectorStore.DeleteRecording(context.Background(), recordingID); err != nil {
 		log.Warnf("[AnalyzeVideoFrames] Failed to delete existing frame vectors: %v", err)
 	}
 
@@ -100,11 +104,7 @@ func AnalyzeVideoFramesWithConfig(recordingID db.RecordingID, channelName db.Cha
 	// Phase 1: run ONNX inference with no DB connection held.
 	// Vectors are accumulated in memory so the database is never locked
 	// during the CPU-intensive extraction step.
-	type frameVec struct {
-		vec       []float32
-		timestamp float64
-	}
-	vecs := make([]frameVec, 0, len(framePaths))
+	embeddings := make([]vector.Embedding, 0, len(framePaths))
 	for i, path := range framePaths {
 		frame, err := loadFrame(path)
 		if err != nil {
@@ -116,7 +116,10 @@ func AnalyzeVideoFramesWithConfig(recordingID db.RecordingID, channelName db.Cha
 		if err != nil {
 			return fmt.Errorf("feature extraction failed for frame %s: %w", path, err)
 		}
-		vecs = append(vecs, frameVec{vec: vec, timestamp: frameTimestamps[i]})
+		embeddings = append(embeddings, vector.Embedding{
+			Values:    vec,
+			Timestamp: frameTimestamps[i],
+		})
 
 		if job != nil && i%50 == 0 {
 			progress := uint64(10 + int(float64(i)/float64(len(framePaths))*30))
@@ -125,21 +128,8 @@ func AnalyzeVideoFramesWithConfig(recordingID db.RecordingID, channelName db.Cha
 	}
 
 	// Phase 2: write all vectors in a single short transaction.
-	if len(vecs) > 0 {
-		writer, err := db.NewFrameVectorWriter(recordingID, len(vecs[0].vec))
-		if err != nil {
-			log.Warnf("[AnalyzeVideoFrames] Failed to create vector writer: %v", err)
-		} else {
-			for i, fv := range vecs {
-				if err := writer.Write(fv.vec, fv.timestamp); err != nil {
-					writer.Rollback()
-					return fmt.Errorf("failed to write frame vector %d: %w", i, err)
-				}
-			}
-			if err := writer.Commit(); err != nil {
-				return fmt.Errorf("failed to commit frame vectors: %w", err)
-			}
-		}
+	if err := vectorStore.WriteEmbeddings(context.Background(), recordingID, embeddings); err != nil {
+		return fmt.Errorf("failed to store frame vectors: %w", err)
 	}
 	log.Infof("[AnalyzeVideoFrames] Saved frame vectors to sqlite-vec")
 
@@ -148,7 +138,7 @@ func AnalyzeVideoFramesWithConfig(recordingID db.RecordingID, channelName db.Cha
 	}
 
 	// Query consecutive cosine similarities directly from sqlite-vec.
-	simTimestamps, similarities, err := db.QueryConsecutiveSimilarities(recordingID)
+	simTimestamps, similarities, err := vectorStore.QueryConsecutiveSimilarities(context.Background(), recordingID)
 	if err != nil {
 		return fmt.Errorf("failed to query consecutive similarities: %w", err)
 	}

@@ -1,5 +1,5 @@
-import { createClient } from "./api/v1/ClientFactory";
-import { type RequestsAuthenticationRequest } from "./api/v1/MediaSinkClient";
+import { createClient } from "./api/v2/ClientFactory";
+import { type RequestsAuthenticationRequest } from "./api/v2/MediaSinkClient";
 import { useAuthStore } from "../stores/auth";
 
 declare global {

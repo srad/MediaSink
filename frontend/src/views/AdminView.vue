@@ -36,8 +36,8 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from "vue";
 import { onBeforeRouteLeave } from "vue-router";
-import { createClient } from "@/services/api/v1/ClientFactory";
-import type { ServicesRegenerationProgress } from "@/services/api/v1/MediaSinkClient.ts";
+import { createClient } from "@/services/api/v2/ClientFactory";
+import type { ServicesRegenerationProgress } from "@/services/api/v2/MediaSinkClient.ts";
 import { mount } from "@vue/test-utils";
 
 const importing = ref(false);

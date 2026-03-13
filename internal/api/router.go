@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/srad/mediasink/internal/app"
 	"github.com/srad/mediasink/config"
 	"github.com/srad/mediasink/docs"
+	"github.com/srad/mediasink/internal/app"
 	"github.com/srad/mediasink/internal/middleware"
 	"github.com/srad/mediasink/internal/ws"
 
@@ -30,7 +30,7 @@ import (
 //
 // @license.name  Dual license, non-commercial, but free for open-source and educational uses.
 //
-// @BasePath  /api/v1
+// @BasePath  /api/v2
 
 // Setup InitRouter initialize routing information
 func Setup(version, commit, apiVersion string, frontendFS embed.FS) http.Handler {
@@ -56,8 +56,8 @@ func Setup(version, commit, apiVersion string, frontendFS embed.FS) http.Handler
 
 	router.Static("/videos", cfg.RecordingsAbsolutePath)
 
-	// API V1
-	docs.SwaggerInfo.BasePath = "/api/v1"
+	// API V2
+	docs.SwaggerInfo.BasePath = "/api/v2"
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	router.Use(cors.New(cors.Config{
@@ -73,28 +73,28 @@ func Setup(version, commit, apiVersion string, frontendFS embed.FS) http.Handler
 		AllowWildcard:    true,
 	}))
 
-	apiV1 := router.Group("/api/v1")
+	apiV2 := router.Group("/api/v2")
 
-	apiV1.Use(CheckClientVersion(apiVersion))
+	apiV2.Use(CheckClientVersion(apiVersion))
 
-	apiV1.Use()
+	apiV2.Use()
 	{
 		// Auth Group
 		// ------------------------------------------------------
-		auth := apiV1.Group("/auth")
+		auth := apiV2.Group("/auth")
 		auth.POST("/signup", v1.CreateUser)
 		auth.POST("/login", v1.Login)
 		auth.POST("/logout", middleware.CheckAuthorizationHeader, v1.Logout)
 
 		// User
 		// ------------------------------------------------------
-		user := apiV1.Group("/user")
+		user := apiV2.Group("/user")
 		user.Use(middleware.CheckAuthorizationHeader)
 		user.GET("/profile", v1.GetUserProfile)
 
 		// Admin Group
 		// ------------------------------------------------------
-		admin := apiV1.Group("/admin")
+		admin := apiV2.Group("/admin")
 		admin.Use(middleware.CheckAuthorizationHeader)
 		admin.GET("/version", v1.GetVersion(version, commit))
 		admin.POST("/import", v1.TriggerImport)
@@ -102,7 +102,7 @@ func Setup(version, commit, apiVersion string, frontendFS embed.FS) http.Handler
 
 		// Channels Group
 		// ------------------------------------------------------
-		channels := apiV1.Group("/channels")
+		channels := apiV2.Group("/channels")
 		channels.Use(middleware.CheckAuthorizationHeader)
 
 		channels.GET("", v1.GetChannels)
@@ -125,7 +125,7 @@ func Setup(version, commit, apiVersion string, frontendFS embed.FS) http.Handler
 
 		// Jobs Group
 		// ------------------------------------------------------
-		jobs := apiV1.Group("/jobs")
+		jobs := apiV2.Group("/jobs")
 		jobs.Use(middleware.CheckAuthorizationHeader)
 
 		jobs.POST("/:id", v1.AddPreviewJobs)
@@ -138,7 +138,7 @@ func Setup(version, commit, apiVersion string, frontendFS embed.FS) http.Handler
 
 		// Recorder Group
 		// ------------------------------------------------------
-		recorder := apiV1.Group("/recorder")
+		recorder := apiV2.Group("/recorder")
 		recorder.Use(middleware.CheckAuthorizationHeader)
 
 		recorder.POST("/resume", v1.StartRecorder)
@@ -147,7 +147,7 @@ func Setup(version, commit, apiVersion string, frontendFS embed.FS) http.Handler
 
 		// Videos Group
 		// ------------------------------------------------------
-		videos := apiV1.Group("/videos")
+		videos := apiV2.Group("/videos")
 		videos.Use(middleware.CheckAuthorizationHeader)
 
 		videos.POST("/updateinfo", v1.UpdateVideoInfo)
@@ -174,7 +174,7 @@ func Setup(version, commit, apiVersion string, frontendFS embed.FS) http.Handler
 
 		// Previews Group
 		// ------------------------------------------------------
-		previews := apiV1.Group("/previews")
+		previews := apiV2.Group("/previews")
 		previews.Use(middleware.CheckAuthorizationHeader)
 
 		previews.POST("/regenerate", v1.RegenerateAllPreviews)
@@ -182,7 +182,7 @@ func Setup(version, commit, apiVersion string, frontendFS embed.FS) http.Handler
 
 		// Analysis Group
 		// ------------------------------------------------------
-		analysis := apiV1.Group("/analysis")
+		analysis := apiV2.Group("/analysis")
 		analysis.Use(middleware.CheckAuthorizationHeader)
 
 		analysis.POST("/search/image", v1.SearchSimilarVideosByImage)
@@ -193,7 +193,7 @@ func Setup(version, commit, apiVersion string, frontendFS embed.FS) http.Handler
 
 		// Info Group
 		// ------------------------------------------------------
-		info := apiV1.Group("/info")
+		info := apiV2.Group("/info")
 		info.Use(middleware.CheckAuthorizationHeader)
 
 		info.GET("/:seconds", v1.GetInfo)
@@ -201,12 +201,12 @@ func Setup(version, commit, apiVersion string, frontendFS embed.FS) http.Handler
 
 		// Processes
 		// ------------------------------------------------------
-		apiV1.GET("/processes", middleware.CheckAuthorizationHeader, v1.GetProcesses)
+		apiV2.GET("/processes", middleware.CheckAuthorizationHeader, v1.GetProcesses)
 
 		// WebSocket
 		// ------------------------------------------------------
 		go ws.WsListen()
-		apiV1.GET("/ws", middleware.CheckAuthorizationHeader, ws.WsHandler)
+		apiV2.GET("/ws", middleware.CheckAuthorizationHeader, ws.WsHandler)
 	}
 
 	serveFrontend(router, frontendFS, version, commit, apiVersion)

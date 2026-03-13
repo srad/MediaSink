@@ -1,6 +1,6 @@
-import type { DbChannel as ChannelResponse, DbChannel, DbRecording, RequestsChannelRequest, RequestsChannelRequest as ChannelRequest, ServicesChannelInfo as ChannelInfo } from "../services/api/v1/MediaSinkClient";
+import type { DbChannel as ChannelResponse, DbChannel, DbRecording, RequestsChannelRequest, RequestsChannelRequest as ChannelRequest, ServicesChannelInfo as ChannelInfo } from "../services/api/v2/MediaSinkClient";
 import { defineStore } from "pinia";
-import { createClient } from "../services/api/v1/ClientFactory";
+import { createClient } from "../services/api/v2/ClientFactory";
 import { useJobStore } from "../stores/job";
 
 export type ChannelState = {

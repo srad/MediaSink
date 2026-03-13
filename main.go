@@ -1,147 +1,40 @@
 package main
 
 import (
-	"fmt"
-	"net/http"
-	"os"
-	"os/exec"
+	"context"
 	"os/signal"
-	"sync"
 	"syscall"
-	"time"
 
-	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
-	"github.com/srad/mediasink/internal/analysis/detectors/onnx"
-	"github.com/srad/mediasink/internal/api"
-	"github.com/srad/mediasink/internal/db"
-	"github.com/srad/mediasink/internal/services"
+	serverapp "github.com/srad/mediasink/app"
 )
 
 var (
-	Version     string
-	Commit      string
-	ApiVersion  string
-	cleanupOnce sync.Once
+	Version    string
+	Commit     string
+	ApiVersion string
 )
 
-func init() {
-	// 1. Env variables
-	if os.Getenv("SECRET") == "" {
-		log.Fatal("FATAL: JWT SECRET environment variable is not set.")
-	}
-	log.Infoln("OK: JWT SECRET environment variable is set.")
-
-	// 2. File paths
-	// Respect configured env paths so local/dev runs do not require root-level
-	// /disk and /recordings directories.
-	dataDisk := os.Getenv("DATA_DISK")
-	if dataDisk == "" {
-		dataDisk = "/disk"
-	}
-	recPath := os.Getenv("REC_PATH")
-	if recPath == "" {
-		recPath = "/recordings"
-	}
-	directories := []string{dataDisk, recPath}
-	for _, path := range directories {
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			log.Fatalf("ERROR: Path %s does not exist.", path)
-		} else {
-			log.Infof("Path %s exists.", path)
-		}
-	}
-
-	// 3. Check if needed executable exist
-	executables := []string{"ffmpeg", "yt-dlp", "ffprobe"}
-	for _, app := range executables {
-		path, err := exec.LookPath(app)
-		if err != nil {
-			log.Fatalf("FATAL: Required executable '%s' not found in PATH: %v", app, err)
-		}
-		log.Debugf("OK: Found executable '%s' at '%s'", app, path)
-	}
-
-	// 4. Require SQLite
-	adapter := os.Getenv("DB_ADAPTER")
-	if adapter != "" && adapter != "sqlite" && adapter != "sqlite3" {
-		log.Fatalf("FATAL: This application requires SQLite for vector embeddings. Currently configured adapter: %s", adapter)
-	}
-
-	// 5. Require ONNX
-	if err := onnx.EnsureInitialized(); err != nil {
-		log.Fatalf("FATAL: Failed to initialize ONNX runtime (required for video analysis): %v", err)
-	}
-	if _, err := onnx.GetModelPath("mobilenet_v3_large"); err != nil {
-		log.Fatalf("FATAL: Required ONNX model 'mobilenet_v3_large' not found: %v", err)
-	}
-	log.Infoln("OK: ONNX runtime and models verified.")
-
-	log.Infoln("All init checks passed.")
-}
-
 func main() {
-	log.Infof("Version: %s, Commit: %s, Api Version %s", Version, Commit, ApiVersion)
-
 	log.SetFormatter(&log.TextFormatter{
 		FullTimestamp: false,
 	})
 
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	log.Infof("Version: %s, Commit: %s, Api Version %s", Version, Commit, ApiVersion)
 
-	db.Init()
-	// models.StartMetrics(config.AppCfg.NetworkDev)
-	setupFolders()
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
 
-	services.StartUpJobs()
-	services.StartRecorder()
-	services.StartJobProcessing()
-
-	gin.SetMode("release")
-	endPoint := fmt.Sprintf("0.0.0.0:%d", 3000)
-
-	log.Infof("[main] start http server listening %s", endPoint)
-
-	server := &http.Server{
-		Addr:           endPoint,
-		Handler:        api.Setup(Version, Commit, ApiVersion, frontendFS),
-		ReadTimeout:    12 * time.Hour,
-		WriteTimeout:   12 * time.Hour,
-		MaxHeaderBytes: 0,
-	}
-
-	go func() {
-		if err := server.ListenAndServe(); err != nil {
-			log.Fatalln(err)
-		}
-		log.Infof("[main] start http server listening %s", endPoint)
-	}()
-
-	// Wait for signal and perform cleanup once
-	<-c
-	cleanupOnce.Do(func() {
-		cleanup()
+	application, err := serverapp.InitializeApp(frontendFS, serverapp.Metadata{
+		Version:    Version,
+		Commit:     Commit,
+		APIVersion: ApiVersion,
 	})
-	os.Exit(0)
-}
-
-func cleanup() {
-	log.Infoln("cleanup ...")
-	services.StopJobProcessing()
-	services.StopRecorder()
-	log.Infoln("cleanup complete")
-}
-
-func setupFolders() {
-	channels, err := db.ChannelList()
 	if err != nil {
-		log.Errorln(err)
-		return
+		log.Fatalf("failed to initialize application: %v", err)
 	}
-	for _, channel := range channels {
-		if err := channel.ChannelName.MkDir(); err != nil {
-			log.Errorln(err)
-		}
+
+	if err := application.Run(ctx); err != nil {
+		log.Fatalf("server exited with error: %v", err)
 	}
 }

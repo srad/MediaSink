@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/srad/mediasink/config"
@@ -72,6 +73,10 @@ func (h *previewFramesHandler) Handle(job *db.Job, threadCount int) error {
 	tempPattern := filepath.Join(previewFramesPath, "frame-%06d.jpg")
 
 	// Execute FFmpeg to extract frames with progress tracking
+	var lastOutTimeMs int64
+	var lastFrameNum int64
+	frameTimestamps := make(map[int64]int64)
+
 	err := util.ExecSync(&util.ExecArgs{
 		Command: "ffmpeg",
 		CommandArgs: []string{
@@ -105,6 +110,17 @@ func (h *previewFramesHandler) Handle(job *db.Job, threadCount int) error {
 			EmitProgressFromFrame(job, pm.Output, frameCount)
 
 			kvs := util.ParseFFmpegKVs(pm.Output)
+			if outTimeMs, ok := kvs["out_time_ms"]; ok {
+				if value, err := strconv.ParseInt(outTimeMs, 10, 64); err == nil && value >= 0 {
+					lastOutTimeMs = value
+				}
+			}
+			if frame, ok := kvs["frame"]; ok {
+				if value, err := strconv.ParseInt(frame, 10, 64); err == nil && value > lastFrameNum {
+					lastFrameNum = value
+					frameTimestamps[value] = lastOutTimeMs / 1000
+				}
+			}
 			if progress, ok := kvs["progress"]; ok {
 				if progress == "end" {
 					ws.BroadCastClients(ws.JobDoneEvent, JobMessage[util.TaskComplete]{
@@ -145,9 +161,10 @@ func (h *previewFramesHandler) Handle(job *db.Job, threadCount int) error {
 				continue
 			}
 
-			// Calculate timestamp: frame N (1-indexed) corresponds to timestamp (N-1) * frameInterval
-			// Frame 1 → 0 seconds, Frame 2 → frameInterval seconds, Frame 3 → frameInterval*2, etc.
 			timestamp := uint64(frameNum-1) * frameInterval
+			if actualTimestamp, ok := frameTimestamps[frameNum]; ok && actualTimestamp >= 0 {
+				timestamp = uint64(actualTimestamp)
+			}
 			newName := fmt.Sprintf("%d.jpg", timestamp)
 			oldPath := filepath.Join(previewFramesPath, file.Name())
 			newPath := filepath.Join(previewFramesPath, newName)

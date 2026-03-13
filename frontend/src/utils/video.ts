@@ -1,4 +1,4 @@
-import type { DbRecording } from "../services/api/v1/MediaSinkClient";
+import type { DbRecording } from "../services/api/v2/MediaSinkClient";
 
 export const videoCover = (video: DbRecording): string => {
   if (video.videoPreview) {

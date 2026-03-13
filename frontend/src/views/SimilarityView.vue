@@ -345,8 +345,8 @@
 <script setup lang="ts">
 import { computed, inject, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
-import { createClient } from "@/services/api/v1/ClientFactory";
-import type { DbRecording } from "@/services/api/v1/MediaSinkClient";
+import { createClient } from "@/services/api/v2/ClientFactory";
+import type { DbRecording } from "@/services/api/v2/MediaSinkClient";
 import { useJobStore } from "@/stores/job";
 import { useSimilarityStore } from "@/stores/similarity";
 import { videoCover } from "@/utils/video";

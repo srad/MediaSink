@@ -8,7 +8,7 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import FavButton from "./FavButton.vue";
-import { createClient } from "../../services/api/v1/ClientFactory";
+import { createClient } from "../../services/api/v2/ClientFactory";
 
 // --------------------------------------------------------------------------------------
 // Props
