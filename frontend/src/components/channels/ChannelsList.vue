@@ -58,7 +58,7 @@
 
 <script setup lang="ts">
 import ChannelFavButton from "../../components/controls/ChannelFavButton.vue";
-import type { ServicesChannelInfo } from "../../services/api/v1/MediaSinkClient";
+import type { ServicesChannelInfo } from "../../services/api/v2/MediaSinkClient";
 import { computed, inject } from "vue";
 import DataTable from "../DataTable.vue";
 import { fromNow } from "../../utils/datetime";

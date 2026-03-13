@@ -90,8 +90,8 @@ pub fn normalize_server_url(value: &str) -> Result<String> {
     url.set_query(None);
 
     let mut path = url.path().trim_end_matches('/').to_string();
-    if path.ends_with("/api/v1") {
-        path.truncate(path.len() - "/api/v1".len());
+    if path.ends_with("/api/v2") {
+        path.truncate(path.len() - "/api/v2".len());
     }
     if path.is_empty() {
         path.push('/');

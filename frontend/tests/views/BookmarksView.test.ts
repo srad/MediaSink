@@ -5,15 +5,15 @@ import VideoItem from "../../src/components/VideoItem.vue";
 import { createTestingPinia } from "@pinia/testing";
 import { createI18n } from "vue-i18n";
 import { ComponentPublicInstance } from "vue";
-import { DatabaseRecording } from "../../src/services/api/v1/MediaSinkClient";
+import { DbRecording } from "../../src/services/api/v2/MediaSinkClient";
 
 // Define the component instance type
 type BookmarksViewInstance = ComponentPublicInstance<{
   filterChannel: string;
-  videos: DatabaseRecording[];
-  filteredVideos: DatabaseRecording[];
-  bookmark: (recording: DatabaseRecording) => void;
-  destroyRecording: (recording: DatabaseRecording) => Promise<void>;
+  videos: DbRecording[];
+  filteredVideos: DbRecording[];
+  bookmark: (recording: DbRecording) => void;
+  destroyRecording: (recording: DbRecording) => Promise<void>;
 }>;
 
 // Mock API client
@@ -54,7 +54,7 @@ const mockBookmarksList = vi.fn().mockResolvedValue([
 
 const mockRecordingsDelete = vi.fn().mockResolvedValue(true);
 
-vi.mock("@/services/api/v1/ClientFactory", () => ({
+vi.mock("@/services/api/v2/ClientFactory", () => ({
   createClient: () => ({
     videos: {
       bookmarksList: mockBookmarksList,

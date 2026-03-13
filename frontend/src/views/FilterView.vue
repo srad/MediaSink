@@ -41,12 +41,12 @@
 </template>
 
 <script setup lang="ts">
-import { type DbRecording, type DbRecording as RecordingResponse, ModelsSortOrder, RequestsVideoSortColumn } from "../services/api/v1/MediaSinkClient";
+import { type DbRecording, type DbRecording as RecordingResponse, ModelsSortOrder, RequestsVideoSortColumn } from "../services/api/v2/MediaSinkClient";
 import VideoItem from "../components/VideoItem.vue";
 import { ref, useTemplateRef, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
-import { createClient } from "../services/api/v1/ClientFactory";
+import { createClient } from "../services/api/v2/ClientFactory";
 import LoadIndicator from "../components/LoadIndicator.vue";
 import { useJobStore } from "../stores/job";
 import { useSettingsStore } from "../stores/settings";

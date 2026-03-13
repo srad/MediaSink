@@ -79,7 +79,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import type { DbRecording as RecordingResponse } from "../services/api/v1/MediaSinkClient.ts";
+import type { DbRecording as RecordingResponse } from "../services/api/v2/MediaSinkClient.ts";
 import { fromNow } from "../utils/datetime";
 import FavButton from "./controls/FavButton.vue";
 import { useAuthStore } from "../stores/auth";

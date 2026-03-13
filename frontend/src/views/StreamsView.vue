@@ -105,7 +105,7 @@
 </template>
 
 <script setup lang="ts">
-import type { DbChannel as ChannelResponse } from "@/services/api/v1/MediaSinkClient";
+import type { DbChannel as ChannelResponse } from "@/services/api/v2/MediaSinkClient";
 import ChannelItem from "@/components/ChannelItem.vue";
 import ChannelModal from "@/components/modals/ChannelModal.vue";
 import { computed, onMounted, ref, watch } from "vue";

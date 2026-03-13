@@ -4,7 +4,7 @@ import type {
   DbRecording,
   ResponsesSimilarityGroupsResponse,
   ResponsesVisualSearchResponse,
-} from "@/services/api/v1/MediaSinkClient";
+} from "@/services/api/v2/MediaSinkClient";
 
 export const useSimilarityStore = defineStore(
   "similarity",

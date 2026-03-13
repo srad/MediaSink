@@ -31,10 +31,10 @@
 
 <script setup lang="ts">
 import VideoItem from "@/components/VideoItem.vue";
-import type { DbRecording as RecordingResponse } from "@/services/api/v1/MediaSinkClient";
+import type { DbRecording as RecordingResponse } from "@/services/api/v2/MediaSinkClient";
 import { onMounted, ref, watch } from "vue";
 import { useRoute } from "vue-router";
-import { createClient } from "@/services/api/v1/ClientFactory";
+import { createClient } from "@/services/api/v2/ClientFactory";
 import LoadIndicator from "@/components/LoadIndicator.vue";
 import { useI18n } from "vue-i18n";
 import FillNotice from "@/components/FillNotice.vue";

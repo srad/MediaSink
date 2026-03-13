@@ -39,8 +39,8 @@
 <script setup lang="ts">
 import { onMounted, ref, useTemplateRef } from "vue";
 
-import type { DbChannel } from "@/services/api/v1/MediaSinkClient";
-import { createClient } from "@/services/api/v1/ClientFactory";
+import type { DbChannel } from "@/services/api/v2/MediaSinkClient";
+import { createClient } from "@/services/api/v2/ClientFactory";
 import { downloadObjectAsJson } from "@/utils/file";
 import LoadIndicator from "@/components/LoadIndicator.vue";
 import { ChannelsViewLayout, useSettingsStore } from "@/stores/settings.ts";

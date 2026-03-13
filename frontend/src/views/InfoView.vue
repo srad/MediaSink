@@ -25,10 +25,10 @@
 </template>
 
 <script setup lang="ts">
-import type { UtilCPUInfo, UtilDiskInfo, UtilNetInfo } from "@/services/api/v1/MediaSinkClient";
+import type { UtilCPUInfo, UtilDiskInfo, UtilNetInfo } from "@/services/api/v2/MediaSinkClient";
 import { inject, onMounted, type Ref, ref } from "vue";
 import { onBeforeRouteLeave } from "vue-router";
-import { createClient } from "@/services/api/v1/ClientFactory";
+import { createClient } from "@/services/api/v2/ClientFactory";
 
 const build = inject("build") as string;
 const version = inject("version") as string;

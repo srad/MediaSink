@@ -19,3 +19,4 @@ LICENSE
 .gemini
 .runtime
 frontend/node_modules
+cli

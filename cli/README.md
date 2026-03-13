@@ -2,6 +2,8 @@
 
 Full-screen terminal client for MediaSink, implemented as a Rust `ratatui` application under `/cli` with a minimal npm wrapper for packaging and distribution.
 
+Package-manager note: the wrapper flow is npm-only. Do not use pnpm here.
+
 ## Architecture
 
 - `Cargo.toml` + `src/`: the real application, implemented in Rust
@@ -9,7 +11,7 @@ Full-screen terminal client for MediaSink, implemented as a Rust `ratatui` appli
 - `package.json`: wrapper metadata only, not the primary project definition
 - No TypeScript client layer inside `/cli`; the old JS/Ink implementation is gone
 
-The CLI is a separate project from the Vue frontend. It talks to the same `/api/v1` backend and the same WebSocket server, but it is built and tested independently.
+The CLI is a separate project from the Vue frontend. It talks to the same `/api/v2` backend and the same WebSocket server, but it is built and tested independently.
 
 ## Features
 

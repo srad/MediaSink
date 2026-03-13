@@ -13,5 +13,6 @@ swag init
 export CGO_CFLAGS="-g -O2 -Wno-return-local-addr"
 VERSION=dev
 COMMIT="$(git rev-parse --short HEAD)"
+API_VERSION="${API_VERSION:-0.1.0}"
 go mod vendor
-go build -o ./main -ldflags="-X 'main.Version=$VERSION' -X 'main.Commit=$COMMIT'" -mod=mod
+go build -o ./main -ldflags="-X 'main.Version=$VERSION' -X 'main.Commit=$COMMIT' -X 'main.ApiVersion=$API_VERSION'" -mod=mod

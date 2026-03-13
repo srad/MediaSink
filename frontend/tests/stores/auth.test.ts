@@ -15,7 +15,7 @@ afterEach(() => {
 });
 
 // Mock ClientFactory - AuthService will use this to make API calls
-vi.mock("../../src/services/api/v1/ClientFactory", () => ({
+vi.mock("../../src/services/api/v2/ClientFactory", () => ({
   createClient: vi.fn(() => ({
     auth: {
       loginCreate: vi.fn(() => Promise.resolve({ token: "mocked-jwt-token" })),

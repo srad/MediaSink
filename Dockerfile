@@ -43,7 +43,8 @@ FROM node:22-bookworm AS frontend_builder
 WORKDIR /app
 
 COPY frontend/package*.json ./
-RUN npm install
+# Repository policy is npm-only; use the committed lockfile in container builds.
+RUN npm ci
 
 COPY frontend/ ./
 RUN npm run build

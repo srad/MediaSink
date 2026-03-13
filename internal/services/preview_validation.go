@@ -1,8 +1,11 @@
 package services
 
 import (
+	"fmt"
 	"os"
 	"regexp"
+
+	"github.com/srad/mediasink/internal/db"
 )
 
 const (
@@ -58,4 +61,35 @@ func validatePreviewFrames(previewFramesPath string, hasDBEntry bool) (needsRege
 	}
 
 	return false, "", nil
+}
+
+type PreviewValidationResult struct {
+	NeedsRegeneration bool   `json:"needsRegeneration"`
+	Reason            string `json:"reason,omitempty"`
+}
+
+func (r PreviewValidationResult) IsValid() bool {
+	return !r.NeedsRegeneration
+}
+
+func ValidateRecordingPreview(recording *db.Recording) (PreviewValidationResult, error) {
+	if recording == nil {
+		return PreviewValidationResult{}, fmt.Errorf("recording is nil")
+	}
+
+	needsRegeneration, reason, err := validatePreviewFrames(
+		recording.RecordingID.GetPreviewFramesPath(recording.ChannelName),
+		recording.VideoPreviews != nil,
+	)
+	if err != nil {
+		return PreviewValidationResult{
+			NeedsRegeneration: needsRegeneration,
+			Reason:            reason,
+		}, err
+	}
+
+	return PreviewValidationResult{
+		NeedsRegeneration: needsRegeneration,
+		Reason:            reason,
+	}, nil
 }

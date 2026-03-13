@@ -164,7 +164,7 @@
 </template>
 
 <script setup lang="ts">
-import type { DbRecording, ResponsesAnalysisResponse } from "@/services/api/v1/MediaSinkClient";
+import type { DbRecording, ResponsesAnalysisResponse } from "@/services/api/v2/MediaSinkClient";
 import VideoStripe, { type Selection } from "@/components/VideoStripe.vue";
 import BusyOverlay from "@/components/BusyOverlay.vue";
 import { computed, inject, onMounted, onUnmounted, ref, watch } from "vue";
@@ -174,7 +174,7 @@ import ModalConfirmDialog from "@/components/modals/ModalConfirmDialog.vue";
 import MarkingsTable from "@/components/MarkingsTable.vue";
 import { useToastStore } from "@/stores/toast";
 import { useJobStore } from "@/stores/job";
-import { createClient } from "@/services/api/v1/ClientFactory";
+import { createClient } from "@/services/api/v2/ClientFactory";
 import { useSettingsStore } from "@/stores/settings.ts";
 import RecordingFavButton from "@/components/controls/RecordingFavButton.vue";
 import ModalWindow from "@/components/modals/ModalWindow.vue";

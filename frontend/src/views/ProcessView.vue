@@ -7,9 +7,9 @@
 </template>
 
 <script setup lang="ts">
-import { type ServicesProcessInfo } from "../services/api/v1/MediaSinkClient";
+import { type ServicesProcessInfo } from "../services/api/v2/MediaSinkClient";
 import { onMounted, ref } from "vue";
-import { createClient } from "../services/api/v1/ClientFactory";
+import { createClient } from "../services/api/v2/ClientFactory";
 import DataTable from "../components/DataTable.vue";
 import type { Column } from "../types/table";
 

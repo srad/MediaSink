@@ -20,7 +20,7 @@
 </template>
 
 <script setup lang="ts">
-import type { ServicesChannelInfo } from "../../services/api/v1/MediaSinkClient";
+import type { ServicesChannelInfo } from "../../services/api/v2/MediaSinkClient";
 import ChannelFavButton from "../../components/controls/ChannelFavButton.vue";
 import { inject } from "vue";
 

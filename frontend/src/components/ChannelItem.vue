@@ -34,8 +34,8 @@ import { inject, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 
-import { createClient } from "../services/api/v1/ClientFactory";
-import type { ServicesChannelInfo as ChannelInfo } from "../services/api/v1/MediaSinkClient";
+import { createClient } from "../services/api/v2/ClientFactory";
+import type { ServicesChannelInfo as ChannelInfo } from "../services/api/v2/MediaSinkClient";
 
 import StreamInfo from "./StreamInfo.vue";
 import VideoPreview from "./VideoPreview.vue";

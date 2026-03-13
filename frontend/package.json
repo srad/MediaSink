@@ -1,6 +1,7 @@
 {
   "name": "mediasink-vue",
   "version": "0.1.0",
+  "packageManager": "npm@11.11.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -69,18 +70,5 @@
     "vitest": "^4.0.18",
     "vue-tsc": "^3.2.5",
     "workbox-window": "^7.4.0"
-  },
-  "pnpm": {
-    "ignoredBuiltDependencies": [
-      "@nightwatch/nightwatch-inspector",
-      "@parcel/watcher",
-      "chromedriver",
-      "esbuild",
-      "geckodriver"
-    ],
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "msw"
-    ]
   }
 }

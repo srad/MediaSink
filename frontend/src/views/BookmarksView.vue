@@ -21,11 +21,11 @@
 </template>
 
 <script setup lang="ts">
-import type { DbRecording } from "../services/api/v1/MediaSinkClient";
+import type { DbRecording } from "../services/api/v2/MediaSinkClient";
 import VideoItem from "../components/VideoItem.vue";
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
-import { createClient } from "../services/api/v1/ClientFactory";
+import { createClient } from "../services/api/v2/ClientFactory";
 import FillNotice from "@/components/FillNotice.vue";
 
 // --------------------------------------------------------------------------------------

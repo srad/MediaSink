@@ -22,7 +22,7 @@
 
 <script setup lang="ts">
 import JobStatus from "./JobStatus.vue";
-import type { DbJob } from "../services/api/v1/MediaSinkClient";
+import type { DbJob } from "../services/api/v2/MediaSinkClient";
 import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 

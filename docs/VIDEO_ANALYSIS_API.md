@@ -10,7 +10,7 @@ The Video Analysis API provides automated detection of scenes and highlights in 
 
 ### Get Analysis Results
 
-**Endpoint:** `GET /api/v1/analysis/{recordingId}`
+**Endpoint:** `GET /api/v2/analysis/{recordingId}`
 
 **Parameters:**
 - `recordingId` (path, required, uint): The recording ID to get analysis for

@@ -33,12 +33,12 @@
 </template>
 
 <script setup lang="ts">
-import type { UtilCPUInfo, UtilDiskInfo, UtilNetInfo } from "@/services/api/v1/MediaSinkClient";
+import type { UtilCPUInfo, UtilDiskInfo, UtilNetInfo } from "@/services/api/v2/MediaSinkClient";
 import TrafficChart from "@/components/charts/TrafficChart.vue";
 import CPUChart from "@/components/charts/CPUChart.vue";
 import { onMounted, ref } from "vue";
 import { onBeforeRouteLeave } from "vue-router";
-import { createClient } from "@/services/api/v1/ClientFactory";
+import { createClient } from "@/services/api/v2/ClientFactory";
 
 const importing = ref(false);
 const importProgress = ref(0);

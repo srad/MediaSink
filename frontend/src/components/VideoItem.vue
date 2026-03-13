@@ -42,11 +42,11 @@
 import VideoInfo from "./VideoInfo.vue";
 import VideoPreview from "./VideoPreview.vue";
 import VideoEnhancementModal from "./VideoEnhancementModal.vue";
-import type { DbRecording as RecordingResponse } from "../services/api/v1/MediaSinkClient";
+import type { DbRecording as RecordingResponse } from "../services/api/v2/MediaSinkClient";
 import { computed, inject, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
-import { createClient } from "../services/api/v1/ClientFactory";
+import { createClient } from "../services/api/v2/ClientFactory";
 import { mapVideoFrames, videoCover } from "../utils/video";
 import { useToastStore } from "../stores/toast";
 

@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 	"github.com/srad/mediasink/internal/models/requests"
 	"github.com/srad/mediasink/internal/models/responses"
 	"github.com/srad/mediasink/internal/services"
+	"github.com/srad/mediasink/internal/store/vector"
 )
 
 // SearchSimilarVideosByImage godoc
@@ -197,7 +199,7 @@ func GroupSimilarVideos(c *gin.Context) {
 		})
 	}
 
-	analyzedIDs, _ := db.ListRecordingIDsWithFrameVectors(1000)
+	analyzedIDs, _ := vector.Default().ListRecordingIDs(context.Background(), 1000)
 
 	appG.Response(http.StatusOK, responses.SimilarityGroupsResponse{
 		SimilarityThreshold: similarity,

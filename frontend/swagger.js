@@ -50,7 +50,7 @@ await generateApi({
   fileName: "MediaSinkClient.ts",
   apiClassName: "MediaSinkClient",
   // set to `false` to prevent the tool from writing to disk
-  output: path.join(process.cwd(), "src", "services", "api", "v1"),
+  output: path.join(process.cwd(), "src", "services", "api", "v2"),
   ...swaggerInput,
   //templates: path.resolve(path.join(process.cwd(), ".", "services", "api", "v1", "templates")),
   httpClientType: "fetch", // or "axios"

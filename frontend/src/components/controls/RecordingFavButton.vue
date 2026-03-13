@@ -8,7 +8,7 @@
 <script setup lang="ts">
 import FavButton from "./FavButton.vue";
 import { ref } from "vue";
-import { createClient } from "../../services/api/v1/ClientFactory";
+import { createClient } from "../../services/api/v2/ClientFactory";
 
 const props = defineProps<{
   bookmarked: boolean;
