@@ -4,15 +4,21 @@
       <i class="bi fs-4 text-danger blink bi-record-fill pulse" v-if="props.isRecording"></i>
     </span>
 
-    <img v-if="!props.previewFrames || props.previewFrames?.length===0" class="w-100 h-100 object-fit-cover rounded-top-2" alt="preview" loading="lazy" :src="props.previewImage" />
-    <template v-else>
-      <div class="position-relative w-100 h-100" @mouseenter="paused = false" @mouseleave="paused = true">
-        <img class="w-100 h-100 object-fit-cover rounded-top-2" alt="preview" loading="lazy" :src="props.previewImage" />
-        <div class="position-absolute top-0 start-0 w-100 h-100" v-if="!paused">
-          <ImageFramePlayer :frames="props.previewFrames!" :pause="paused" :duration="1" :fps="4" />
-        </div>
-      </div>
-    </template>
+    <div class="position-relative w-100 h-100" @mouseenter="paused = false" @mouseleave="paused = true">
+      <img
+        v-if="showStaticPreview"
+        class="w-100 h-100 object-fit-cover rounded-top-2"
+        alt="preview"
+        loading="lazy"
+        :src="props.previewImage" />
+      <ImageFramePlayer
+        v-else
+        class="w-100 h-100 rounded-top-2"
+        :frames="props.previewFrames!"
+        :pause="paused"
+        :duration="1"
+        :fps="4" />
+    </div>
 
     <div v-if="isRecording" class="recording-time-overlay bg-danger position-absolute badge rounded-2 opacity-75 text-white">{{ minutes }}:{{ seconds }}min</div>
     <div class="channel-info-overlay bg-dark position-absolute badge rounded-2 opacity-75 text-white" v-if="props.recordingsSize && props.recordingsCount">{{ (props.recordingsSize / 1024 / 1024 / 1024).toFixed(1) }}GB ({{ props.recordingsCount }})</div>
@@ -38,6 +44,7 @@ const props = defineProps<{
 const secRecording = ref((props.minRecording || 0) * 60);
 
 const paused = ref(true);
+const showStaticPreview = computed(() => !props.previewFrames?.length || paused.value);
 
 const minutes = computed(() => (secRecording.value / 60).toFixed(0));
 const seconds = computed(() => {

@@ -22,7 +22,7 @@
       </div>
       <span v-if="props.recording.videoType === 'cut'" class="badge bg-warning position-absolute" style="user-select: none; z-index: 10; bottom: 10px; right: 10px">cut</span>
       <RouterLink class="d-flex w-100 h-100" :to="link">
-        <VideoPreview class="card-img-top w-100 h-100" :data="recording.recordingId" :preview-frames="previewFrames" :preview-video="previewVideoUrl" :preview-image="previewCoverUrl" />
+        <VideoPreview class="card-img-top w-100 h-100" :data="recording.recordingId" :preview-frames="previewFrames" :preview-image="previewCoverUrl" />
       </RouterLink>
     </div>
     <div v-if="props.showTitle" class="card-body">
@@ -87,7 +87,6 @@ const fileUrl = inject("fileUrl") as string;
 
 const toast = useToastStore();
 
-const previewVideoUrl = `${fileUrl}/${props.recording.videoPreview?.previewPath}/0.jpg`;
 const previewCoverUrl = fileUrl + "/" + videoCover(props.recording);
 const downloadApiUrl = `${apiUrl}/videos/${props.recording.recordingId}/download`;
 const previewFrames = computed(() => mapVideoFrames(fileUrl, props.recording));

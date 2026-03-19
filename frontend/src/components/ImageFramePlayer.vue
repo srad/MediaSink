@@ -1,6 +1,6 @@
 <template>
   <div class="image-frame-player" @click="togglePlay">
-    <img :src="currentFrameSrc" alt="Video Frame" :style="imageStyles" ref="frameImage" loading="lazy" />
+    <img :src="currentFrameSrc" alt="Video Frame" :style="imageStyles" ref="frameImage" loading="eager" draggable="false" />
     <div class="opacity-50 bg-white" style="height: 10px; bottom: 0; left: 0; right: 0; background: white; position: absolute">
       <div class="h-100 bg-primary opacity-50 text-white" :style="{ width: `${progress}%` }">
       </div>
@@ -184,6 +184,8 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   cursor: pointer;
+  overflow: hidden;
+  position: relative;
   /* Add any other necessary styling to match the original video element's container */
 }
 </style>
