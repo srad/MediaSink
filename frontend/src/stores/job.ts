@@ -1,7 +1,6 @@
 import { type DbJob, type DbJob as Job, DbJobOrder, DbJobStatus } from "../services/api/v2/MediaSinkClient";
 import { defineStore } from "pinia";
 import { createClient } from "../services/api/v2/ClientFactory";
-import type { JobTableItem } from "../views/JobView.vue";
 import { fromNow, humanizeMs } from "../utils/datetime";
 
 export type JobMessage<T> = {
@@ -36,6 +35,23 @@ export type TaskProgress = {
   message: string;
 };
 
+export type JobTableItem = DbJob & {
+  createdAtFromNow: string;
+  startedFromNow: string;
+  completedAtFromNow: string;
+  workingDuration: string;
+};
+
+export function decorateJobsWithTime(jobs: DbJob[]): JobTableItem[] {
+  return jobs.map((job: DbJob) => ({
+    ...job,
+    createdAtFromNow: fromNow(Date.parse(job.createdAt)),
+    workingDuration: job.durationMs ? humanizeMs(job.durationMs) : "-",
+    startedFromNow: job.startedAt ? fromNow(Date.parse(job.startedAt)) : "-",
+    completedAtFromNow: job.completedAt ? fromNow(Date.parse(job.completedAt)) : "-",
+  }));
+}
+
 export const useJobStore = defineStore("job", {
   state(): JobState {
     return {
@@ -45,17 +61,7 @@ export const useJobStore = defineStore("job", {
   },
   getters: {
     withTime: (state: JobState): JobTableItem[] =>
-      state.jobs
-        .sort((a, b) => +b.active - +a.active)
-        .map(function (job: DbJob) {
-          return {
-            ...job,
-            createdAtFromNow: fromNow(Date.parse(job.createdAt)),
-            wokingDuration: job.durationMs ? humanizeMs(job.durationMs) : "-",
-            startedFromNow: job.startedAt ? fromNow(Date.parse(job.startedAt)) : "-",
-            completedAtFromNow: job.completedAt ? fromNow(Date.parse(job.completedAt)) : "-",
-          };
-        }),
+      decorateJobsWithTime([...state.jobs].sort((a, b) => +b.active - +a.active)),
     all: (state: JobState): Job[] => {
       return state.jobs || [];
     },
