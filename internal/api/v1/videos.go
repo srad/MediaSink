@@ -100,6 +100,57 @@ func GetVideo(c *gin.Context) {
 	appG.Response(http.StatusOK, &video)
 }
 
+// GetVideoPreviewManifest godoc
+// @Summary     Return actual preview frame timestamps for a video
+// @Description Return the sorted list of actual preview frame timestamps for a video timeline.
+// @Tags        videos
+// @Accept      json
+// @Produce     json
+// @Param       id path uint true "video item id"
+// @Success     200 {object} responses.PreviewManifestResponse
+// @Failure     400 {} string "Error message"
+// @Failure     404 {} string "Error message"
+// @Failure     500 {} string "Error message"
+// @Router      /videos/{id}/preview/manifest [get]
+func GetVideoPreviewManifest(c *gin.Context) {
+	appG := app.Gin{C: c}
+
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		appG.Error(http.StatusBadRequest, err)
+		return
+	}
+
+	video, err := db.RecordingID(id).FindRecordingByID()
+	if err != nil {
+		appG.Error(http.StatusInternalServerError, err)
+		return
+	}
+
+	if video.VideoPreviews == nil {
+		appG.Error(http.StatusNotFound, fmt.Errorf("preview not found for recording %d", id))
+		return
+	}
+
+	frames, err := services.LoadPreviewFrames(video.RecordingID.GetPreviewFramesPath(video.ChannelName))
+	if err != nil {
+		appG.Error(http.StatusInternalServerError, err)
+		return
+	}
+
+	timestamps := make([]uint64, 0, len(frames))
+	for _, frame := range frames {
+		timestamps = append(timestamps, frame.Timestamp)
+	}
+
+	appG.Response(http.StatusOK, &responses.PreviewManifestResponse{
+		RecordingID: uint(video.RecordingID),
+		PreviewPath: video.VideoPreviews.PreviewPath,
+		FrameCount:  uint64(len(timestamps)),
+		Timestamps:  timestamps,
+	})
+}
+
 // GetBookmarkedVideos godoc
 // @Summary     Returns all bookmarked videos.
 // @Description Returns all bookmarked videos.

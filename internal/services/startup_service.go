@@ -152,20 +152,19 @@ func enqueueUnanalyzedRecordings() {
 	previewJobs := 0
 	analysisJobs := 0
 	for _, rec := range recordings {
-		previewState, validationErr := ValidateRecordingPreview(rec)
-		if validationErr != nil {
-			log.Warnf("[StartUpJobs] Preview validation for recording %d returned %v", rec.RecordingID, validationErr)
-		}
-		if previewState.NeedsRegeneration {
-			if _, err := rec.EnqueuePreviewFramesJob(); err == nil {
-				previewJobs++
-			}
-			continue
-		}
 		if _, done := analyzedSet[rec.RecordingID]; done {
 			continue
 		}
-		if _, err := rec.EnqueueAnalysisJob(); err == nil {
+
+		task, err := EnqueueAnalysisPipeline(rec)
+		if err != nil {
+			continue
+		}
+
+		switch task {
+		case db.TaskPreviewFrames:
+			previewJobs++
+		case db.TaskAnalyzeFrames:
 			analysisJobs++
 		}
 	}

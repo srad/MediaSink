@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/srad/mediasink/internal/analysis/detectors"
 	"github.com/srad/mediasink/internal/db"
 )
 
@@ -195,24 +196,28 @@ func TestDetectScenesFromSimilarities_ChangeIntensity(t *testing.T) {
 // ----- detectHighlightsFromSimilarities --------------------------------------
 
 func TestDetectHighlightsFromSimilarities_DetectsMotion(t *testing.T) {
-	// 50 frames: 46 at 0.85, one motion event of 4 consecutive frames at 0.20.
-	// n/m = 46/4 = 11.5 > k²=6.25 → threshold sits above 0.20 → event detected.
-	sims, ts := makeSimSeq(50, 0.85, 23, 27, 0.20)
+	sims, ts := makeSimSeq(80, 0.85, 20, 34, 0.20)
 
 	highlights, err := detectHighlightsFromSimilarities(sims, ts, nil)
 	if err != nil {
 		t.Fatalf("detectHighlightsFromSimilarities: %v", err)
 	}
-	if len(highlights) == 0 {
-		t.Error("expected highlights for low-similarity frames")
+	if len(highlights) != 1 {
+		t.Fatalf("expected 1 grouped highlight, got %d", len(highlights))
 	}
-	for _, h := range highlights {
-		if h.Type != "motion" {
-			t.Errorf("unexpected highlight type: %s", h.Type)
-		}
-		if h.Intensity <= 0 || h.Intensity > 1.0 {
-			t.Errorf("highlight intensity out of range: %.4f", h.Intensity)
-		}
+
+	highlight := highlights[0]
+	if highlight.Type != "motion" {
+		t.Errorf("unexpected highlight type: %s", highlight.Type)
+	}
+	if highlight.StartTime >= highlight.EndTime {
+		t.Fatalf("expected highlight range, got %+v", highlight)
+	}
+	if highlight.Timestamp < highlight.StartTime || highlight.Timestamp > highlight.EndTime {
+		t.Fatalf("expected representative timestamp inside range, got %+v", highlight)
+	}
+	if highlight.Intensity <= 0 || highlight.Intensity > 1.0 {
+		t.Errorf("highlight intensity out of range: %.4f", highlight.Intensity)
 	}
 }
 
@@ -239,9 +244,7 @@ func TestDetectHighlightsFromSimilarities_TooFew(t *testing.T) {
 }
 
 func TestDetectHighlightsFromSimilarities_Intensity(t *testing.T) {
-	// Intensity = 1 - smoothed_similarity; for sim=0.20 intensity should be ~0.80.
-	// 50 frames, 4 cuts at 0.20: n/m=46/4=11.5 > k²=6.25 → threshold > 0.20.
-	sims, ts := makeSimSeq(50, 0.85, 5, 9, 0.20)
+	sims, ts := makeSimSeq(80, 0.85, 10, 24, 0.20)
 
 	highlights, err := detectHighlightsFromSimilarities(sims, ts, nil)
 	if err != nil {
@@ -254,13 +257,87 @@ func TestDetectHighlightsFromSimilarities_Intensity(t *testing.T) {
 	}
 }
 
+func TestDetectHighlightsFromSimilarities_MergesNearbyBursts(t *testing.T) {
+	sims, ts := makeSimSeq(120, 0.85, 20, 30, 0.20)
+	for index := 34; index < 44; index++ {
+		sims[index] = 0.22
+	}
+
+	highlights, err := detectHighlightsFromSimilarities(sims, ts, nil)
+	if err != nil {
+		t.Fatalf("detectHighlightsFromSimilarities: %v", err)
+	}
+	if len(highlights) != 1 {
+		t.Fatalf("expected nearby bursts to merge into one highlight, got %+v", highlights)
+	}
+}
+
+func TestDetectHighlightsFromSimilarities_DropsShortBlips(t *testing.T) {
+	sims, ts := makeSimSeq(80, 0.85, 20, 24, 0.20)
+
+	highlights, err := detectHighlightsFromSimilarities(sims, ts, nil)
+	if err != nil {
+		t.Fatalf("detectHighlightsFromSimilarities: %v", err)
+	}
+	if len(highlights) != 0 {
+		t.Fatalf("expected short highlight blip to be discarded, got %+v", highlights)
+	}
+}
+
 // ----- FeatureExtractor interface --------------------------------------------
 
 func TestFeatureExtractorInterface_Signature(t *testing.T) {
 	// Compile-time check: the interface requires []float32 return.
-	var _ FeatureExtractor = (interface {
+	var _ detectors.EmbeddingExtractor = (interface {
 		ExtractFeatures(image.Image) ([]float32, error)
+		Name() string
+		Close() error
 	})(nil)
+}
+
+func TestProjectSegmentsToScenes(t *testing.T) {
+	segments := []db.SegmentInfo{
+		{
+			Kind:                    "chapter",
+			StartTime:               0,
+			EndTime:                 120,
+			Confidence:              0.8,
+			RepresentativeTimestamp: 60,
+		},
+		{
+			Kind:                    "chapter",
+			StartTime:               120,
+			EndTime:                 300,
+			Confidence:              0.4,
+			RepresentativeTimestamp: 210,
+		},
+	}
+
+	scenes := projectSegmentsToScenes(segments)
+	if len(scenes) != len(segments) {
+		t.Fatalf("expected %d scenes, got %d", len(segments), len(scenes))
+	}
+	if scenes[0].StartTime != 0 || scenes[0].EndTime != 120 || scenes[0].ChangeIntensity != 0.8 {
+		t.Fatalf("unexpected first scene projection: %+v", scenes[0])
+	}
+	if scenes[1].StartTime != 120 || scenes[1].EndTime != 300 || scenes[1].ChangeIntensity != 0.4 {
+		t.Fatalf("unexpected second scene projection: %+v", scenes[1])
+	}
+}
+
+func TestClampTimestampsToDuration(t *testing.T) {
+	got := clampTimestampsToDuration([]float64{-5, 10, 65}, 60)
+	want := []float64{0, 10, 60}
+
+	if len(got) != len(want) {
+		t.Fatalf("expected %d timestamps, got %d", len(want), len(got))
+	}
+
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("timestamp[%d]: want %.1f, got %.1f", index, want[index], got[index])
+		}
+	}
 }
 
 // ----- db.RecordingID type sanity ------------------------------------

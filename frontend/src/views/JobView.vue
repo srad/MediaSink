@@ -88,10 +88,15 @@
                 <span class="cell-muted">{{ timeLabel(job) }}</span>
               </td>
               <td class="text-end">
-                <button type="button" class="btn btn-link btn-sm text-danger p-0" :disabled="isDestroying(job.jobId)" :aria-label="`Destroy job ${job.jobId}`" @click="destroy(job.jobId)">
-                  <span v-if="isDestroying(job.jobId)">...</span>
-                  <i v-else class="bi bi-trash3" />
-                </button>
+                <div class="action-cell">
+                  <button v-if="currentTab !== 'active'" type="button" class="btn btn-link btn-sm p-0" :aria-label="`Inspect job ${job.jobId}`" @click="inspect(job)">
+                    <i class="bi bi-eye" />
+                  </button>
+                  <button type="button" class="btn btn-link btn-sm text-danger p-0" :disabled="isDestroying(job.jobId)" :aria-label="`Destroy job ${job.jobId}`" @click="destroy(job.jobId)">
+                    <span v-if="isDestroying(job.jobId)">...</span>
+                    <i v-else class="bi bi-trash3" />
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -118,16 +123,72 @@
         </button>
       </div>
     </div>
+
+    <section v-if="selectedJob && currentTab !== 'active'" class="job-panel job-detail-panel">
+      <div class="job-detail-header">
+        <div>
+          <h2 class="job-detail-title mb-1">Job {{ selectedJob.jobId }}</h2>
+          <p class="job-detail-subtitle mb-0">{{ formatTask(selectedJob.task) }} in {{ selectedJob.channelName }}</p>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-secondary" @click="selectedJob = null">
+          Close
+        </button>
+      </div>
+
+      <div class="job-detail-grid">
+        <div class="job-detail-field">
+          <span class="job-detail-label">Status</span>
+          <span>{{ statusLabel(selectedJob) }}</span>
+        </div>
+        <div class="job-detail-field">
+          <span class="job-detail-label">File</span>
+          <span>{{ selectedJob.filename || "-" }}</span>
+        </div>
+        <div class="job-detail-field">
+          <span class="job-detail-label">Created</span>
+          <span>{{ selectedJob.createdAt }}</span>
+        </div>
+        <div class="job-detail-field">
+          <span class="job-detail-label">Started</span>
+          <span>{{ selectedJob.startedAt || "-" }}</span>
+        </div>
+        <div class="job-detail-field">
+          <span class="job-detail-label">Completed</span>
+          <span>{{ selectedJob.completedAt || "-" }}</span>
+        </div>
+        <div class="job-detail-field">
+          <span class="job-detail-label">Duration</span>
+          <span>{{ selectedJob.workingDuration }}</span>
+        </div>
+      </div>
+
+      <div class="job-detail-stack">
+        <div class="job-detail-block">
+          <span class="job-detail-label">Error / Info</span>
+          <pre class="job-detail-text">{{ selectedJob.info || "No error text recorded." }}</pre>
+        </div>
+        <div class="job-detail-block">
+          <span class="job-detail-label">Command</span>
+          <pre class="job-detail-text">{{ selectedJob.command || "-" }}</pre>
+        </div>
+        <div class="job-detail-block">
+          <span class="job-detail-label">Path</span>
+          <pre class="job-detail-text">{{ selectedJob.filepath || "-" }}</pre>
+        </div>
+      </div>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { DbJobOrder, DbJobPriority, DbJobStatus, type DbJob } from "../services/api/v2/MediaSinkClient";
 import { createClient } from "../services/api/v2/ClientFactory";
 import ModalConfirmDialog from "../components/modals/ModalConfirmDialog.vue";
 import { decorateJobsWithTime, type JobTableItem, useJobStore } from "../stores/job";
+import { useSocket } from "../composables/useSocket";
+import { MessageType } from "../utils/socket";
 
 type JobTab = "active" | "completed" | "canceled" | "error";
 
@@ -135,6 +196,7 @@ const client = createClient();
 const jobStore = useJobStore();
 const route = useRoute();
 const router = useRouter();
+const { on, off } = useSocket();
 
 const tabs: { key: JobTab; label: string }[] = [
   { key: "active", label: "Active" },
@@ -168,6 +230,7 @@ const destroyingJobIds = ref<number[]>([]);
 const historyJobs = ref<JobTableItem[]>([]);
 const rowLimit = ref(loadRowLimit());
 const currentPage = ref(1);
+const selectedJob = ref<JobTableItem | null>(null);
 
 const normalizeTab = (tab: string | undefined): JobTab => {
   switch (tab) {
@@ -186,7 +249,7 @@ const normalizeTab = (tab: string | undefined): JobTab => {
 const currentTab = computed<JobTab>(() => normalizeTab(route.params.tab as string | undefined));
 const activeJobs = computed(() =>
   decorateJobsWithTime(
-    [...jobStore.all].sort((a, b) => +b.active - +a.active || Date.parse(b.createdAt) - Date.parse(a.createdAt)),
+    [...jobStore.open].sort((a, b) => +b.active - +a.active || Date.parse(b.createdAt) - Date.parse(a.createdAt)),
   ),
 );
 const processingCount = computed(() => activeJobs.value.filter((job) => job.active).length);
@@ -235,6 +298,30 @@ watch([rows, totalPages], () => {
   }
 });
 
+async function loadWorkerStatus() {
+  try {
+    const response = await client.jobs.workerList();
+    workerRunning.value = response.isProcessing;
+  } catch (error) {
+    console.error("[JobView] Failed to load worker status", error);
+  }
+}
+
+async function loadHistory(tab: Exclude<JobTab, "active">) {
+  const response = await client.jobs.listCreate({
+    skip: 0,
+    take: 1000,
+    states: [historyStateByTab[tab]],
+    sortOrder: DbJobOrder.JobOrderDESC,
+  });
+
+  historyJobs.value = decorateJobsWithTime(response.jobs || []);
+
+  if (selectedJob.value) {
+    selectedJob.value = historyJobs.value.find((job) => job.jobId === selectedJob.value?.jobId) || null;
+  }
+}
+
 watch(
   () => route.params.tab,
   async (rawTab) => {
@@ -246,6 +333,8 @@ watch(
     }
 
     await loadWorkerStatus();
+    currentPage.value = 1;
+    selectedJob.value = null;
 
     if (normalizedTab === "active") {
       historyJobs.value = [];
@@ -257,25 +346,16 @@ watch(
   { immediate: true },
 );
 
-const loadWorkerStatus = async () => {
-  try {
-    const response = await client.jobs.workerList();
-    workerRunning.value = response.isProcessing;
-  } catch (error) {
-    console.error("[JobView] Failed to load worker status", error);
-  }
-};
+watch(
+  [currentPage, rowLimit],
+  async () => {
+    if (currentTab.value === "active") {
+      return;
+    }
 
-const loadHistory = async (tab: Exclude<JobTab, "active">) => {
-  const response = await client.jobs.listCreate({
-    skip: 0,
-    take: 100,
-    states: [historyStateByTab[tab]],
-    sortOrder: DbJobOrder.JobOrderDESC,
-  });
-
-  historyJobs.value = decorateJobsWithTime(response.jobs || []);
-};
+    await loadHistory(currentTab.value);
+  },
+);
 
 const goToTab = (tab: JobTab) => {
   router.push(`/jobs/${tab}`);
@@ -344,6 +424,10 @@ const timeLabel = (job: JobTableItem): string => {
   return job.completedAtFromNow;
 };
 
+const inspect = (job: JobTableItem) => {
+  selectedJob.value = job;
+};
+
 const isDestroying = (jobId: number): boolean => destroyingJobIds.value.includes(jobId);
 
 const destroy = async (jobId: number) => {
@@ -357,6 +441,9 @@ const destroy = async (jobId: number) => {
     await client.jobs.jobsDelete({ id: jobId });
     jobStore.destroy(jobId);
     historyJobs.value = historyJobs.value.filter((job) => job.jobId !== jobId);
+    if (selectedJob.value?.jobId === jobId) {
+      selectedJob.value = null;
+    }
   } catch (error) {
     const message = (error as { error?: string })?.error || "Failed to delete job.";
     alert(message);
@@ -380,6 +467,54 @@ const toggleWorker = async () => {
     showConfirmToggleWorkerDialog.value = false;
   }
 };
+
+const reloadCurrentHistory = async () => {
+  if (currentTab.value === "active") {
+    return;
+  }
+
+  await loadHistory(currentTab.value);
+};
+
+const handleJobError = async () => {
+  if (currentTab.value !== "error") {
+    return;
+  }
+
+  await reloadCurrentHistory();
+};
+
+const handleJobDone = async () => {
+  if (currentTab.value !== "completed") {
+    return;
+  }
+
+  await reloadCurrentHistory();
+};
+
+const handleJobDelete = async () => {
+  if (currentTab.value === "active") {
+    return;
+  }
+
+  await reloadCurrentHistory();
+};
+
+onMounted(() => {
+  on(MessageType.JobError, handleJobError);
+  on(MessageType.JobDone, handleJobDone);
+  on(MessageType.JobDelete, handleJobDelete);
+  on(MessageType.JobDeactivate, handleJobDelete);
+  on(MessageType.JobCreate, handleJobDelete);
+});
+
+onUnmounted(() => {
+  off(MessageType.JobError, handleJobError);
+  off(MessageType.JobDone, handleJobDone);
+  off(MessageType.JobDelete, handleJobDelete);
+  off(MessageType.JobDeactivate, handleJobDelete);
+  off(MessageType.JobCreate, handleJobDelete);
+});
 </script>
 
 <style scoped>
@@ -415,6 +550,12 @@ const toggleWorker = async () => {
 .job-title {
   margin: 0;
   font-size: 1rem;
+}
+
+.action-cell {
+  display: inline-flex;
+  gap: 0.55rem;
+  align-items: center;
 }
 
 .job-tabs {
@@ -455,6 +596,66 @@ const toggleWorker = async () => {
 
 .limit-control select {
   min-width: 4.5rem;
+}
+
+.job-detail-panel {
+  padding: 0.95rem;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.job-detail-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.job-detail-title {
+  font-size: 1rem;
+}
+
+.job-detail-subtitle {
+  color: var(--bs-secondary-color);
+  font-size: 0.88rem;
+}
+
+.job-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.75rem;
+}
+
+.job-detail-field,
+.job-detail-block {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.job-detail-label {
+  color: var(--bs-secondary-color);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.job-detail-stack {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.job-detail-text {
+  margin: 0;
+  padding: 0.7rem 0.8rem;
+  border-radius: 0.7rem;
+  background: rgba(var(--bs-tertiary-bg-rgb), 0.55);
+  border: 1px solid rgba(var(--bs-border-color-rgb), 0.85);
+  color: var(--bs-body-color);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .job-table {

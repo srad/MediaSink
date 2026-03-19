@@ -6,10 +6,16 @@ type EnqueueAllResponse struct {
 	Enqueued int `json:"enqueued"`
 }
 
+type RegenerateChaptersResponse struct {
+	RemovedJobs int `json:"removedJobs"`
+	Enqueued    int `json:"enqueued"`
+	Recordings  int `json:"recordings"`
+}
+
 type SimilarVideoMatch struct {
 	Recording     *db.Recording `json:"recording"`
-	Similarity    float64             `json:"similarity"`
-	BestTimestamp float64             `json:"bestTimestamp"`
+	Similarity    float64       `json:"similarity"`
+	BestTimestamp float64       `json:"bestTimestamp"`
 }
 
 type VisualSearchResponse struct {
@@ -19,8 +25,8 @@ type VisualSearchResponse struct {
 }
 
 type SimilarVideoGroup struct {
-	GroupID       int                   `json:"groupId"`
-	MaxSimilarity float64               `json:"maxSimilarity"`
+	GroupID       int             `json:"groupId"`
+	MaxSimilarity float64         `json:"maxSimilarity"`
 	Videos        []*db.Recording `json:"videos"`
 }
 

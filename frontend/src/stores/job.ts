@@ -101,21 +101,38 @@ export const useJobStore = defineStore("job", {
         this.jobs = this.jobs.filter((x: Job) => x.channelId !== channelId);
       }
     },
-    destroy(jobId: number) {
+    destroy(jobId: number): boolean {
       const index = this.jobs.findIndex((x: Job) => x.jobId === jobId);
       if (index !== -1) {
         this.jobs.splice(index, 1);
+        return true;
       }
+      return false;
     },
     done(message: JobMessage<TaskComplete>) {
-      this.destroy(message.job.jobId);
-      this.dec();
+      if (this.destroy(message.job.jobId)) {
+        this.dec();
+      }
     },
     inactive(job: Job) {
       const i = this.jobs.findIndex((j: Job) => j.jobId === job.jobId);
       if (i !== -1) {
         this.jobs[i] = { ...this.jobs[i], active: false };
       }
+    },
+    activate(job: Job) {
+      const i = this.jobs.findIndex((j: Job) => j.jobId === job.jobId);
+
+      if (i === -1) {
+        this.jobs.unshift({ ...job, active: true });
+        return;
+      }
+
+      this.jobs[i] = {
+        ...this.jobs[i],
+        ...job,
+        active: true,
+      };
     },
     progress(message: JobMessage<TaskProgress>) {
       const i = this.jobs.findIndex((j: Job) => j.jobId === message.job.jobId);
@@ -132,16 +149,15 @@ export const useJobStore = defineStore("job", {
       this.jobsCount = data.totalCount;
     },
     start(message: JobMessage<TaskInfo>) {
-      let i = this.jobs.findIndex((j: Job) => j.jobId === message.job.jobId);
+      this.activate(message.job);
 
+      const i = this.jobs.findIndex((j: Job) => j.jobId === message.job.jobId);
       if (i === -1) {
-        this.jobs.unshift(message.job);
-        i = 0;
+        return;
       }
 
       this.jobs[i] = {
         ...this.jobs[i],
-        active: true,
         pid: message.data.pid,
         command: message.data.command,
       };

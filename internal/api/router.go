@@ -99,6 +99,7 @@ func Setup(version, commit, apiVersion string, frontendFS embed.FS) http.Handler
 		admin.GET("/version", v1.GetVersion(version, commit))
 		admin.POST("/import", v1.TriggerImport)
 		admin.GET("/import", v1.GetImportInfo)
+		admin.POST("/chapters/regenerate", v1.RegenerateChapters)
 
 		// Channels Group
 		// ------------------------------------------------------
@@ -159,6 +160,7 @@ func Setup(version, commit, apiVersion string, frontendFS embed.FS) http.Handler
 		videos.GET("/bookmarks", v1.GetBookmarkedVideos)
 		videos.GET("/enhance/descriptions", v1.GetEnhancementDescriptions)
 		videos.GET("/:id", v1.GetVideo)
+		videos.GET("/:id/preview/manifest", v1.GetVideoPreviewManifest)
 		videos.GET("/:id/download", v1.DownloadVideo)
 
 		videos.PATCH("/:id/fav", v1.FavVideo)

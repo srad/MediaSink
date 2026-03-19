@@ -9,9 +9,10 @@ import (
 )
 
 var (
-	sceneDetector     SceneDetector
-	highlightDetector HighlightDetector
-	mutex             = &sync.Mutex{}
+	sceneDetector      SceneDetector
+	highlightDetector  HighlightDetector
+	embeddingExtractor EmbeddingExtractor
+	mutex              = &sync.Mutex{}
 )
 
 // DetectorType specifies which detection algorithm to use.
@@ -58,6 +59,39 @@ func CreateSceneDetector(detectorType DetectorType) (SceneDetector, error) {
 	}
 
 	return sceneDetector, nil
+}
+
+// CreateEmbeddingExtractor creates an embedding extractor for frame-level feature extraction.
+// The extractor is cached after creation to avoid expensive model reloading.
+func CreateEmbeddingExtractor(detectorType DetectorType) (EmbeddingExtractor, error) {
+	mutex.Lock()
+	defer mutex.Unlock()
+
+	if embeddingExtractor != nil {
+		return embeddingExtractor, nil
+	}
+
+	var err error
+	switch detectorType {
+	case DetectorTypeOnnxMobileNetV3Large:
+		var detector SceneDetector
+		detector, err = scene.NewOnnxSceneDetector("mobilenet_v3_large")
+		if err == nil {
+			var ok bool
+			embeddingExtractor, ok = detector.(EmbeddingExtractor)
+			if !ok {
+				return nil, fmt.Errorf("scene detector %s does not expose embedding extraction", detectorType)
+			}
+		}
+	default:
+		return nil, fmt.Errorf("unknown embedding extractor type: %s", detectorType)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return embeddingExtractor, nil
 }
 
 // CreateHighlightDetector creates a highlight detector based on configuration.

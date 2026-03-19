@@ -42,7 +42,7 @@ func AnalyzeAllVideos(c *gin.Context) {
 			continue
 		}
 
-		if _, err := rec.EnqueueAnalysisJob(); err == nil {
+		if _, err := services.EnqueueAnalysisPipeline(rec); err == nil {
 			enqueued++
 		}
 	}
@@ -79,8 +79,9 @@ func AnalyzeVideo(c *gin.Context) {
 		return
 	}
 
-	// Create analysis job
-	_, err = recording.EnqueueAnalysisJob()
+	// Queue the next valid step. If previews are missing, a preview job is
+	// created first and analysis will be enqueued automatically afterward.
+	_, err = services.EnqueueAnalysisPipeline(recording)
 	if err != nil {
 		appG.Error(http.StatusInternalServerError, err)
 		return

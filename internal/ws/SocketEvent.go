@@ -50,11 +50,11 @@ func BroadCastClients(name SocketEventName, data interface{}) {
 }
 
 type wsDispatcher struct {
-	listeners []wsConnection
+	listeners []*wsConnection
 	mu        sync.RWMutex
 }
 
-func (d *wsDispatcher) addWs(ws wsConnection) {
+func (d *wsDispatcher) addWs(ws *wsConnection) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	d.listeners = append(d.listeners, ws)
@@ -62,13 +62,16 @@ func (d *wsDispatcher) addWs(ws wsConnection) {
 
 func (d *wsDispatcher) broadCast(msg SocketEvent) {
 	d.mu.RLock()
-	listeners := make([]wsConnection, len(d.listeners))
+	listeners := make([]*wsConnection, len(d.listeners))
 	copy(listeners, d.listeners)
 	d.mu.RUnlock()
 
 	var toRemove []*websocket.Conn
 
 	for _, l := range listeners {
+		if l == nil {
+			continue
+		}
 		if err := l.send(msg); err != nil {
 			log.Errorf("[broadCast] send error: %s", err)
 			toRemove = append(toRemove, l.ws)
@@ -85,6 +88,13 @@ func (p *wsConnection) send(v interface{}) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.ws.WriteJSON(v)
+}
+
+func (p *wsConnection) ping(writeWait time.Duration) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.ws.SetWriteDeadline(time.Now().Add(writeWait))
+	return p.ws.WriteMessage(websocket.PingMessage, nil)
 }
 
 func (d *wsDispatcher) rmWs(ws *websocket.Conn) {
@@ -128,7 +138,7 @@ func WsHandler(c *gin.Context) {
 	}()
 
 	// Create the connection object
-	connection := wsConnection{ws: ws}
+	connection := &wsConnection{ws: ws}
 	// Add it to the dispatcher *after* setting up defer, so cleanup is guaranteed
 	dispatcher.addWs(connection)
 	log.Debugf("[WsHandler] Client connected. Total listeners: %d", len(dispatcher.listeners))
@@ -164,13 +174,7 @@ func WsHandler(c *gin.Context) {
 		for {
 			select {
 			case <-ticker.C:
-				// Lock before writing to avoid concurrent writes
-				connection.mu.Lock()
-				// Set a deadline for the write operation.
-				ws.SetWriteDeadline(time.Now().Add(writeWait))
-				// Send a Ping message.
-				err := ws.WriteMessage(websocket.PingMessage, nil)
-				connection.mu.Unlock()
+				err := connection.ping(writeWait)
 
 				if err != nil {
 					log.Debugf("[WsHandler-Ping] Ping failed: %v. Closing connection.", err)

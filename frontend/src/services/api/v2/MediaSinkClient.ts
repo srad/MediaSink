@@ -158,6 +158,14 @@ export interface DbSceneInfo {
   startTime?: number;
 }
 
+export interface DbSegmentInfo {
+  confidence?: number;
+  endTime?: number;
+  kind?: string;
+  representativeTimestamp?: number;
+  startTime?: number;
+}
+
 export interface DbVideoPreview {
   createdAt: string;
   frameCount: number;
@@ -381,6 +389,7 @@ export interface ResponsesAnalysisResponse {
   highlights?: DbHighlightInfo[];
   recordingId: number;
   scenes?: DbSceneInfo[];
+  segments?: DbSegmentInfo[];
   status: string;
 }
 
@@ -688,6 +697,7 @@ export namespace Admin {
     export type RequestHeaders = {};
     export type ResponseBody = ResponsesServerInfoResponse;
   }
+
 }
 
 export namespace Analysis {
@@ -2052,6 +2062,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
         format: "json",
         ...params,
       }),
+
   };
   analysis = {
     /**

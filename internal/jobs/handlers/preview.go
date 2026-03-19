@@ -73,7 +73,7 @@ func (h *previewFramesHandler) Handle(job *db.Job, threadCount int) error {
 	tempPattern := filepath.Join(previewFramesPath, "frame-%06d.jpg")
 
 	// Execute FFmpeg to extract frames with progress tracking
-	var lastOutTimeMs int64
+	var lastOutTimeUs int64
 	var lastFrameNum int64
 	frameTimestamps := make(map[int64]int64)
 
@@ -110,15 +110,21 @@ func (h *previewFramesHandler) Handle(job *db.Job, threadCount int) error {
 			EmitProgressFromFrame(job, pm.Output, frameCount)
 
 			kvs := util.ParseFFmpegKVs(pm.Output)
-			if outTimeMs, ok := kvs["out_time_ms"]; ok {
+			// FFmpeg reports the raw progress timestamp in microseconds. Prefer
+			// out_time_us when present; out_time_ms is a legacy mislabeled alias.
+			if outTimeUs, ok := kvs["out_time_us"]; ok {
+				if value, err := strconv.ParseInt(outTimeUs, 10, 64); err == nil && value >= 0 {
+					lastOutTimeUs = value
+				}
+			} else if outTimeMs, ok := kvs["out_time_ms"]; ok {
 				if value, err := strconv.ParseInt(outTimeMs, 10, 64); err == nil && value >= 0 {
-					lastOutTimeMs = value
+					lastOutTimeUs = value
 				}
 			}
 			if frame, ok := kvs["frame"]; ok {
 				if value, err := strconv.ParseInt(frame, 10, 64); err == nil && value > lastFrameNum {
 					lastFrameNum = value
-					frameTimestamps[value] = lastOutTimeMs / 1000
+					frameTimestamps[value] = lastOutTimeUs / 1000000
 				}
 			}
 			if progress, ok := kvs["progress"]; ok {
@@ -164,6 +170,9 @@ func (h *previewFramesHandler) Handle(job *db.Job, threadCount int) error {
 			timestamp := uint64(frameNum-1) * frameInterval
 			if actualTimestamp, ok := frameTimestamps[frameNum]; ok && actualTimestamp >= 0 {
 				timestamp = uint64(actualTimestamp)
+			}
+			if maxTimestamp := uint64(job.Recording.Duration); timestamp > maxTimestamp {
+				timestamp = maxTimestamp
 			}
 			newName := fmt.Sprintf("%d.jpg", timestamp)
 			oldPath := filepath.Join(previewFramesPath, file.Name())

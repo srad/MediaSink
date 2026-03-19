@@ -5,11 +5,12 @@ import (
 )
 
 type AnalysisResponse struct {
-	AnalysisID  *uint                    `json:"analysisId" extensions:"!x-nullable"`
-	RecordingID uint                     `json:"recordingId" extensions:"!x-nullable"`
-	Status      *string                  `json:"status" extensions:"!x-nullable"`
+	AnalysisID  *uint              `json:"analysisId" extensions:"!x-nullable"`
+	RecordingID uint               `json:"recordingId" extensions:"!x-nullable"`
+	Status      *string            `json:"status" extensions:"!x-nullable"`
 	Scenes      []db.SceneInfo     `json:"scenes"`
 	Highlights  []db.HighlightInfo `json:"highlights"`
+	Segments    []db.SegmentInfo   `json:"segments"`
 }
 
 // NewAnalysisResponse converts a VideoAnalysisResult to an API response
@@ -21,6 +22,7 @@ func NewAnalysisResponse(recordingID uint, result *db.VideoAnalysisResult) (*Ana
 			RecordingID: recordingID,
 			Scenes:      []db.SceneInfo{},
 			Highlights:  []db.HighlightInfo{},
+			Segments:    []db.SegmentInfo{},
 		}, nil
 	}
 
@@ -34,11 +36,19 @@ func NewAnalysisResponse(recordingID uint, result *db.VideoAnalysisResult) (*Ana
 		return nil, err
 	}
 
+	segments, err := result.GetSegments()
+	if err != nil {
+		return nil, err
+	}
+
 	if scenes == nil {
 		scenes = []db.SceneInfo{}
 	}
 	if highlights == nil {
 		highlights = []db.HighlightInfo{}
+	}
+	if segments == nil {
+		segments = []db.SegmentInfo{}
 	}
 
 	analysisID := result.AnalysisID
@@ -50,5 +60,6 @@ func NewAnalysisResponse(recordingID uint, result *db.VideoAnalysisResult) (*Ana
 		Status:      &status,
 		Scenes:      scenes,
 		Highlights:  highlights,
+		Segments:    segments,
 	}, nil
 }

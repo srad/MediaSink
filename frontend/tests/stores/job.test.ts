@@ -100,6 +100,20 @@ describe("Job Store", () => {
     expect(store.jobsCount).toBe(2);
   });
 
+  it("should not decrement count twice when the job is already gone", () => {
+    const store = useJobStore();
+    store.jobs = [...mockJobs];
+    store.jobsCount = 2;
+    const message = {
+      job: mockJobs[0],
+    };
+
+    store.done(message);
+    store.done(message);
+
+    expect(store.jobsCount).toBe(1);
+  });
+
   it("should set a job to inactive", () => {
     const store = useJobStore();
 
@@ -122,6 +136,16 @@ describe("Job Store", () => {
 
     expect(store.jobs[0].progress).toBe(progress);
     expect(store.jobs[0].info).toBe("Progressing...");
+  });
+
+  it("should activate a job when only an activate event arrives", () => {
+    const store = useJobStore();
+    const queuedJob = { ...mockJobs[0], active: false };
+    store.jobs = [queuedJob];
+
+    store.activate(queuedJob);
+
+    expect(store.jobs[0].active).toBe(true);
   });
 
   it("should refresh jobs and total count", () => {

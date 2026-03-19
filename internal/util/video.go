@@ -70,13 +70,13 @@ func (r ResolutionType) GetDimensions() (width uint, height uint) {
 type EncodingPreset string
 
 const (
-	PresetVeryFast  EncodingPreset = "veryfast"
-	PresetFaster    EncodingPreset = "faster"
-	PresetFast      EncodingPreset = "fast"
-	PresetMedium    EncodingPreset = "medium"
-	PresetSlow      EncodingPreset = "slow"
-	PresetSlower    EncodingPreset = "slower"
-	PresetVerySlow  EncodingPreset = "veryslow"
+	PresetVeryFast EncodingPreset = "veryfast"
+	PresetFaster   EncodingPreset = "faster"
+	PresetFast     EncodingPreset = "fast"
+	PresetMedium   EncodingPreset = "medium"
+	PresetSlow     EncodingPreset = "slow"
+	PresetSlower   EncodingPreset = "slower"
+	PresetVerySlow EncodingPreset = "veryslow"
 )
 
 // Validate checks if the preset is valid
@@ -361,7 +361,7 @@ func (video *Video) ExecPreviewFrames(args *VideoConversionArgs, videoDuration f
 
 	// Track frame timestamps from FFmpeg progress output
 	var framesExtracted uint64
-	var lastOutTimeMs int64
+	var lastOutTimeUs int64
 	var lastFrameNum int64
 	frameTimestamps := make(map[int64]int64) // frameNum -> timestamp in seconds
 
@@ -378,10 +378,15 @@ func (video *Video) ExecPreviewFrames(args *VideoConversionArgs, videoDuration f
 		OnPipeOut: func(out PipeMessage) {
 			kvs := ParseFFmpegKVs(out.Output)
 
-			// Track the actual timestamp from FFmpeg
-			if outTimeMs, ok := kvs["out_time_ms"]; ok {
+			// FFmpeg reports the raw progress timestamp in microseconds. Prefer
+			// out_time_us when present; out_time_ms is a legacy mislabeled alias.
+			if outTimeUs, ok := kvs["out_time_us"]; ok {
+				if value, err := strconv.ParseInt(outTimeUs, 10, 64); err == nil && value > 0 {
+					lastOutTimeUs = value
+				}
+			} else if outTimeMs, ok := kvs["out_time_ms"]; ok {
 				if value, err := strconv.ParseInt(outTimeMs, 10, 64); err == nil && value > 0 {
-					lastOutTimeMs = value
+					lastOutTimeUs = value
 				}
 			}
 
@@ -390,8 +395,8 @@ func (video *Video) ExecPreviewFrames(args *VideoConversionArgs, videoDuration f
 				if value, err := strconv.ParseInt(frame, 10, 64); err == nil && value > 0 {
 					if value > lastFrameNum {
 						lastFrameNum = value
-						// Store the timestamp in seconds (convert from milliseconds)
-						frameTimestamps[value] = lastOutTimeMs / 1000
+						// Store the timestamp in seconds (convert from microseconds)
+						frameTimestamps[value] = lastOutTimeUs / 1000000
 						framesExtracted++
 						args.OnProgress(TaskProgress{
 							Current: framesExtracted,
@@ -452,6 +457,10 @@ func (video *Video) ExecPreviewFrames(args *VideoConversionArgs, videoDuration f
 
 			// Get the actual timestamp for this frame from our tracking map
 			if timestamp, ok := frameTimestamps[frameNum]; ok {
+				maxTimestamp := int64(videoDuration)
+				if timestamp > maxTimestamp {
+					timestamp = maxTimestamp
+				}
 				newName := fmt.Sprintf("%d.jpg", timestamp)
 				oldPath := filepath.Join(previewDir, file.Name())
 				newPath := filepath.Join(previewDir, newName)

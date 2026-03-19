@@ -145,7 +145,7 @@
       <div class="w-100 flex-shrink-0 bg-light position-relative" style="height: 20vh; max-height: 100px">
         <VideoStripe
           :loaded="isLoaded"
-          :frames="videoFrames"
+          :preview="previewManifest"
           :disabled="playingCut"
           :seeked="seeked"
           :paused="pause"
@@ -178,7 +178,7 @@ import { createClient } from "@/services/api/v2/ClientFactory";
 import { useSettingsStore } from "@/stores/settings.ts";
 import RecordingFavButton from "@/components/controls/RecordingFavButton.vue";
 import ModalWindow from "@/components/modals/ModalWindow.vue";
-import { mapVideoFrames } from "@/utils/video.ts";
+import { createVideoPreviewManifest, type VideoPreviewManifest } from "@/utils/video.ts";
 
 // --------------------------------------------------------------------------------------
 // Declarations
@@ -194,7 +194,6 @@ const settingsStore = useSettingsStore();
 const video = ref<HTMLVideoElement | null>(null);
 
 const fileUrl = inject("fileUrl") as string;
-const videoFrames = ref<string[]>([]);
 const videoUrl = ref("");
 
 const showInfo = ref(false);
@@ -210,6 +209,7 @@ const markings = ref<Selection[]>([]);
 const timeCode = ref<number>(0);
 const duration = ref<number>(0);
 const recording = ref<DbRecording | null>(null);
+const previewManifest = ref<VideoPreviewManifest | null>(null);
 const id = ref<number | null>(null);
 const busy = ref(false);
 const showConfirmDialog = ref(false);
@@ -231,23 +231,36 @@ let playCutTimeUpdateListener: (() => void) | null = null;
 // --------------------------------------------------------------------------------------
 
 const editMode = computed(() => markings.value.length > 0);
+const analysisDuration = computed(() => {
+  if (duration.value > 0) {
+    return duration.value;
+  }
+  return recording.value?.duration || 0;
+});
+type VideoPreviewManifestResponse = {
+  frameCount: number;
+  previewPath: string;
+  recordingId: number;
+  timestamps: number[];
+};
 
 const analysisItems = computed(() => {
+  const maxDuration = analysisDuration.value;
   if (!videoAnalysis.value) return [];
 
   if (analysisMode.value === "scenes") {
     return (
       videoAnalysis.value.scenes?.map((scene, index) => ({
-        label: `Scene ${index + 1}: ${scene.startTime!.toFixed(1)}s - ${scene.endTime!.toFixed(1)}s`,
-        timestamp: scene.startTime!,
+        label: `Scene ${index + 1}: ${clampToDuration(scene.startTime!, maxDuration).toFixed(1)}s - ${clampToDuration(scene.endTime!, maxDuration).toFixed(1)}s`,
+        timestamp: clampToDuration(scene.startTime!, maxDuration),
         intensity: scene.changeIntensity!,
       })) || []
     );
   } else {
     return (
       videoAnalysis.value.highlights?.map((highlight, index) => ({
-        label: `Highlight ${index + 1}: ${highlight.timestamp!.toFixed(1)}s`,
-        timestamp: highlight.timestamp!,
+        label: `Highlight ${index + 1}: ${clampToDuration(highlight.timestamp!, maxDuration).toFixed(1)}s`,
+        timestamp: clampToDuration(highlight.timestamp!, maxDuration),
         intensity: highlight.intensity!,
       })) || []
     );
@@ -305,6 +318,12 @@ watch(currentAnalysisIndex, (newIndex) => {
 
 const back = () => (video.value!.currentTime = (video.value?.currentTime || 0) - skipSeconds);
 const forward = () => (video.value!.currentTime = (video.value?.currentTime || 0) + skipSeconds);
+const clampToDuration = (timeIndex: number, maxDuration: number) => {
+  if (maxDuration <= 0) {
+    return Math.max(0, timeIndex);
+  }
+  return Math.min(Math.max(0, timeIndex), maxDuration);
+};
 
 const goToPreviousAnalysisPoint = () => {
   const items = analysisItems.value;
@@ -493,10 +512,23 @@ onMounted(async () => {
   id.value = Number(route.params.id);
   const data = await client.videos.videosDetail({ id: id.value });
   recording.value = data;
-  videoFrames.value = mapVideoFrames(fileUrl, recording.value);
   videoUrl.value = fileUrl + "/" + recording.value?.pathRelative;
 
-  videoAnalysis.value = await client.analysis.analysisDetail({ id: id.value });
+  const [analysis, manifest] = await Promise.all([
+    client.analysis.analysisDetail({ id: id.value }),
+    recording.value.videoPreview
+      ? client.http
+          .request<VideoPreviewManifestResponse>({
+            format: "json",
+            method: "GET",
+            path: `/videos/${id.value}/preview/manifest`,
+          })
+          .catch(() => null)
+      : Promise.resolve(null),
+  ]);
+
+  videoAnalysis.value = analysis;
+  previewManifest.value = manifest ? createVideoPreviewManifest(fileUrl, recording.value.duration, manifest.previewPath, manifest.timestamps) : null;
 
   window.removeEventListener("orientationchange", rotate); // Ensure no duplicate listeners
   window.addEventListener("orientationchange", rotate);

@@ -111,6 +111,11 @@ watch(showModal, (val) => {
 // Socket Event Handlers (defined outside onMounted to prevent duplicate registrations)
 // --------------------------------------------------------------------------------------
 
+const handleJobActivate = (message: unknown) => {
+  const data = message as JobMessage<unknown>;
+  jobStore.activate(data.job);
+};
+
 const handleJobStart = (message: unknown) => {
   const data = message as JobMessage<TaskInfo>;
   jobStore.start(data);
@@ -127,6 +132,15 @@ const handleJobCreate = (data: unknown) => {
 
 const handleJobDone = (message: unknown) => {
   jobStore.done(message as JobMessage<TaskComplete>);
+};
+
+const handleJobError = (message: unknown) => {
+  const data = message as JobMessage<string>;
+  jobStore.done({ job: data.job, data: { steps: 1, step: 1, message: data.data || "error" } });
+  toastStore.error({
+    title: "Job error",
+    message: data.data || `Job ${data.job.jobId} failed`,
+  });
 };
 
 const handleJobDeactivate = (message: unknown) => {
@@ -191,8 +205,10 @@ onMounted(async () => {
 
   // Unregister previous listeners to prevent duplicates on reconnection
   off(MessageType.JobStart, handleJobStart);
+  off(MessageType.JobActivate, handleJobActivate);
   off(MessageType.JobCreate, handleJobCreate);
   off(MessageType.JobDone, handleJobDone);
+  off(MessageType.JobError, handleJobError);
   off(MessageType.JobDeactivate, handleJobDeactivate);
   off(MessageType.JobDelete, handleJobDelete);
   off(MessageType.JobDeleted, handleJobDeleted);
@@ -204,8 +220,10 @@ onMounted(async () => {
 
   // Register listeners
   on(MessageType.JobStart, handleJobStart);
+  on(MessageType.JobActivate, handleJobActivate);
   on(MessageType.JobCreate, handleJobCreate);
   on(MessageType.JobDone, handleJobDone);
+  on(MessageType.JobError, handleJobError);
   on(MessageType.JobDeactivate, handleJobDeactivate);
   on(MessageType.JobDelete, handleJobDelete);
   on(MessageType.JobDeleted, handleJobDeleted);

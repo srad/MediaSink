@@ -53,6 +53,28 @@ func GetImportInfo(c *gin.Context) {
 	appG.Response(http.StatusOK, info)
 }
 
+// RegenerateChapters godoc
+// @Summary     Remove stale chapter jobs and enqueue fresh analysis for all recordings
+// @Schemes
+// @Description Deletes existing analyze-frames jobs and creates a fresh chapter-analysis job for every recording
+// @Tags        admin
+// @Accept      json
+// @Produce     json
+// @Success     200 {object} responses.RegenerateChaptersResponse
+// @Failure     500 {} http.StatusInternalServerError
+// @Router      /admin/chapters/regenerate [post]
+func RegenerateChapters(c *gin.Context) {
+	appG := app.Gin{C: c}
+
+	result, err := services.RegenerateAllChapters()
+	if err != nil {
+		appG.Error(http.StatusInternalServerError, err)
+		return
+	}
+
+	appG.Response(http.StatusOK, result)
+}
+
 // GetVersion godoc
 // @Summary     Returns server version information
 // @Schemes

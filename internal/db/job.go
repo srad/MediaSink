@@ -227,6 +227,43 @@ func DeleteJob(id uint) error {
 	return nil
 }
 
+// PurgeJobsByTask interrupts active jobs of the given task and permanently removes
+// all matching job rows. It returns the deleted job IDs for downstream broadcasts.
+func PurgeJobsByTask(task JobTask) ([]uint, error) {
+	var jobs []*Job
+	if err := DB.Where("task = ?", task).Find(&jobs).Error; err != nil {
+		return nil, err
+	}
+
+	if len(jobs) == 0 {
+		return []uint{}, nil
+	}
+
+	ids := make([]uint, 0, len(jobs))
+	for _, job := range jobs {
+		if job == nil {
+			continue
+		}
+		if job.Pid != nil {
+			if err := util.Interrupt(*job.Pid); err != nil {
+				log.Errorf("[PurgeJobsByTask] Error interrupting process for job %d: %s", job.JobID, err)
+				return nil, err
+			}
+		}
+		ids = append(ids, job.JobID)
+	}
+
+	if len(ids) == 0 {
+		return []uint{}, nil
+	}
+
+	if err := DB.Where("job_id IN ?", ids).Delete(&Job{}).Error; err != nil {
+		return nil, err
+	}
+
+	return ids, nil
+}
+
 // GetNextJob Any job is attached to a recording which it will process.
 // The caller must know which type the JSON serialized argument originally had.
 // Jobs are ordered by priority (lower value = higher priority) then by creation time.

@@ -1,40 +1,47 @@
 <template>
-  <div ref="stripeContainer" @mousedown.stop="startSelection" class="position-relative h-100 user-select-none overflow-x-auto" draggable="false" style="min-height: 100px">
-    <div ref="imageRowContainer" draggable="false" class="d-flex flex-nowrap h-100 position-relative">
-      <img v-for="(frame, i) in frames" :key="frame" draggable="false" loading="lazy" :alt="String(i)" @load="updateWidth" :src="frame" style="height: 100%; display: block" :style="{ width: imageWidth > 0 ? imageWidth + 'px' : 'auto' }" />
+  <div ref="stripeContainer" data-testid="video-stripe-scroll" @mousedown.stop="startSelection" @scroll="handleScroll" class="position-relative h-100 user-select-none overflow-x-auto" draggable="false" style="min-height: 100px">
+    <div data-testid="video-stripe-timeline" class="position-relative h-100" draggable="false" :style="{ width: `${width}px` }">
+      <img
+        v-for="tile in visibleTiles"
+        :key="tile.key"
+        draggable="false"
+        loading="eager"
+        decoding="async"
+        :alt="String(tile.index)"
+        @load="handleTileLoad"
+        :src="tile.src"
+        class="position-absolute top-0 timeline-tile"
+        :style="{ height: '100%', left: `${tile.left}px`, width: `${tile.width + 1}px` }" />
 
-      <!-- Scene Boundaries Overlay - positioned inside scrollable content -->
-      <div v-if="props.scenes && props.scenes.length > 0 && width > 0" class="position-absolute top-0 start-0 h-100" :style="{ width: width + 'px', pointerEvents: 'none' }">
+      <div v-if="props.scenes && props.scenes.length > 0 && width > 0" class="position-absolute top-0 start-0 h-100" :style="{ width: `${width}px`, pointerEvents: 'none' }">
         <div
           v-for="(scene, index) in props.scenes"
           :key="`scene-${index}`"
           class="position-absolute border-start border-2 scene-boundary"
           :style="{
-            left: (scene.startTime / props.duration) * width + 'px',
+            left: `${timeToPosition(scene.startTime)}px`,
             height: '100%',
             borderColor: getSceneColor(scene.changeIntensity),
-            opacity: 0.8
+            opacity: 0.8,
           }"
-          :title="`Scene ${index + 1}: ${scene.startTime.toFixed(1)}s - ${scene.endTime.toFixed(1)}s\nIntensity: ${scene.changeIntensity.toFixed(2)}`">
-        </div>
+          :title="`Scene ${index + 1}: ${scene.startTime.toFixed(1)}s - ${scene.endTime.toFixed(1)}s\nIntensity: ${scene.changeIntensity.toFixed(2)}`"></div>
       </div>
 
-      <!-- Highlight Markers Overlay - positioned inside scrollable content -->
-      <div v-if="props.highlights && props.highlights.length > 0 && width > 0" class="position-absolute top-0 start-0 h-100" :style="{ width: width + 'px', pointerEvents: 'none' }">
+      <div v-if="props.highlights && props.highlights.length > 0 && width > 0" class="position-absolute top-0 start-0 h-100" :style="{ width: `${width}px`, pointerEvents: 'none' }">
         <div
           v-for="(highlight, index) in props.highlights"
           :key="`highlight-${index}`"
           class="position-absolute highlight-marker"
           :style="{
-            left: (highlight.timestamp / props.duration) * width + 'px',
+            left: `${getHighlightLeft(highlight)}px`,
             bottom: '0',
-            width: '3px',
+            width: `${getHighlightWidth(highlight)}px`,
             height: getHighlightHeight(highlight.intensity),
             backgroundColor: getHighlightColor(highlight.intensity),
-            opacity: 0.7
+            opacity: 0.7,
+            borderRadius: highlight.startTime !== undefined && highlight.endTime !== undefined ? '3px 3px 0 0' : '0',
           }"
-          :title="`Motion at ${highlight.timestamp.toFixed(1)}s\nIntensity: ${highlight.intensity.toFixed(2)}\nType: ${highlight.type}`">
-        </div>
+          :title="getHighlightTitle(highlight)"></div>
       </div>
     </div>
 
@@ -43,21 +50,21 @@
     </div>
 
     <div
-      :key="selection.start"
-      @click="select(i)"
+      v-for="(selection, index) in drawSelections"
+      :key="`${selection.timestart}-${selection.timeend}-${index}`"
+      @click="select(index)"
       class="marking position-absolute"
-      v-for="(selection, i) in drawSelections"
       :style="{
         transform: `translateX(${selection.start}px)`,
-        width: selection.end - selection.start + 'px',
+        width: `${selection.end - selection.start}px`,
         height: '100%',
         top: 0,
       }">
       <div class="selection w-100 h-100" style="pointer-events: none" :class="{ selected: selection.selected }"></div>
-      <div v-if="(currentSelection !== null && hasMinSelection) || !currentSelection" class="handle handle-left position-absolute" @mousedown.stop="startResize(selection, 'left')"></div>
-      <div v-if="(currentSelection !== null && hasMinSelection) || !currentSelection" class="handle handle-right position-absolute" @mousedown.stop="startResize(selection, 'right')"></div>
+      <div v-if="(currentSelection !== null && hasMinSelection) || !currentSelection" class="handle handle-left position-absolute" @mousedown.stop="startResize(index, 'left')"></div>
+      <div v-if="(currentSelection !== null && hasMinSelection) || !currentSelection" class="handle handle-right position-absolute" @mousedown.stop="startResize(index, 'right')"></div>
       <div v-if="(currentSelection === selection && hasMinSelection) || currentSelection !== selection" class="selection-duration">{{ formatDuration(selection) }}</div>
-      <button type="button" v-if="currentSelection !== selection" @click.stop="destroy(i)" class="text-white btn btn-danger p-1 bi bi-x op-100 marking-destroy position-absolute"></button>
+      <button type="button" v-if="currentSelection !== selection" @click.stop="destroy(index)" class="text-white btn btn-danger p-1 bi bi-x op-100 marking-destroy position-absolute"></button>
     </div>
 
     <div v-if="showBar" class="timecode position-absolute" :style="{ transform: `translateX(${barLeft}px)`, zIndex: 40 }"></div>
@@ -65,10 +72,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch, nextTick } from "vue";
 import { animateScrollLeft } from "../utils/animations";
 import VideoTimeIndex from "./VideoTimeIndex.vue";
-import BigNumber from "bignumber.js";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import {
+  buildVisiblePreviewTiles,
+  getMaxPreviewPixelsPerSecond,
+  getMinPreviewPixelsPerSecond,
+  type VideoPreviewManifest,
+  type VisiblePreviewTile,
+} from "../utils/video";
 
 export type Selection = {
   selected?: boolean;
@@ -78,177 +91,219 @@ export type Selection = {
   timeend: number;
 };
 
-// --------------------------------------------------------------------------------------
-// Props
-// --------------------------------------------------------------------------------------
-
 const props = defineProps<{
-  loaded: boolean;
-  frames: string[];
-  timecode: number;
   duration: number;
-  paused: boolean;
   disabled?: boolean;
+  highlights?: Array<{ endTime?: number; intensity: number; startTime?: number; timestamp: number; type: string }>;
+  loaded: boolean;
+  markings?: Selection[];
+  paused: boolean;
+  preview?: VideoPreviewManifest | null;
+  scenes?: Array<{ changeIntensity: number; endTime: number; startTime: number }>;
   seeked: number;
-  scenes?: Array<{ startTime: number; endTime: number; changeIntensity: number }>;
-  highlights?: Array<{ timestamp: number; intensity: number; type: string }>;
+  timecode: number;
 }>();
-
-// --------------------------------------------------------------------------------------
-// Emits
-// --------------------------------------------------------------------------------------
 
 const emit = defineEmits<{
+  (e: "marking", value: Selection[]): void;
   (e: "seek", timeIndex: number): void;
   (e: "selecting"): void;
-  (e: "marking", value: Selection[]): void;
 }>();
 
-// --------------------------------------------------------------------------------------
-// Declarations
-// --------------------------------------------------------------------------------------
-
+const minDuration = 1;
+const stripeContainer = ref<HTMLElement | null>(null);
 const selections = ref<Selection[]>([]);
-const isSelecting = ref<boolean>(false);
 const currentSelection = ref<Selection | null>(null);
-const isResizing = ref<boolean>(false);
+const isSelecting = ref(false);
+const isResizing = ref(false);
 const resizeDirection = ref<"left" | "right" | null>(null);
+const currentSelectionIndex = ref<number | null>(null);
 const showBar = ref(true);
-
-const imageRowContainer = ref<HTMLElement | null>(null);
-const stripeContainer = ref<HTMLElement>();
-
-const width = ref(0);
+const viewportWidth = ref(1);
+const scrollLeft = ref(0);
+const pixelsPerSecond = ref(1);
 const barLeft = ref(0);
 const imageLoaded = ref(false);
-const imageWidth = ref(0); // Width of each individual image in pixels
+const zoomInitialized = ref(false);
 
 let seekedThroughStripeClick = false;
-let rafPending = false; // RequestAnimationFrame throttle flag
+let resizeObserver: ResizeObserver | null = null;
+let rafPending = false;
 
-const minDuration = 1;
-
-// --------------------------------------------------------------------------------------
-// Computed
-// --------------------------------------------------------------------------------------
-
-const dT = computed<number>(() => {
-  if (currentSelection.value) {
-    return currentSelection.value.timeend - currentSelection.value.timestart;
+const previewSource = computed<VideoPreviewManifest | null>(() => {
+  if (!props.preview) {
+    return null;
   }
-  return 0;
+
+  return {
+    ...props.preview,
+    duration: Math.max(props.duration || 0, props.preview.duration || 0, 1),
+  };
 });
 
-const hasMinSelection = computed<boolean>(() => dT.value > minDuration);
+const minPixelsPerSecond = computed(() => {
+  if (!previewSource.value) {
+    return 1;
+  }
+
+  return getMinPreviewPixelsPerSecond(previewSource.value.duration, viewportWidth.value);
+});
+
+const maxPixelsPerSecond = computed(() => {
+  if (!previewSource.value) {
+    return 1;
+  }
+
+  return Math.max(minPixelsPerSecond.value, getMaxPreviewPixelsPerSecond(previewSource.value.timestamps));
+});
+
+const timeline = computed(() => {
+  if (!previewSource.value) {
+    return {
+      timelineWidth: Math.max(viewportWidth.value, 1),
+      tiles: [] as VisiblePreviewTile[],
+    };
+  }
+
+  return buildVisiblePreviewTiles({
+    manifest: previewSource.value,
+    pixelsPerSecond: pixelsPerSecond.value,
+    scrollLeft: scrollLeft.value,
+    viewportWidth: viewportWidth.value,
+  });
+});
+
+const width = computed(() => timeline.value.timelineWidth);
+const visibleTiles = computed(() => timeline.value.tiles);
+
+const dT = computed(() => {
+  if (!currentSelection.value) {
+    return 0;
+  }
+
+  return currentSelection.value.timeend - currentSelection.value.timestart;
+});
+
+const hasMinSelection = computed(() => dT.value > minDuration);
 
 const drawSelections = computed(() => (currentSelection.value ? selections.value.concat(currentSelection.value) : selections.value));
 
-// --------------------------------------------------------------------------------------
-// Methods - Defined before watchers to avoid hoisting issues
-// --------------------------------------------------------------------------------------
+const clamp = (value: number, min: number, max: number): number => Math.min(max, Math.max(min, value));
 
-const updateWidth = () => {
-  if (imageRowContainer.value) {
-    width.value = imageRowContainer.value.scrollWidth;
-    if (width.value > 0 && !imageLoaded.value) {
-      imageLoaded.value = true;
-    }
+const getContentScrollLimit = (): number => Math.max(width.value - viewportWidth.value, 0);
+
+const timeToPosition = (timeIndex: number): number => clamp(timeIndex * pixelsPerSecond.value, 0, width.value);
+
+const positionToTime = (position: number): number => {
+  const duration = props.duration > 0 ? props.duration : previewSource.value?.duration || 0;
+  if (duration <= 0 || pixelsPerSecond.value <= 0) {
+    return 0;
+  }
+
+  return clamp(position / pixelsPerSecond.value, 0, duration);
+};
+
+const syncSelectionBounds = (selection: Selection): Selection => {
+  const start = timeToPosition(selection.timestart);
+  const end = timeToPosition(selection.timeend);
+  return {
+    ...selection,
+    end: Math.max(start, end),
+    start: Math.min(start, end),
+  };
+};
+
+const syncSelectionCollection = () => {
+  selections.value = selections.value.map((selection) => syncSelectionBounds(selection));
+  if (currentSelection.value) {
+    currentSelection.value = syncSelectionBounds(currentSelection.value);
   }
 };
 
-// --------------------------------------------------------------------------------------
-// Watchers
-// --------------------------------------------------------------------------------------
-
-watch(
-  () => props.seeked,
-  (timeIndex: number) => {
-    if (props.disabled || !imageLoaded.value || !stripeContainer.value) {
-      return;
-    }
-
-    if (seekedThroughStripeClick) {
-      seekedThroughStripeClick = false;
-      return;
-    }
-
-    const timeOffset = timeIndex / props.duration;
-    barLeft.value = new BigNumber(timeOffset).multipliedBy(width.value).toNumber();
-
-    const scrollLeft = barLeft.value - stripeContainer.value.getBoundingClientRect().width / 2;
-    animateScrollLeft(stripeContainer.value, scrollLeft, 1000);
-  },
-);
-
-watch(
-  () => props.timecode,
-  (timecode) => {
-    requestAnimationFrame(() => {
-      if (!imageLoaded.value || width.value === 0) return;
-      const timeOffset = timecode / props.duration;
-      barLeft.value = new BigNumber(timeOffset).multipliedBy(width.value).toNumber();
-    });
-  },
-);
-
-// --------------------------------------------------------------------------------------
-// Hooks
-// --------------------------------------------------------------------------------------
-
-onMounted(() => {
-  // --- ADDED: Wheel event listener for zooming ---
-  stripeContainer.value?.addEventListener("wheel", resizePreview, { passive: false });
-
-  window.addEventListener("mousemove", updateResize);
-  window.addEventListener("mouseup", endResize);
-  window.addEventListener("mousemove", updateSelection);
-  window.addEventListener("mouseup", endSelection);
-});
-
-onUnmounted(() => {
-  stripeContainer.value?.removeEventListener("wheel", resizePreview);
-
-  window.removeEventListener("mousemove", updateResize);
-  window.removeEventListener("mouseup", endResize);
-  window.removeEventListener("mousemove", updateSelection);
-  window.removeEventListener("mouseup", endSelection);
-});
-
-// --------------------------------------------------------------------------------------
-// More Methods
-// --------------------------------------------------------------------------------------
-
-const getCurrentTimeIndex = (): BigNumber => {
-  const offset = new BigNumber(barLeft.value).dividedBy(width.value);
-  return offset.multipliedBy(props.duration);
+const emitMarkings = () => {
+  emit(
+    "marking",
+    selections.value.map((selection) => syncSelectionBounds({ ...selection })),
+  );
 };
 
+const getCurrentTimeIndex = (): number => positionToTime(barLeft.value);
+
 const emitCurrentTimeIndex = (): void => {
-  emit("seek", getCurrentTimeIndex().toNumber());
+  emit("seek", getCurrentTimeIndex());
+};
+
+const handleTileLoad = () => {
+  if (!imageLoaded.value) {
+    imageLoaded.value = true;
+  }
+};
+
+const syncViewport = () => {
+  if (!stripeContainer.value) {
+    return;
+  }
+
+  viewportWidth.value = Math.max(stripeContainer.value.clientWidth, 1);
+  scrollLeft.value = stripeContainer.value.scrollLeft;
+};
+
+const ensureZoomBounds = (resetZoom = false) => {
+  if (!previewSource.value) {
+    pixelsPerSecond.value = 1;
+    zoomInitialized.value = false;
+    return;
+  }
+
+  const nextPixelsPerSecond = resetZoom || !zoomInitialized.value ? minPixelsPerSecond.value : clamp(pixelsPerSecond.value, minPixelsPerSecond.value, maxPixelsPerSecond.value);
+
+  pixelsPerSecond.value = nextPixelsPerSecond;
+  zoomInitialized.value = true;
+};
+
+const updateBarPosition = (timeIndex: number) => {
+  barLeft.value = timeToPosition(timeIndex);
 };
 
 const seek = (event: MouseEvent): void => {
-  if (props.disabled || !imageLoaded.value || !stripeContainer.value) {
+  if (props.disabled || !stripeContainer.value) {
     return;
   }
+
   seekedThroughStripeClick = true;
-  barLeft.value = stripeContainer.value.scrollLeft + getX(event);
+  barLeft.value = stripeContainer.value.scrollLeft + getViewportX(event);
   showBar.value = true;
   emitCurrentTimeIndex();
 };
 
-const startResize = (selection: Selection, direction: "left" | "right") => {
+const startResize = (selectionIndex: number, direction: "left" | "right") => {
+  const selection = selections.value[selectionIndex];
+  if (!selection) {
+    return;
+  }
+
   isResizing.value = true;
   resizeDirection.value = direction;
-  currentSelection.value = selection;
+  currentSelectionIndex.value = selectionIndex;
+  currentSelection.value = { ...selection };
 };
 
 const endResize = () => {
   if (isSelecting.value) {
     return;
   }
+
+  if (currentSelection.value) {
+    currentSelection.value = syncSelectionBounds(currentSelection.value);
+    if (currentSelectionIndex.value !== null && selections.value[currentSelectionIndex.value]) {
+      selections.value.splice(currentSelectionIndex.value, 1, currentSelection.value);
+      emitMarkings();
+    }
+  }
+
   isResizing.value = false;
   resizeDirection.value = null;
+  currentSelectionIndex.value = null;
   currentSelection.value = null;
 };
 
@@ -256,13 +311,14 @@ const updateResize = (event: MouseEvent) => {
   if (!isResizing.value || !currentSelection.value) {
     return;
   }
-  const x = getMouseX(event);
+
+  const x = getContentX(event);
   if (resizeDirection.value === "left") {
     currentSelection.value.start = Math.min(x, currentSelection.value.end);
-    currentSelection.value.timestart = convertToTime(x);
+    currentSelection.value.timestart = positionToTime(currentSelection.value.start);
   } else if (resizeDirection.value === "right") {
     currentSelection.value.end = Math.max(x, currentSelection.value.start);
-    currentSelection.value.timeend = convertToTime(x);
+    currentSelection.value.timeend = positionToTime(currentSelection.value.end);
   }
 };
 
@@ -274,209 +330,275 @@ const formatDuration = (selection: Selection) => {
 };
 
 const destroy = (index: number): void => {
-  if (props.disabled) {
+  if (props.disabled || !selections.value[index]) {
     return;
   }
+
   selections.value.splice(index, 1);
-  emit("marking", selections.value);
+  emitMarkings();
 };
 
-const getMouseX = (event: MouseEvent): number => {
+const getContentX = (event: MouseEvent | WheelEvent): number => {
   if (!stripeContainer.value) {
     return 0;
   }
-  // This is the mouse position relative to the *entire scrolled content*
+
   return event.clientX - stripeContainer.value.getBoundingClientRect().left + stripeContainer.value.scrollLeft;
 };
 
-const getX = (event: MouseEvent): number => {
-  const bounds = stripeContainer.value!.getBoundingClientRect();
-  // This is the mouse position relative to the *visible viewport*
-  return event.clientX - bounds.left;
+const getViewportX = (event: MouseEvent | WheelEvent): number => {
+  if (!stripeContainer.value) {
+    return 0;
+  }
+
+  return event.clientX - stripeContainer.value.getBoundingClientRect().left;
 };
 
 const startSelection = (event: MouseEvent): void => {
-  if (isResizing.value) {
+  if (isResizing.value || !previewSource.value) {
     return;
   }
+
   const target = event.target as HTMLElement;
   if (target.classList.contains("handle") || target.classList.contains("selection") || target.classList.contains("marking-destroy")) {
     return;
   }
-  isSelecting.value = true;
-  const posX = getMouseX(event);
-  const selection = {
-    selected: false,
-    start: posX,
-    end: posX,
-    timestart: (posX / width.value) * props.duration,
-    timeend: (posX / width.value) * props.duration,
-  };
-  currentSelection.value = selection;
-};
 
-const convertToTime = (posX: number): number => (posX / width.value) * props.duration;
+  isSelecting.value = true;
+  emit("selecting");
+
+  const position = clamp(getContentX(event), 0, width.value);
+  currentSelection.value = {
+    end: position,
+    selected: false,
+    start: position,
+    timeend: positionToTime(position),
+    timestart: positionToTime(position),
+  };
+};
 
 const updateSelection = (event: MouseEvent) => {
   if (!isSelecting.value || !currentSelection.value) {
     return;
   }
-  const endX = stripeContainer.value!.scrollLeft + getX(event);
-  currentSelection.value.end = Math.max(endX, currentSelection.value.start);
-  currentSelection.value.end = Math.min(width.value, currentSelection.value.end); // Guard
-  currentSelection.value.timestart = convertToTime(currentSelection.value.start);
-  currentSelection.value.timeend = convertToTime(currentSelection.value.end);
+
+  const end = clamp(scrollLeft.value + getViewportX(event), 0, width.value);
+  currentSelection.value.end = Math.max(end, currentSelection.value.start);
+  currentSelection.value.timestart = positionToTime(currentSelection.value.start);
+  currentSelection.value.timeend = positionToTime(currentSelection.value.end);
 };
 
 const endSelection = (event: MouseEvent): void => {
   if (!isSelecting.value || !currentSelection.value) {
     return;
   }
-  if (currentSelection.value && dT.value < minDuration) {
+
+  if (dT.value < minDuration) {
     seek(event);
   } else {
-    selections.value.push(currentSelection.value);
-    emit("marking", selections.value);
+    selections.value.push(syncSelectionBounds(currentSelection.value));
+    emitMarkings();
   }
+
   isSelecting.value = false;
   currentSelection.value = null;
-  emit("marking", selections.value);
-};
-
-const overlaps = (selectionStart: number, selectionEnd: number) => {
-  if (!isSelecting.value) return false;
-  const sorted = selections.value.sort((a, b) => a.start - b.start).sort((a, b) => a.end - b.end);
-  if (selectionStart < sorted[0]!.start && selectionEnd < sorted[0]!.end) return false;
-  for (let i = 0; i < sorted.length; i++) {
-    const start = sorted[i]!.start;
-    const end = sorted[i]!.end;
-    const overlaps = (start >= selectionStart && selectionEnd <= end) || (selectionStart <= start && end >= selectionStart && end <= selectionEnd) || (start && selectionStart <= end && selectionEnd >= end) || (selectionStart <= start && selectionEnd >= end);
-    if (overlaps) return true;
-  }
-  return false;
 };
 
 const select = (index: number): void => {
   if (props.disabled || !selections.value[index]) {
     return;
   }
-  selections.value.map((x) => (x.selected = false));
-  selections.value[index].selected = true;
+
+  selections.value = selections.value.map((selection, selectionIndex) => ({
+    ...selection,
+    selected: selectionIndex === index,
+  }));
 };
 
-// ---
-// ADDED: The complete, working resizePreview function
-// ---
-/**
- * Get color for scene boundary based on change intensity
- */
 const getSceneColor = (intensity: number): string => {
-  if (intensity < 0.3) return "#ffd700"; // Gold - subtle
-  if (intensity < 0.6) return "#ff8c00"; // DarkOrange - moderate
-  if (intensity < 0.85) return "#ff4500"; // OrangeRed - significant
-  return "#ff0000"; // Red - dramatic
+  if (intensity < 0.3) return "#ffd700";
+  if (intensity < 0.6) return "#ff8c00";
+  if (intensity < 0.85) return "#ff4500";
+  return "#ff0000";
 };
 
-/**
- * Get color for highlight marker based on motion intensity
- */
 const getHighlightColor = (intensity: number): string => {
-  if (intensity < 0.2) return "#00ff00"; // Green - minimal
-  if (intensity < 0.5) return "#ffff00"; // Yellow - low-moderate
-  if (intensity < 0.75) return "#ffa500"; // Orange - moderate-high
-  return "#ff0000"; // Red - very high
+  if (intensity < 0.2) return "#00ff00";
+  if (intensity < 0.5) return "#ffff00";
+  if (intensity < 0.75) return "#ffa500";
+  return "#ff0000";
 };
 
-/**
- * Get height for highlight marker based on motion intensity
- */
 const getHighlightHeight = (intensity: number): string => {
   const minHeight = 20;
   const maxHeight = 60;
-  const height = minHeight + (maxHeight - minHeight) * intensity;
-  return `${height}%`;
+  return `${minHeight + (maxHeight - minHeight) * intensity}%`;
 };
 
-const resizePreview = (event: WheelEvent): void => {
-  // Check if this is a horizontal scroll event (e.g., Shift+Wheel or trackpad)
-  if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
-    // Let the browser handle its native horizontal scrolling
+const getHighlightLeft = (highlight: { endTime?: number; intensity: number; startTime?: number; timestamp: number; type: string }): number => {
+  return timeToPosition(highlight.startTime ?? highlight.timestamp);
+};
+
+const getHighlightWidth = (highlight: { endTime?: number; intensity: number; startTime?: number; timestamp: number; type: string }): number => {
+  if (highlight.startTime === undefined || highlight.endTime === undefined) {
+    return 3;
+  }
+  return Math.max(timeToPosition(highlight.endTime) - timeToPosition(highlight.startTime), 4);
+};
+
+const getHighlightTitle = (highlight: { endTime?: number; intensity: number; startTime?: number; timestamp: number; type: string }): string => {
+  if (highlight.startTime !== undefined && highlight.endTime !== undefined) {
+    return `Motion ${highlight.startTime.toFixed(1)}s - ${highlight.endTime.toFixed(1)}s\nPeak at ${highlight.timestamp.toFixed(1)}s\nIntensity: ${highlight.intensity.toFixed(2)}\nType: ${highlight.type}`;
+  }
+
+  return `Motion at ${highlight.timestamp.toFixed(1)}s\nIntensity: ${highlight.intensity.toFixed(2)}\nType: ${highlight.type}`;
+};
+
+const handleScroll = () => {
+  if (!stripeContainer.value) {
     return;
   }
 
-  // If we are here, it's a vertical scroll. Prevent default page scroll.
+  scrollLeft.value = stripeContainer.value.scrollLeft;
+};
+
+const resizePreview = (event: WheelEvent): void => {
+  if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+    return;
+  }
+
+  if (!stripeContainer.value || !previewSource.value) {
+    return;
+  }
+
   event.preventDefault();
   event.stopPropagation();
 
-  // Throttle to one update per animation frame
-  if (rafPending) return;
-
-  if (!stripeContainer.value || !imageRowContainer.value) return;
-
-  const oldWidth = width.value;
-  if (oldWidth === 0) return;
-
-  // --- Capture initial image width on first resize ---
-  if (imageWidth.value === 0) {
-    const firstImage = imageRowContainer.value.querySelector("img");
-    if (firstImage) {
-      imageWidth.value = firstImage.clientWidth;
-    } else {
-      return; // No images loaded yet
-    }
+  if (rafPending) {
+    return;
   }
 
-  const oldImageWidth = imageWidth.value;
+  const oldPixelsPerSecond = pixelsPerSecond.value;
+  const nextPixelsPerSecond = clamp(oldPixelsPerSecond * Math.exp(-event.deltaY * 0.0025), minPixelsPerSecond.value, maxPixelsPerSecond.value);
 
-  // Get mouse position relative to *full content*
-  const mouseX = getMouseX(event);
-  // Get mouse position relative to *visible viewport*
-  const mouseXInViewport = getX(event);
+  if (nextPixelsPerSecond === oldPixelsPerSecond) {
+    return;
+  }
 
-  // --- Calculate new image width ---
-  const resizeBy = event.deltaY * 1; // Increased sensitivity for faster response
-  let newImageWidth = oldImageWidth + resizeBy;
-  const minImageWidth = 20;
-  const maxImageWidth = 500;
-  newImageWidth = Math.max(minImageWidth, Math.min(maxImageWidth, newImageWidth));
+  const anchorViewportX = getViewportX(event);
+  const anchorTime = (stripeContainer.value.scrollLeft + anchorViewportX) / oldPixelsPerSecond;
 
-  if (newImageWidth === oldImageWidth) return;
-
-  // --- Apply new image width ---
-  imageWidth.value = newImageWidth;
-
-  // Set RAF throttle flag
+  pixelsPerSecond.value = nextPixelsPerSecond;
   rafPending = true;
 
-  // --- Update on next animation frame ---
   requestAnimationFrame(() => {
-    // Wait for Vue to update the DOM with new image widths
     nextTick(() => {
-      // Get new width after images resize
-      updateWidth();
-      const newWidth = width.value;
+      syncSelectionCollection();
+      updateBarPosition(props.timecode);
 
-      if (newWidth !== oldWidth && newWidth > 0) {
-        // Calculate scaling factor
-        const factor = newWidth / oldWidth;
-
-        // Scale all pixel-based coordinates
-        barLeft.value *= factor;
-        selections.value.forEach((m) => {
-          m.start *= factor;
-          m.end *= factor;
-        });
-
-        // Set new scroll position to keep mouse centered
-        const newMouseX = mouseX * factor;
-        stripeContainer.value!.scrollLeft = newMouseX - mouseXInViewport;
+      if (stripeContainer.value) {
+        const nextScrollLeft = clamp(anchorTime * pixelsPerSecond.value - anchorViewportX, 0, getContentScrollLimit());
+        stripeContainer.value.scrollLeft = nextScrollLeft;
+        scrollLeft.value = nextScrollLeft;
       }
 
-      // Release RAF throttle flag
       rafPending = false;
     });
   });
 };
+
+watch(
+  () => props.markings,
+  (markings) => {
+    if (isSelecting.value || isResizing.value) {
+      return;
+    }
+
+    selections.value = (markings || []).map((selection) => syncSelectionBounds({ ...selection }));
+  },
+  { deep: true, immediate: true },
+);
+
+watch(
+  [previewSource, viewportWidth],
+  (newValue, oldValue) => {
+    const [source, nextViewportWidth] = newValue;
+    const [previousSource, previousViewportWidth] = oldValue || [];
+    imageLoaded.value = !source || source.timestamps.length > 0;
+    const resetZoom = source?.previewPath !== previousSource?.previewPath || nextViewportWidth !== previousViewportWidth;
+    ensureZoomBounds(resetZoom && !!source);
+
+    nextTick(() => {
+      syncSelectionCollection();
+      updateBarPosition(props.timecode);
+
+      if (stripeContainer.value) {
+        stripeContainer.value.scrollLeft = clamp(stripeContainer.value.scrollLeft, 0, getContentScrollLimit());
+        scrollLeft.value = stripeContainer.value.scrollLeft;
+      }
+    });
+  },
+  { immediate: true },
+);
+
+watch(
+  () => props.seeked,
+  (timeIndex: number) => {
+    if (props.disabled || !stripeContainer.value) {
+      return;
+    }
+
+    if (seekedThroughStripeClick) {
+      seekedThroughStripeClick = false;
+      return;
+    }
+
+    updateBarPosition(timeIndex);
+    const nextScrollLeft = clamp(barLeft.value - viewportWidth.value / 2, 0, getContentScrollLimit());
+    animateScrollLeft(stripeContainer.value, nextScrollLeft, 300);
+  },
+);
+
+watch(
+  () => props.timecode,
+  (timecode) => {
+    requestAnimationFrame(() => {
+      if (width.value === 0) {
+        return;
+      }
+
+      updateBarPosition(timecode);
+    });
+  },
+);
+
+onMounted(() => {
+  stripeContainer.value?.addEventListener("wheel", resizePreview, { passive: false });
+
+  window.addEventListener("mousemove", updateResize);
+  window.addEventListener("mouseup", endResize);
+  window.addEventListener("mousemove", updateSelection);
+  window.addEventListener("mouseup", endSelection);
+
+  syncViewport();
+  resizeObserver = new ResizeObserver(() => {
+    syncViewport();
+  });
+  if (stripeContainer.value) {
+    resizeObserver.observe(stripeContainer.value);
+  }
+});
+
+onUnmounted(() => {
+  stripeContainer.value?.removeEventListener("wheel", resizePreview);
+  resizeObserver?.disconnect();
+  resizeObserver = null;
+
+  window.removeEventListener("mousemove", updateResize);
+  window.removeEventListener("mouseup", endResize);
+  window.removeEventListener("mousemove", updateSelection);
+  window.removeEventListener("mouseup", endSelection);
+});
 </script>
 
 <style scoped>
@@ -484,7 +606,12 @@ const resizePreview = (event: WheelEvent): void => {
   height: 100%;
 }
 
-/* z-index fix */
+.timeline-tile {
+  display: block;
+  object-fit: cover;
+  background: rgba(0, 0, 0, 0.2);
+}
+
 .selection {
   position: absolute;
   top: 0;
@@ -503,7 +630,7 @@ const resizePreview = (event: WheelEvent): void => {
   background: #007bff;
   cursor: ew-resize;
   user-select: none;
-  z-index: 20; /* Handles on top of selection */
+  z-index: 20;
 }
 
 .selected {
@@ -518,39 +645,20 @@ const resizePreview = (event: WheelEvent): void => {
   left: 10px;
   background: rgba(0, 0, 0, 0.6);
   color: white;
-  padding: 2px 5px;
-  font-size: 12px;
-  border-radius: 3px;
-  z-index: 30; /* Text on top */
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  z-index: 15;
+  white-space: nowrap;
 }
 
 .marking-destroy {
-  right: 8px;
-  top: 4px;
-  line-height: 18px;
-  margin: 0;
-  z-index: 30; /* Button on top */
-}
-
-.timecode {
-  width: 3px;
-  height: 100%;
-  background: greenyellow;
-  user-select: none;
-  pointer-events: none;
-  top: 0; /* Explicitly set top */
-  /* z-index is set inline in the template (zIndex: 40) */
-}
-
-img {
-  user-select: none;
-  image-rendering: optimizeSpeed;
-  -webkit-user-drag: none;
-  user-drag: none;
-  /* Performance optimizations */
-  will-change: width;
-  backface-visibility: hidden;
-  transform: translateZ(0);
+  top: 5px;
+  right: 5px;
+  z-index: 25;
+  width: 24px;
+  height: 24px;
+  line-height: 1;
 }
 
 .handle-left {
@@ -561,20 +669,19 @@ img {
   right: 0;
 }
 
-/* Analysis overlay styles */
-.scene-boundary {
-  transition: opacity 0.2s;
-}
-
-.scene-boundary:hover {
-  opacity: 1 !important;
+.timecode {
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: deepskyblue;
+  pointer-events: none;
 }
 
 .highlight-marker {
-  transition: opacity 0.2s;
+  pointer-events: none;
 }
 
-.highlight-marker:hover {
-  opacity: 1 !important;
+.scene-boundary {
+  pointer-events: none;
 }
 </style>

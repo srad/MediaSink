@@ -50,9 +50,10 @@ MediaSink.Go is a Go-based web server for video management, stream recording, an
 - **internal/util/**: Utility functions (FFmpeg cmd, video probing, string/sys helpers)
 - **internal/ws/**: WebSocket event types and broadcasting
 - **internal/app/**: HTTP-layer helpers (request validation, response formatting, error shapes)
-- **frontend/**: Vue 3 TypeScript frontend (source lives here; see `frontend/CLAUDE.md` for details)
+- **frontend/**: Vue 3 TypeScript frontend (source lives here)
   - Built with Vite + npm; output goes to `frontend/dist/`
   - `frontend/dist/` is gitignored (build artifact) except for `frontend/dist/.gitkeep`
+  - Layout/styling source of truth is `frontend/src/assets/custom-bootstrap.scss`
 - **cli/**: standalone Rust terminal client
   - `Cargo.toml` + `src/`: native `ratatui` CLI application
   - `src/app`, `src/ui`, `src/overlays`: current high-level Rust module split
@@ -440,6 +441,12 @@ Listeners are shared across the app and not auto-cleaned on component unmount.
 @use "@/assets/custom-bootstrap.scss" as bootstrap;
 ```
 Light/dark theme via `[data-bs-theme="light/dark"]` selectors.
+
+Important frontend layout constraints:
+- Bootstrap is customized in `frontend/src/assets/custom-bootstrap.scss`; do not assume stock Bootstrap defaults.
+- The grid uses **24 columns** (`$grid-columns: 24`), so widths must use 24-column math such as `col-24`, `col-md-12`, `col-xl-8`, etc. A `col-12` spans only half the row in this repo.
+- `.card-body` padding is globally overridden to `0 !important`; whenever a card needs inner spacing, add explicit padding classes such as `p-3` or `p-lg-4` on the specific `card-body`.
+- When debugging layout problems, inspect `DefaultLayout.vue` and `custom-bootstrap.scss` before assuming the issue is local to the view.
 
 **TypeScript** — ESLint enforces double quotes. Always use `<script setup lang="ts">`. Define props with `defineProps<T>()` and emits with `defineEmits<T>()`.
 

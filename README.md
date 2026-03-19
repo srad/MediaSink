@@ -90,6 +90,11 @@ cd frontend && npm run dev
 
 Runs the Vite dev server (typically `http://localhost:5173`) with hot module replacement. Copy `frontend/public/env.js.default` to `frontend/public/env.js` if you haven't already, and make sure the Go server is running on `:3000`.
 
+Frontend layout note for contributors:
+- Bootstrap is customized in `frontend/src/assets/custom-bootstrap.scss`.
+- The app uses a **24-column grid**, not Bootstrap's default 12-column grid. Use `col-24`-based math when building or fixing layouts.
+- `.card-body` padding is globally reset to `0`, so cards need explicit padding classes where spacing is required.
+
 ### CLI
 
 The terminal client lives in `cli/` and is built separately from the Go server and Vue frontend.

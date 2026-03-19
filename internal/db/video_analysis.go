@@ -14,22 +14,33 @@ type SceneInfo struct {
 	ChangeIntensity float64 `json:"changeIntensity"` // 0-1, higher = more change
 }
 
+type SegmentInfo struct {
+	Kind                    string  `json:"kind"`
+	StartTime               float64 `json:"startTime"`
+	EndTime                 float64 `json:"endTime"`
+	Confidence              float64 `json:"confidence"` // 0-1, higher = stronger boundary evidence
+	RepresentativeTimestamp float64 `json:"representativeTimestamp"`
+}
+
 type HighlightInfo struct {
+	StartTime float64 `json:"startTime,omitempty"`
+	EndTime   float64 `json:"endTime,omitempty"`
 	Timestamp float64 `json:"timestamp"`
 	Intensity float64 `json:"intensity"` // 0-1, higher = more activity
 	Type      string  `json:"type"`      // "motion", "sceneChange", "transition"
 }
 
 type VideoAnalysisResult struct {
-	AnalysisID  uint            `json:"analysisId" gorm:"autoIncrement;primaryKey;column:analysis_id" extensions:"!x-nullable"`
-	RecordingID RecordingID     `json:"recordingId" gorm:"not null;unique;index;column:recording_id" extensions:"!x-nullable"`
-	Recording   Recording       `json:"-" gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:recording_id;references:recording_id"`
-	Status      AnalysisStatus  `json:"status" gorm:"not null;default:pending" extensions:"!x-nullable"`
-	ScenesJSON  json.RawMessage `json:"scenesRaw" gorm:"type:json" extensions:"!x-nullable"`
+	AnalysisID     uint            `json:"analysisId" gorm:"autoIncrement;primaryKey;column:analysis_id" extensions:"!x-nullable"`
+	RecordingID    RecordingID     `json:"recordingId" gorm:"not null;unique;index;column:recording_id" extensions:"!x-nullable"`
+	Recording      Recording       `json:"-" gorm:"constraint:OnUpdate:CASCADE,OnDelete:CASCADE;foreignKey:recording_id;references:recording_id"`
+	Status         AnalysisStatus  `json:"status" gorm:"not null;default:pending" extensions:"!x-nullable"`
+	ScenesJSON     json.RawMessage `json:"scenesRaw" gorm:"type:json" extensions:"!x-nullable"`
 	HighlightsJSON json.RawMessage `json:"highlightsRaw" gorm:"type:json" extensions:"!x-nullable"`
-	CreatedAt   time.Time       `json:"createdAt" gorm:"not null;default:current_timestamp" extensions:"!x-nullable"`
-	UpdatedAt   time.Time       `json:"updatedAt" gorm:"not null;default:current_timestamp" extensions:"!x-nullable"`
-	Error       string          `json:"error" gorm:"default:null"`
+	SegmentsJSON   json.RawMessage `json:"segmentsRaw" gorm:"type:json" extensions:"!x-nullable"`
+	CreatedAt      time.Time       `json:"createdAt" gorm:"not null;default:current_timestamp" extensions:"!x-nullable"`
+	UpdatedAt      time.Time       `json:"updatedAt" gorm:"not null;default:current_timestamp" extensions:"!x-nullable"`
+	Error          string          `json:"error" gorm:"default:null"`
 }
 
 type AnalysisStatus string
@@ -67,6 +78,17 @@ func (v *VideoAnalysisResult) GetHighlights() ([]HighlightInfo, error) {
 	return highlights, nil
 }
 
+func (v *VideoAnalysisResult) GetSegments() ([]SegmentInfo, error) {
+	if len(v.SegmentsJSON) == 0 {
+		return []SegmentInfo{}, nil
+	}
+	var segments []SegmentInfo
+	if err := json.Unmarshal(v.SegmentsJSON, &segments); err != nil {
+		return nil, err
+	}
+	return segments, nil
+}
+
 func (v *VideoAnalysisResult) SetScenes(scenes []SceneInfo) error {
 	data, err := json.Marshal(scenes)
 	if err != nil {
@@ -82,6 +104,15 @@ func (v *VideoAnalysisResult) SetHighlights(highlights []HighlightInfo) error {
 		return err
 	}
 	v.HighlightsJSON = data
+	return nil
+}
+
+func (v *VideoAnalysisResult) SetSegments(segments []SegmentInfo) error {
+	data, err := json.Marshal(segments)
+	if err != nil {
+		return err
+	}
+	v.SegmentsJSON = data
 	return nil
 }
 
@@ -130,6 +161,7 @@ func (v *VideoAnalysisResult) SaveResults() error {
 		"status":          AnalysisCompleted,
 		"scenes_json":     v.ScenesJSON,
 		"highlights_json": v.HighlightsJSON,
+		"segments_json":   v.SegmentsJSON,
 		"error":           nil,
 	}).Error
 }
