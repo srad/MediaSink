@@ -42,7 +42,7 @@ FROM node:22-bookworm AS frontend_builder
 
 WORKDIR /app
 
-RUN npm install -g npm@latest
+RUN corepack enable && corepack install -g npm@latest
 
 COPY frontend/package*.json ./
 # Repository policy is npm-only; use the committed lockfile in container builds.
