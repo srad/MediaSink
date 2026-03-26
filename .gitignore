@@ -22,7 +22,7 @@ main
 main.exe
 restart_service.sh
 ffmpeg
-recordings
+/recordings
 .previews
 rename.sh
 /docs/swagger.yaml
