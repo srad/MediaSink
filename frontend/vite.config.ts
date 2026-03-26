@@ -6,6 +6,20 @@ import vue from "@vitejs/plugin-vue";
 import vueDevTools from "vite-plugin-vue-devtools";
 import nightwatchPlugin from "vite-plugin-nightwatch";
 
+// Injects runtime config scripts into HTML without Vite trying to resolve them.
+// These scripts are served dynamically by the Go server at runtime.
+function runtimeScripts() {
+  return {
+    name: "runtime-scripts",
+    transformIndexHtml() {
+      return [
+        { tag: "script", attrs: { src: "/env.js" }, injectTo: "head" as const },
+        { tag: "script", attrs: { src: "/build.js" }, injectTo: "head" as const },
+      ];
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   build: {
@@ -41,6 +55,7 @@ export default defineConfig({
     },
   },
   plugins: [
+    runtimeScripts(),
     vue(),
     vueDevTools(),
     nightwatchPlugin(),

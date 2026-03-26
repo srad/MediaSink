@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/srad/mediasink/config"
@@ -69,14 +68,13 @@ func (h *previewFramesHandler) Handle(job *db.Job, threadCount int) error {
 	// Use select filter to extract frames at exact time intervals
 	// This is more reliable than fps filter as it extracts at precise timestamps
 	// Scale to max height with proportional width (-1 maintains aspect ratio)
-	selectFilter := fmt.Sprintf("select='isnan(prev_selected_t)+gte(t-prev_selected_t\\,%d)',setpts=N/FRAME_RATE/TB,scale=-1:%d", frameInterval, config.FrameHeight)
+	// NOTE: Do NOT add setpts here — it remaps output timestamps and causes
+	// out_time_us in FFmpeg progress to report wrong values, which breaks
+	// the frame-file naming (files must be named by original video timestamp).
+	selectFilter := fmt.Sprintf("select='isnan(prev_selected_t)+gte(t-prev_selected_t\\,%d)',scale=-1:%d", frameInterval, config.FrameHeight)
 	tempPattern := filepath.Join(previewFramesPath, "frame-%06d.jpg")
 
 	// Execute FFmpeg to extract frames with progress tracking
-	var lastOutTimeUs int64
-	var lastFrameNum int64
-	frameTimestamps := make(map[int64]int64)
-
 	err := util.ExecSync(&util.ExecArgs{
 		Command: "ffmpeg",
 		CommandArgs: []string{
@@ -106,27 +104,9 @@ func (h *previewFramesHandler) Handle(job *db.Job, threadCount int) error {
 			})
 		},
 		OnPipeOut: func(pm util.PipeMessage) {
-			// Use the same parsing as enhance video job
 			EmitProgressFromFrame(job, pm.Output, frameCount)
 
 			kvs := util.ParseFFmpegKVs(pm.Output)
-			// FFmpeg reports the raw progress timestamp in microseconds. Prefer
-			// out_time_us when present; out_time_ms is a legacy mislabeled alias.
-			if outTimeUs, ok := kvs["out_time_us"]; ok {
-				if value, err := strconv.ParseInt(outTimeUs, 10, 64); err == nil && value >= 0 {
-					lastOutTimeUs = value
-				}
-			} else if outTimeMs, ok := kvs["out_time_ms"]; ok {
-				if value, err := strconv.ParseInt(outTimeMs, 10, 64); err == nil && value >= 0 {
-					lastOutTimeUs = value
-				}
-			}
-			if frame, ok := kvs["frame"]; ok {
-				if value, err := strconv.ParseInt(frame, 10, 64); err == nil && value > lastFrameNum {
-					lastFrameNum = value
-					frameTimestamps[value] = lastOutTimeUs / 1000000
-				}
-			}
 			if progress, ok := kvs["progress"]; ok {
 				if progress == "end" {
 					ws.BroadCastClients(ws.JobDoneEvent, JobMessage[util.TaskComplete]{
@@ -146,12 +126,10 @@ func (h *previewFramesHandler) Handle(job *db.Job, threadCount int) error {
 		return fmt.Errorf("error generating preview frames: %w", err)
 	}
 
-	// Rename frames using calculated timestamps
-	// With select filter and regular intervals:
-	// - frame-000001.jpg corresponds to timestamp 0
-	// - frame-000002.jpg corresponds to timestamp frameInterval
-	// - frame-000003.jpg corresponds to timestamp frameInterval * 2
-	// etc.
+	// Rename frames from sequential numbers to timestamps.
+	// frame-000001.jpg → 0.jpg, frame-000002.jpg → frameInterval.jpg, etc.
+	// Timestamps MUST be exact multiples of frameInterval because the frontend
+	// constructs preview URLs as: frameIndex * frameInterval + ".jpg".
 	files, err := os.ReadDir(previewFramesPath)
 	if err != nil {
 		return fmt.Errorf("error reading preview frames directory: %w", err)
@@ -159,18 +137,13 @@ func (h *previewFramesHandler) Handle(job *db.Job, threadCount int) error {
 
 	for _, file := range files {
 		if !file.IsDir() && strings.HasSuffix(file.Name(), ".jpg") {
-			// Extract frame number from filename (e.g., "frame-000001.jpg" -> 1)
 			var frameNum int64
 			_, err := fmt.Sscanf(file.Name(), "frame-%06d.jpg", &frameNum)
 			if err != nil {
-				// Skip files that don't match pattern
 				continue
 			}
 
 			timestamp := uint64(frameNum-1) * frameInterval
-			if actualTimestamp, ok := frameTimestamps[frameNum]; ok && actualTimestamp >= 0 {
-				timestamp = uint64(actualTimestamp)
-			}
 			if maxTimestamp := uint64(job.Recording.Duration); timestamp > maxTimestamp {
 				timestamp = maxTimestamp
 			}
