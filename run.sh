@@ -4,6 +4,8 @@ set -euo pipefail
 
 # Runtime defaults for local development.
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SERVER_DIR="${ROOT_DIR}/server"
+EMBED_DIST_DIR="${SERVER_DIR}/frontend/dist"
 RUNTIME_DIR="${ROOT_DIR}/.runtime"
 
 export DB_FILENAME="${DB_FILENAME:-${RUNTIME_DIR}/mediasink.sqlite3}"
@@ -39,6 +41,9 @@ export CGO_CFLAGS="${CGO_CFLAGS:--g -O2 -Wno-return-local-addr}"
 if [[ -z "${ONNXRUNTIME_LIB:-}" ]]; then
   # Auto-detect: look for a local copy next to this script.
   for candidate in \
+    "${ROOT_DIR}/server/onnxruntime-linux-x64-1.24.1/lib/libonnxruntime.so" \
+    "${ROOT_DIR}/server/lib/libonnxruntime.so" \
+    "${ROOT_DIR}/server/libonnxruntime.so" \
     "${ROOT_DIR}/onnxruntime-linux-x64-1.24.1/lib/libonnxruntime.so" \
     "${ROOT_DIR}/lib/libonnxruntime.so" \
     "${ROOT_DIR}/libonnxruntime.so"; do
@@ -56,24 +61,29 @@ SWAG_BIN="$(go env GOPATH)/bin/swag"
 if [[ ! -x "${SWAG_BIN}" ]]; then
   echo "[run.sh] Installing swag..." && go install github.com/swaggo/swag/cmd/swag@latest
 fi
-"${SWAG_BIN}" init --parseDependency --parseInternal -g main.go -o docs
+(cd "${SERVER_DIR}" && GOWORK=off "${SWAG_BIN}" init --parseDependency --parseInternal -g main.go -o docs)
 
 # Generate API client from the freshly generated swagger.json (no server needed)
 echo "[run.sh] Generating API client..."
-(cd frontend && npm install && SWAGGER_INPUT="${ROOT_DIR}/docs/swagger.json" node swagger.js)
+(cd "${ROOT_DIR}/frontend" && npm install && SWAGGER_INPUT="${ROOT_DIR}/server/docs/swagger.json" node swagger.js)
 
 # Build frontend (always rebuild to pick up source changes)
 echo "[run.sh] Building frontend..."
-(cd frontend && npm run build)
+(cd "${ROOT_DIR}/frontend" && npm run build)
+
+mkdir -p "${SERVER_DIR}/frontend" "${EMBED_DIST_DIR}"
+rm -rf "${EMBED_DIST_DIR}"
+mkdir -p "${EMBED_DIST_DIR}"
+cp -R "${ROOT_DIR}/frontend/dist/." "${EMBED_DIST_DIR}/"
 
 echo "[run.sh] Building mediasink..."
 VERSION="${VERSION:-dev}"
 COMMIT="${COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
 API_VERSION="0.1.0"
-go build -o ./main -ldflags="-X 'main.Version=${VERSION}' -X 'main.Commit=${COMMIT}' -X 'main.ApiVersion=$API_VERSION'" -mod=mod
+(cd "${SERVER_DIR}" && GOWORK=off go build -o "${ROOT_DIR}/main" -ldflags="-X 'main.Version=${VERSION}' -X 'main.Commit=${COMMIT}' -X 'main.ApiVersion=$API_VERSION'" -mod=mod)
 
 echo "[run.sh] Starting mediasink..."
 echo "[run.sh] DB_FILENAME=${DB_FILENAME}"
 echo "[run.sh] REC_PATH=${REC_PATH}"
 echo "[run.sh] DATA_DISK=${DATA_DISK}"
-exec ./main
+exec "${ROOT_DIR}/main"

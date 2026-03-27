@@ -3,6 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SERVER_DIR="${ROOT_DIR}/server"
 TMP_ROOT="${TMPDIR:-/tmp}/mediasink-tests"
 mkdir -p "${TMP_ROOT}/recordings" "${TMP_ROOT}/disk"
 
@@ -24,13 +25,13 @@ echo "[test.sh] REC_PATH=${REC_PATH}"
 echo "[test.sh] DATA_DISK=${DATA_DISK}"
 
 set +e
-go test -count=1 -coverprofile="${COVERPROFILE}" ./... >"${RAW_LOG}" 2>&1
+(cd "${SERVER_DIR}" && GOWORK=off go test -count=1 -coverprofile="${COVERPROFILE}" ./...) >"${RAW_LOG}" 2>&1
 status=$?
 set -e
 
-ok_count="$(awk '/^ok[[:space:]]+github.com\/srad\/mediasink/ {c++} END{print c+0}' "${RAW_LOG}")"
-no_test_count="$(awk '/^\?[[:space:]]+github.com\/srad\/mediasink/ {c++} END{print c+0}' "${RAW_LOG}")"
-fail_count="$(awk '/^FAIL[[:space:]]+github.com\/srad\/mediasink/ {c++} END{print c+0}' "${RAW_LOG}")"
+ok_count="$(awk '/^ok[[:space:]]+github.com\/srad\/mediasink\/server/ {c++} END{print c+0}' "${RAW_LOG}")"
+no_test_count="$(awk '/^\?[[:space:]]+github.com\/srad\/mediasink\/server/ {c++} END{print c+0}' "${RAW_LOG}")"
+fail_count="$(awk '/^FAIL[[:space:]]+github.com\/srad\/mediasink\/server/ {c++} END{print c+0}' "${RAW_LOG}")"
 
 echo "[test.sh] Summary:"
 echo "[test.sh]   passed packages: ${ok_count}"
@@ -39,13 +40,13 @@ echo "[test.sh]   failed packages: ${fail_count}"
 
 if [[ "${status}" -ne 0 ]]; then
   echo "[test.sh] Failed package(s):"
-  awk '/^FAIL[[:space:]]+github.com\/srad\/mediasink/ {print "[test.sh]   - " $2}' "${RAW_LOG}" | sort -u
+  awk '/^FAIL[[:space:]]+github.com\/srad\/mediasink\/server/ {print "[test.sh]   - " $2}' "${RAW_LOG}" | sort -u
   echo "[test.sh] Re-running failed package(s) with -v for details..."
   while read -r pkg; do
     [[ -z "${pkg}" ]] && continue
     echo "[test.sh] ---- ${pkg} ----"
-    go test -count=1 -v "${pkg}" || true
-  done < <(awk '/^FAIL[[:space:]]+github.com\/srad\/mediasink/ {print $2}' "${RAW_LOG}" | sort -u)
+    (cd "${SERVER_DIR}" && GOWORK=off go test -count=1 -v "${pkg}") || true
+  done < <(awk '/^FAIL[[:space:]]+github.com\/srad\/mediasink\/server/ {print $2}' "${RAW_LOG}" | sort -u)
 fi
 
 if [[ -f "${COVERPROFILE}" ]]; then

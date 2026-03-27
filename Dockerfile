@@ -197,24 +197,24 @@ RUN apt-get update && \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-RUN mkdir -p docs
+RUN mkdir -p /app/server/docs /app/server/frontend/dist
 
-COPY go.mod go.sum ./
-RUN go mod download && go mod verify
+COPY server/go.mod server/go.sum ./server/
+RUN cd /app/server && GOWORK=off go mod download && GOWORK=off go mod verify
 
 COPY . .
 
 # Overlay the pre-built frontend so go:embed picks it up
-COPY --from=frontend_builder /app/dist ./frontend/dist
+COPY --from=frontend_builder /app/dist /app/server/frontend/dist
 
 RUN chmod a+x wait-for-it.sh
 RUN chmod a+x docker-entrypoint.sh
 
 RUN go install github.com/swaggo/swag/cmd/swag@latest
-RUN $(go env GOPATH)/bin/swag init --parseDependency --parseInternal -g main.go -o docs
+RUN cd /app/server && GOWORK=off $(go env GOPATH)/bin/swag init --parseDependency --parseInternal -g main.go -o docs
 
-RUN go mod tidy
-RUN go mod vendor
+RUN cd /app/server && GOWORK=off go mod tidy
+RUN cd /app/server && GOWORK=off go mod vendor
 
 ENV CGO_ENABLED=1
 ENV GOOS=${TARGETOS}
@@ -227,7 +227,7 @@ ENV GOAMD64=v3
 # RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then apt install gccgo-arm-linux-gnueabihf binutils-arm-linux-gnueabi gcc-aarch64-linux-gnu -y; fi
 # RUN if [ "$TARGETPLATFORM" = "linux/arm64" ]; then GOARCH='arm' GOHOSTARCH='arm' CC=arm-linux-gnueabihf-gcc GOGCCFLAGS="-march=armv8-a" CXX=arm-linux-gnueabi-g++ go build -gcflags="-l -N" -o ./main; else go build -o /app/main -ldflags="-s -w -X 'main.Version=$VERSION' -X 'main.Commit=$COMMIT'"; fi
 
-RUN go build -o /app/main -ldflags="-s -w -X 'main.Version=$VERSION' -X 'main.Commit=$COMMIT' -X 'main.ApiVersion=$API_VERSION'"
+RUN cd /app/server && GOWORK=off go build -o /app/main -ldflags="-s -w -X 'main.Version=$VERSION' -X 'main.Commit=$COMMIT' -X 'main.ApiVersion=$API_VERSION'"
 
 # -----------------------------------------------------------------------------------
 # Stage: Final Runtime Image
@@ -286,7 +286,7 @@ WORKDIR /app
 
 # Copy built artifacts from builder stages
 COPY --from=app_builder /app/main /app/main
-COPY --from=app_builder /app/docs ./docs
+COPY --from=app_builder /app/server/docs ./docs
 
 COPY --from=yt_dlp_builder /usr/local/bin/yt-dlp /usr/local/bin/yt-dlp
 
@@ -297,9 +297,9 @@ COPY --from=onnx_builder /usr/local/lib/libonnxruntime.so* /usr/local/lib/
 RUN ldconfig
 
 # Copy assets
-COPY ./assets/DMMono-Regular.ttf /usr/share/fonts/truetype/
-COPY ./assets/live.jpg ./assets/
-COPY --from=app_builder /app/assets/models/mobilenet_v3_large.onnx ./assets/models/
+COPY ./server/assets/DMMono-Regular.ttf /usr/share/fonts/truetype/
+COPY ./server/assets/live.jpg ./assets/
+COPY --from=app_builder /app/server/assets/models/mobilenet_v3_large.onnx ./assets/models/
 COPY ./docker-entrypoint.sh ./docker-entrypoint.sh
 COPY ./wait-for-it.sh ./wait-for-it.sh
 RUN fc-cache -fv

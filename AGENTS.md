@@ -17,42 +17,44 @@ MediaSink.Go is a Go-based web server for video management, stream recording, an
 
 ## Project Structure
 
-- **main.go**: Thin bootstrap that delegates process setup and shutdown to `app.InitializeApp(...)` and `App.Run()`
-- **app/**: Composition root and lifecycle management for startup validation, DB/vector-store init, and graceful shutdown
-- **frontend_embed.go**: Embeds `frontend/dist` into the Go binary at compile time via `go:embed`
-- **config/**: Configuration — reads exclusively from environment variables (`config.Read()` is cached via `sync.Once`)
-- **internal/api/**: Active public HTTP layer
+- **server/**: Go backend module root
+  - **main.go**: Thin bootstrap that delegates process setup and shutdown to `app.InitializeApp(...)` and `App.Run()`
+  - **frontend_embed.go**: Embeds `server/frontend/dist` into the Go binary at compile time via `go:embed`
+  - **app/**: Composition root and lifecycle management for startup validation, DB/vector-store init, and graceful shutdown
+  - **config/**: Configuration — reads exclusively from environment variables (`config.Read()` is cached via `sync.Once`)
+  - **docs/**: Generated Swagger/OpenAPI output; `server/docs/swagger.json` is the source of truth for generated clients
+  - **internal/api/**: Active public HTTP layer
   - **internal/api/v1/**: Legacy handler implementations still mounted under the public `/api/v2` routes
   - **internal/api/router.go**: Route setup and middleware configuration for the shipped server
   - **internal/api/frontend.go**: Serves embedded frontend — `/env.js`, `/build.js`, and SPA catch-all
-- **internal/http/v2/**: Refactored v2 handler slice and dependencies; currently present in the repo but not wired as the active public router
-- **internal/services/**: Business logic for core features
+- **server/internal/http/v2/**: Refactored v2 handler slice and dependencies; currently present in the repo but not wired as the active public router
+- **server/internal/services/**: Business logic for core features
   - `recording_service.go`: Video information updates and metadata
   - `recorder_service.go`: Recording orchestration and lifecycle
   - `channel_service.go`: Channel management
   - `job_service.go`: Background job processing (video enhancement, previews, merges)
   - `streaming_service.go`: Stream capture logic
   - `startup_service.go`: Application startup/recovery procedures
-- **internal/db/**: Data access layer using GORM ORM
+- **server/internal/db/**: Data access layer using GORM ORM
   - Models for: channels, recordings, users, jobs, tags, settings
   - Database initialization and connection handling
-- **internal/store/**: Newer relational/vector store abstractions used by the refactored app slice
-- **internal/models/**: Data structures
+- **server/internal/store/**: Newer relational/vector store abstractions used by the refactored app slice
+- **server/internal/models/**: Data structures
   - **internal/models/requests/**: Request DTOs with validation tags
   - **internal/models/responses/**: Response DTOs
-- **internal/analysis/**: Video analysis pipeline components
+- **server/internal/analysis/**: Video analysis pipeline components
   - **internal/analysis/detectors/**: Scene/highlight detectors (SSIM, frame-diff, ONNX)
   - **internal/analysis/threshold/**: Adaptive threshold strategies
   - **internal/analysis/smoothing/**: Similarity smoothing methods
-- **internal/middleware/**: HTTP middleware (authentication, authorization)
-- **internal/jobs/**: Background job executor and worker pool; absorbs metrics helpers
+- **server/internal/middleware/**: HTTP middleware (authentication, authorization)
+- **server/internal/jobs/**: Background job executor and worker pool; absorbs metrics helpers
   - **internal/jobs/handlers/**: Per-job-type handler implementations
-- **internal/util/**: Utility functions (FFmpeg cmd, video probing, string/sys helpers)
-- **internal/ws/**: WebSocket event types and broadcasting
-- **internal/app/**: HTTP-layer helpers (request validation, response formatting, error shapes)
+- **server/internal/util/**: Utility functions (FFmpeg cmd, video probing, string/sys helpers)
+- **server/internal/ws/**: WebSocket event types and broadcasting
+- **server/internal/app/**: HTTP-layer helpers (request validation, response formatting, error shapes)
 - **frontend/**: Vue 3 TypeScript frontend (source lives here)
   - Built with Vite + npm; output goes to `frontend/dist/`
-  - `frontend/dist/` is gitignored (build artifact) except for `frontend/dist/.gitkeep`
+  - Root `frontend/dist/` is a build artifact; root build scripts mirror it into `server/frontend/dist/` before `go build`
   - Layout/styling source of truth is `frontend/src/assets/custom-bootstrap.scss`
 - **cli/**: standalone Rust terminal client
   - `Cargo.toml` + `src/`: native `ratatui` CLI application
@@ -68,6 +70,7 @@ MediaSink.Go is a Go-based web server for video management, stream recording, an
 ./build.sh
 ```
 Builds frontend first (`npm install && npm run build` in `frontend/`), then generates Swagger docs and builds the Go binary as `./main`. The frontend dist is embedded into the binary via `go:embed`, so the binary is fully self-contained.
+Builds frontend first (`npm install && npm run build` in `frontend/`), mirrors the build output into `server/frontend/dist`, then generates Swagger docs in `server/docs/` and builds the Go binary as `./main`.
 
 Key build flags:
 - Sets version and commit hash via `-ldflags`
@@ -80,11 +83,12 @@ Key build flags:
 ./run.sh
 ```
 Performs a full rebuild and starts the server on `0.0.0.0:3000` in this order:
-1. `swag init` — regenerates `docs/swagger.json` from Go annotations (installs `swag` automatically if missing)
-2. `SWAGGER_INPUT=docs/swagger.json node swagger.js` — generates `src/services/api/v2/MediaSinkClient.ts` from the local spec (no running server required)
+1. `swag init` — regenerates `server/docs/swagger.json` from Go annotations (installs `swag` automatically if missing)
+2. `SWAGGER_INPUT=server/docs/swagger.json node swagger.js` — generates `src/services/api/v2/MediaSinkClient.ts` from the local spec (no running server required)
 3. `npm run build` — builds the Vue frontend
-4. `go build` — compiles the Go binary with the embedded frontend
-5. `./main` — starts the server
+4. the built frontend is mirrored into `server/frontend/dist`
+5. `go build` — compiles the Go binary with the embedded frontend
+6. `./main` — starts the server
 
 The `SWAGGER_INPUT` env var in `frontend/swagger.js` lets it consume a local swagger.json file instead of fetching from a live server. When omitted (e.g. running `npm run client` manually) it falls back to `http://localhost:3000/swagger/doc.json`.
 
@@ -112,7 +116,7 @@ CLI notes:
 ```sh
 ./test.sh
 ```
-Runs all Go tests in the project. Sets test environment variables for database and file paths.
+Runs all Go tests in the `server/` module. Sets test environment variables for database and file paths.
 
 CLI-specific tests:
 ```sh
@@ -146,7 +150,7 @@ cd cli && cargo test --locked
 8. Database layer (`internal/db/*`) handles persistence via GORM
 
 ### Frontend Integration
-The Vue 3 frontend is embedded into the Go binary at compile time using `go:embed all:frontend/dist` in `frontend_embed.go`. The embedded FS is passed to `api.Setup()` which registers three frontend-related handlers:
+The Vue 3 frontend is embedded into the Go binary at compile time using `go:embed all:frontend/dist` in `server/frontend_embed.go`. Root build scripts mirror the built root `frontend/dist` into `server/frontend/dist` before `go build`. The embedded FS is passed to `api.Setup()` which registers three frontend-related handlers:
 
 - **`GET /env.js`**: Dynamically generated JavaScript that sets `window.APP_*` globals. Derives API and WebSocket URLs from the incoming request's `Host` header, so the binary works on any hostname without reconfiguration. Uses `wss://` automatically when the request arrived over TLS or behind a proxy that sets `X-Forwarded-Proto: https`.
 - **`GET /build.js`**: Dynamically generated JavaScript that sets `window.APP_VERSION`, `window.APP_BUILD`, and `window.APP_API_VERSION` from the Go binary's ldflags values.
@@ -157,16 +161,16 @@ The `Dockerfile` uses a multi-stage build:
 1. `frontend_builder` (Node 22): runs `npm ci && npm run build` in `frontend/`, outputs `dist/`
 2. `ffmpeg_builder`: compiles FFmpeg from source
 3. `yt_dlp_builder`: downloads yt-dlp binary
-4. `app_builder` (Go): copies all source, overlays `frontend/dist` from `frontend_builder`, runs `swag init` and `go build`
+4. `app_builder` (Go): copies all source, overlays the built frontend into `server/frontend/dist`, runs `swag init` in `server/`, and builds the Go binary from `server/`
 5. `final` (Debian slim): copies compiled binaries and assets — no nginx needed
 
 ### Authentication
 - JWT-based authentication
-- `SECRET` environment variable required (checked in `main.go` init)
+- `SECRET` environment variable required (checked in `server/main.go` init)
 - Middleware: `middleware.CheckAuthorizationHeader`
 
 ### Services & Background Processing
-- Lifecycle is coordinated by `app.App`; `main.go` no longer assembles the server directly.
+- Lifecycle is coordinated by `app.App`; `server/main.go` no longer assembles the server directly.
 - **Startup**: `services.StartUpJobs()` - recovery from crashes, integrity checks
 - **Recording**: `services.StartRecorder()` - manages active recordings
 - **Job Processing**: `services.StartJobProcessing()` - async background tasks
@@ -184,7 +188,7 @@ The `Dockerfile` uses a multi-stage build:
 
 ## Configuration
 
-All configuration is read from environment variables — there is no config file. `config.Read()` in `config/config.go` reads the variables once and caches the result.
+All configuration is read from environment variables — there is no config file. `config.Read()` in `server/config/config.go` reads the variables once and caches the result.
 
 Required environment variables:
 - `SECRET`: JWT secret (required, checked at startup)
@@ -199,7 +203,7 @@ Optional / database-specific:
 - `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_PORT`: Credentials for non-SQLite relational adapters if you are working on that lower-layer support
 
 ONNX runtime:
-- `ONNXRUNTIME_LIB`: Path to `libonnxruntime.so`. Auto-detected by `run.sh` from common local paths; required version **1.24.1** (matches `yalue/onnxruntime_go v1.27.0`). Install via `./install-onnxruntime.sh`. The current startup path hard-requires ONNX initialization and the Mobilenet model.
+- `ONNXRUNTIME_LIB`: Path to `libonnxruntime.so`. Auto-detected by `run.sh` from common local paths; required version **1.24.1** (matches `yalue/onnxruntime_go v1.27.0`). Install via `./server/install-onnxruntime.sh`. The current startup path hard-requires ONNX initialization and the Mobilenet model.
 
 Video analysis model path:
 - `assets/models/mobilenet_v3_large.onnx`

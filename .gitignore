@@ -25,9 +25,11 @@ ffmpeg
 /recordings
 .previews
 rename.sh
-/docs/swagger.yaml
-/docs/swagger.json
-/docs/docs.go
+/server/docs/swagger.yaml
+/server/docs/swagger.json
+/server/docs/docs.go
+/server/frontend/dist/*
+!/server/frontend/dist/.gitkeep
 bin
 .env
 mediasink

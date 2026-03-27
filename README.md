@@ -63,7 +63,7 @@ cd MediaSink
 
 ### Build
 
-Builds the frontend and then the Go binary (self-contained, no separate web server needed):
+Builds the frontend, mirrors the built web assets into `server/frontend/dist`, regenerates the server Swagger spec under `server/docs/`, and then builds the self-contained Go binary:
 
 ```sh
 ./build.sh
@@ -79,7 +79,7 @@ For ONNX-based analysis outside Docker, set `ONNXRUNTIME_LIB` if the runtime lib
 ./run.sh
 ```
 
-Builds the frontend if needed, regenerates the Swagger spec and the frontend v2 API client, then builds and starts the server on `http://0.0.0.0:3000`. The web UI is available at the same address.
+Builds the frontend if needed, regenerates the server Swagger spec under `server/docs/`, refreshes the frontend v2 API client from that local spec, then builds and starts the server on `http://0.0.0.0:3000`. The web UI is available at the same address.
 
 `run.sh` exports sensible local-development defaults for all required variables. The only hard requirement is `SECRET` (a JWT secret); everything else has a working default.
 
@@ -144,7 +144,7 @@ flutter run
 
 Mobile notes:
 
-- Regenerate `docs/swagger.json` from the repo root before running `mobile/apiclient.bat`; the script copies it to `mobile/schema/swagger.json`, regenerates the mobile API models/client, runs `build_runner`, and refreshes l10n output
+- Regenerate `server/docs/swagger.json` from the repo root before running `mobile/apiclient.bat`; the script copies it to `mobile/schema/swagger.json`, regenerates the mobile API models/client, runs `build_runner`, and refreshes l10n output
 - On first launch the app asks for the MediaSink server origin, derives API/WebSocket URLs from it, and validates `APP_API_VERSION` from `/build.js` before login
 - Main mobile navigation currently includes Streams, Channels, Videos, History, and Jobs; Settings is opened from the top-right gear icon instead of the bottom navigation
 - The Channels page supports grid/list layout, search, favorites-only filtering, persisted sorting, and JSON import/export
@@ -155,7 +155,7 @@ Mobile notes:
 ### Run Tests
 
 ```sh
-go test ./...
+cd server && go test ./...
 ```
 
 CLI tests:

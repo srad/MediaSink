@@ -4,9 +4,9 @@ Flutter client for the MediaSink `/api/v2` server.
 
 ## Development
 
-1. Regenerate the server Swagger spec from the repository root so `docs/swagger.json` is up to date.
+1. Regenerate the server Swagger spec from the repository root so `server/docs/swagger.json` is up to date.
 2. Run `apiclient.bat` in `mobile/`.
-   - Copies `..\docs\swagger.json` to `mobile\schema\swagger.json`
+   - Copies `..\server\docs\swagger.json` to `mobile\schema\swagger.json`
    - Regenerates the Swagger-based mobile API models and client
    - Runs `build_runner` for the generated `*.g.dart` files
    - Regenerates Flutter l10n output
