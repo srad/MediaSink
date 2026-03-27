@@ -1,0 +1,30 @@
+# Directory where the ARB files (e.g., app_en.arb) are located.
+arb-dir: lib/l10n
+
+# The ARB file that will be used as the template for generating Dart code.
+# Usually, this is your default language (e.g., English).
+template-arb-file: app_en.arb
+
+# The name of the Dart file that will be generated.
+# This file will contain your localization class (e.g., S).
+output-localization-file: app_localizations.dart
+
+# Optional: The directory where the generated Dart file should be placed.
+# If not specified, it defaults to the same directory as the ARB files (arb-dir).
+# Common practice is to put it in a 'generated' subfolder or directly in 'lib/l10n'.
+# output-dir: lib/generated/l10n
+
+# The name of the class that will be generated in the output-localization-file.
+# You'll use this class to access your localized strings (e.g., S.of(context).yourString).
+output-class: S # Common convention, but you can choose another name like AppLocalizations
+
+# Optional: Set to true if you want to use @@key attributes in your ARB files for metadata.
+# Omit if you don't use them.
+# use_deferred_loading: false # Default is false
+
+# Optional: If you prefer nullable getters for your strings by default.
+# nullable-getter: false # Default is false
+
+# Optional: Specify if you want to use synthetic package mode.
+# Usually not needed unless you have specific project structures.
+# synthetic-package: false

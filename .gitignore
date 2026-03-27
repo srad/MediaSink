@@ -32,3 +32,4 @@ bin
 .env
 mediasink
 .runtime
+.codex-reference

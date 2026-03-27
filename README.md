@@ -5,7 +5,7 @@
 [![Build Status](https://teamcity.sedrad.com/app/rest/builds/buildType:(id:MediaSinkGo_Build)/statusIcon)](https://teamcity.sedrad.com/viewType.html?buildTypeId=MediaSinkGo_Build&guest=1)
 ![Build](https://img.shields.io/github/actions/workflow/status/srad/MediaSink/build.yml)
 
-MediaSink is a powerful web-based video management, editing and streaming server written in Go. It provides automated stream recording capabilities and a versioned REST API at `/api/v2`, making it an ideal solution for media-heavy applications. The Vue 3 frontend is bundled directly into the Go binary, and the repository also includes a standalone Rust terminal client under [`cli/`](./cli) for terminal-first access to the same MediaSink server.
+MediaSink is a powerful web-based video management, editing and streaming server written in Go. It provides automated stream recording capabilities and a versioned REST API at `/api/v2`, making it an ideal solution for media-heavy applications. The Vue 3 frontend is bundled directly into the Go binary, and the repository also includes a Flutter mobile client under [`mobile/`](./mobile) plus a standalone Rust terminal client under [`cli/`](./cli) for terminal-first access to the same MediaSink server.
 
 ## Features
 - **Media Management**: Scans all media and generate previews and organizes them. Allows bookmarking folders, channel, media items, and tagging the media.
@@ -13,6 +13,7 @@ MediaSink is a powerful web-based video management, editing and streaming server
 - **REST API for Video Editing**: Perform video editing tasks programmatically.
 - **Video Analysis (ONNX + sqlite-vec)**: Detect scenes and highlights from preview frames using ONNX feature extraction and sqlite-vec similarity queries.
 - **Integrated Web UI**: Vue 3 frontend embedded directly in the binary — served from the same port as the API, no nginx or separate deployment needed.
+- **Integrated Mobile UI**: Flutter app under `mobile/` with server setup, login, stream/channel/video browsing, history, and mobile video playback.
 - **Integrated Terminal UI**: Separate Rust CLI under `cli/` with login, live workspace views, WebSocket updates, themes, forms, and popup video playback.
 - **Scalable & Lightweight**: Optimized for performance with a minimal resource footprint.
 - **Easy Integration**: RESTful API for seamless integration with other applications.
@@ -126,6 +127,27 @@ CLI notes:
 - Reads runtime settings from the target server's `/env.js` and `/build.js`
 - Rejects incompatible MediaSink servers when the exposed `APP_API_VERSION` is missing or does not match
 - See [`cli/README.md`](./cli/README.md) for CLI-specific shortcuts, features, and packaging details
+
+### Mobile
+
+The Flutter mobile client lives in `mobile/` and talks to the same `/api/v2` backend as the web UI and CLI.
+
+Typical development flow:
+
+```sh
+cd mobile
+apiclient.bat
+flutter analyze --no-pub
+flutter run
+```
+
+Mobile notes:
+
+- Regenerate `docs/swagger.json` from the repo root before running `mobile/apiclient.bat`; the script copies it to `mobile/schema/swagger.json`, regenerates the mobile API models/client, runs `build_runner`, and refreshes l10n output
+- On first launch the app asks for the MediaSink server origin, derives API/WebSocket URLs from it, and validates `APP_API_VERSION` from `/build.js` before login
+- Main mobile navigation currently includes Streams, Channels, Videos, History, and Jobs; Settings is opened from the top-right gear icon instead of the bottom navigation
+- Local play history stores the last 100 played videos per server after 5 seconds of playback, with per-item removal and clear-all support
+- See [`mobile/README.md`](./mobile/README.md) for mobile-specific runtime and development details
 
 ### Run Tests
 

@@ -1,0 +1,18 @@
+{
+  "@@locale": "en",
+  "appTitle": "MediaSink",
+  "@appTitle": {
+    "description": "MediaSink.Go server mobile client for iOS and Android"
+  },
+  "helloWorld": "Hello Modern World!",
+  "welcomeMessage": "Welcome {userName} to our app!",
+  "@welcomeMessage": {
+    "description": "A welcome message with a placeholder for the user's name.",
+    "placeholders": {
+      "userName": {
+        "type": "String",
+        "example": "Guest"
+      }
+    }
+  }
+}
