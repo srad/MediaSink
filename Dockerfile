@@ -207,8 +207,8 @@ COPY . .
 # Overlay the pre-built frontend so go:embed picks it up
 COPY --from=frontend_builder /app/dist /app/server/frontend/dist
 
-RUN chmod a+x wait-for-it.sh
-RUN chmod a+x docker-entrypoint.sh
+RUN chmod a+x server/wait-for-it.sh
+RUN chmod a+x server/docker-entrypoint.sh
 
 RUN go install github.com/swaggo/swag/cmd/swag@latest
 RUN cd /app/server && GOWORK=off $(go env GOPATH)/bin/swag init --parseDependency --parseInternal -g main.go -o docs
@@ -300,8 +300,8 @@ RUN ldconfig
 COPY ./server/assets/DMMono-Regular.ttf /usr/share/fonts/truetype/
 COPY ./server/assets/live.jpg ./assets/
 COPY --from=app_builder /app/server/assets/models/mobilenet_v3_large.onnx ./assets/models/
-COPY ./docker-entrypoint.sh ./docker-entrypoint.sh
-COPY ./wait-for-it.sh ./wait-for-it.sh
+COPY ./server/docker-entrypoint.sh ./docker-entrypoint.sh
+COPY ./server/wait-for-it.sh ./wait-for-it.sh
 RUN fc-cache -fv
 
 # Ensure scripts are executable

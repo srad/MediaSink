@@ -23,6 +23,7 @@ MediaSink.Go is a Go-based web server for video management, stream recording, an
   - **app/**: Composition root and lifecycle management for startup validation, DB/vector-store init, and graceful shutdown
   - **config/**: Configuration — reads exclusively from environment variables (`config.Read()` is cached via `sync.Once`)
   - **docs/**: Generated Swagger/OpenAPI output; `server/docs/swagger.json` is the source of truth for generated clients
+  - **docker-entrypoint.sh**, **wait-for-it.sh**: Server-container helper scripts used by the root Dockerfile
   - **internal/api/**: Active public HTTP layer
   - **internal/api/v1/**: Legacy handler implementations still mounted under the public `/api/v2` routes
   - **internal/api/router.go**: Route setup and middleware configuration for the shipped server

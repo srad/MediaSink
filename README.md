@@ -287,8 +287,8 @@ We welcome contributions! To get started:
 MediaSink is dual-licensed under the GNU Affero General Public License (AGPL) and a commercial license.
 
 - **Open-Source Use (AGPL License)**: MediaSink is free to use, modify, and distribute under the terms of the [GNU AGPL v3](https://www.gnu.org/licenses/agpl-3.0.html). Any modifications and derivative works must also be open-sourced under the same license.
-- **Commercial Use**: Companies that wish to use MediaSink without AGPL restrictions must obtain a commercial license. For more details, please refer to the [LICENSE](LICENSE) file or contact us for licensing inquiries.
-MediaSink is available for free for non-profit and educational institutions. However, a commercial license is required for companies. For more details, please refer to the [LICENSE](LICENSE) file or contact us for licensing inquiries.
+- **Commercial Use**: Companies that wish to use MediaSink without AGPL restrictions must obtain a commercial license. Contact the project maintainer for licensing details.
+MediaSink is available for free for non-profit and educational institutions. However, a commercial license is required for companies.
 
 ## Contact
 For issues and feature requests, please use the [GitHub Issues](https://github.com/srad/MediaSink/issues) section.
