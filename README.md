@@ -138,6 +138,7 @@ Typical development flow:
 cd mobile
 apiclient.bat
 flutter analyze --no-pub
+flutter test --no-pub
 flutter run
 ```
 
@@ -146,7 +147,9 @@ Mobile notes:
 - Regenerate `docs/swagger.json` from the repo root before running `mobile/apiclient.bat`; the script copies it to `mobile/schema/swagger.json`, regenerates the mobile API models/client, runs `build_runner`, and refreshes l10n output
 - On first launch the app asks for the MediaSink server origin, derives API/WebSocket URLs from it, and validates `APP_API_VERSION` from `/build.js` before login
 - Main mobile navigation currently includes Streams, Channels, Videos, History, and Jobs; Settings is opened from the top-right gear icon instead of the bottom navigation
+- The Channels page supports grid/list layout, search, favorites-only filtering, persisted sorting, and JSON import/export
 - Local play history stores the last 100 played videos per server after 5 seconds of playback, with per-item removal and clear-all support
+- `mobile/test-all.ps1` runs the Flutter unit/widget suite and then integration tests when a supported Android device is attached; otherwise it skips the integration step cleanly
 - See [`mobile/README.md`](./mobile/README.md) for mobile-specific runtime and development details
 
 ### Run Tests
@@ -159,6 +162,13 @@ CLI tests:
 
 ```sh
 cd cli && cargo test --locked
+```
+
+Mobile tests:
+
+```sh
+cd mobile
+./test-all.ps1
 ```
 
 ## Usage

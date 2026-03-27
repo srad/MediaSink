@@ -18,6 +18,14 @@ flutter test --no-pub
 flutter run
 ```
 
+For the full mobile test flow, including integration tests when a supported Android device is connected:
+
+```sh
+.\test-all.ps1
+```
+
+`test-all.ps1` runs the unit/widget suite first and only runs `integration_test/` when a supported Android device is available. Use `.\test-all.ps1 -SkipIntegration` to run only the local test suite.
+
 ## Runtime flow
 
 - First launch asks only for the MediaSink server origin.
@@ -28,6 +36,7 @@ flutter run
 
 - Bottom navigation: `Streams`, `Channels`, `Videos`, `History`, `Jobs`
 - Settings is a separate screen opened from the top-right gear icon in the main app bar
+- Channels supports grid/list layout, search, favorites-only filtering, persisted sorting, and JSON import/export
 - The app uses the generated Swagger client against the current server contract instead of a hand-maintained mobile API model layer
 
 ## Video history
