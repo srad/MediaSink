@@ -55,6 +55,14 @@ cargo build --locked
 cargo test --locked
 ```
 
+To build a Windows release binary named with the CLI version:
+
+```powershell
+.\release-cli.ps1
+```
+
+That produces `target\release\mediasink-<version>.exe`.
+
 ## Requirements
 
 - Rust + Cargo
