@@ -1,6 +1,7 @@
 import "package:flutter/material.dart";
 import "package:provider/provider.dart";
 
+import "../action_confirmation.dart";
 import "../models.dart";
 import "../session_controller.dart";
 import "../theme_controller.dart";
@@ -53,6 +54,10 @@ class SettingsScreen extends StatelessWidget {
                 subtitle: session.savedOrigin ?? "Not configured",
                 actionLabel: _connectionLabel(session.socketConnectionState),
                 onTap: () async {
+                  final confirmed = await confirmAction(context, title: "Reset server?", message: "Forget the current server and sign out on this device?", confirmLabel: "Reset", destructive: true);
+                  if (!confirmed) {
+                    return;
+                  }
                   await closeAnd(session.resetServer);
                 },
               ),
@@ -87,6 +92,10 @@ class SettingsScreen extends StatelessWidget {
               Expanded(
                 child: OutlinedButton.icon(
                   onPressed: () async {
+                    final confirmed = await confirmAction(context, title: "Sign out?", message: "Clear the current session token on this device?", confirmLabel: "Sign out");
+                    if (!confirmed) {
+                      return;
+                    }
                     await closeAnd(session.logout);
                   },
                   icon: const Icon(Icons.logout_rounded),
@@ -146,14 +155,7 @@ class _SettingsHeroCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: <Color>[
-              theme.colorScheme.primary,
-              theme.colorScheme.primary.withValues(alpha: 0.82),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
+          gradient: LinearGradient(colors: <Color>[theme.colorScheme.primary, theme.colorScheme.primary.withValues(alpha: 0.82)], begin: Alignment.topLeft, end: Alignment.bottomRight),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -161,10 +163,7 @@ class _SettingsHeroCard extends StatelessWidget {
             Container(
               width: 44,
               height: 44,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(12),
-              ),
+              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(12)),
               child: const Icon(Icons.settings_rounded, color: Colors.white),
             ),
             const SizedBox(width: 12),
@@ -177,18 +176,12 @@ class _SettingsHeroCard extends StatelessWidget {
                     style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    session.savedOrigin ?? "No server configured",
-                    style: const TextStyle(color: Colors.white70),
-                  ),
+                  Text(session.savedOrigin ?? "No server configured", style: const TextStyle(color: Colors.white70)),
                   if ((session.savedUsername ?? "").isNotEmpty) ...<Widget>[
                     const SizedBox(height: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
+                      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(999)),
                       child: Text(
                         "Signed in as ${session.savedUsername}",
                         style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600),
@@ -221,19 +214,13 @@ class _ConnectionPill extends StatelessWidget {
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-      ),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(999)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           Icon(Icons.circle, size: 8, color: color),
           const SizedBox(width: 6),
-          Text(
-            _connectionLabel(state),
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w700),
-          ),
+          Text(_connectionLabel(state), style: Theme.of(context).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w700)),
         ],
       ),
     );
@@ -241,12 +228,7 @@ class _ConnectionPill extends StatelessWidget {
 }
 
 class _SettingsSection extends StatelessWidget {
-  const _SettingsSection({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.child,
-  });
+  const _SettingsSection({required this.icon, required this.title, required this.subtitle, required this.child});
 
   final IconData icon;
   final String title;
@@ -266,10 +248,7 @@ class _SettingsSection extends StatelessWidget {
                 Container(
                   width: 34,
                   height: 34,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
+                  decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10)),
                   child: Icon(icon, size: 18, color: Theme.of(context).colorScheme.primary),
                 ),
                 const SizedBox(width: 10),
@@ -295,14 +274,7 @@ class _SettingsSection extends StatelessWidget {
 }
 
 class _SettingsActionTile extends StatelessWidget {
-  const _SettingsActionTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-    this.actionLabel,
-    this.trailing,
-  });
+  const _SettingsActionTile({required this.icon, required this.title, required this.subtitle, required this.onTap, this.actionLabel, this.trailing});
 
   final IconData icon;
   final String title;

@@ -2,6 +2,7 @@ import "package:flutter/material.dart";
 
 import "../../api/export.dart";
 import "preview_frame.dart";
+import "remote_focusable_action.dart";
 
 class ClassicChannelTile extends StatelessWidget {
   const ClassicChannelTile({super.key, required this.channel, required this.previewUrl, required this.onTap});
@@ -12,8 +13,9 @@ class ClassicChannelTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
+    return RemoteFocusableAction(
+      onPressed: onTap,
+      borderRadius: BorderRadius.circular(8),
       child: Stack(
         children: <Widget>[
           Positioned.fill(

@@ -1,6 +1,7 @@
 import "package:flutter/material.dart";
 import "package:provider/provider.dart";
 
+import "../action_confirmation.dart";
 import "../models.dart";
 import "../session_controller.dart";
 
@@ -73,10 +74,23 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 8),
                         Text(session.savedOrigin ?? "Server not configured", style: theme.textTheme.bodyMedium),
                         const SizedBox(height: 12),
-                        TextButton.icon(onPressed: isBusy ? null : () => session.resetServer(), icon: const Icon(Icons.settings_ethernet), label: const Text("Change server")),
+                        TextButton.icon(
+                          onPressed: isBusy
+                              ? null
+                              : () async {
+                                  final confirmed = await confirmAction(context, title: "Change server?", message: "Forget the current server and return to server setup?", confirmLabel: "Change", destructive: true);
+                                  if (!confirmed) {
+                                    return;
+                                  }
+                                  await session.resetServer();
+                                },
+                          icon: const Icon(Icons.settings_ethernet),
+                          label: const Text("Change server"),
+                        ),
                         const SizedBox(height: 12),
                         TextFormField(
                           controller: _usernameController,
+                          autofocus: true,
                           decoration: const InputDecoration(labelText: "Username", border: OutlineInputBorder()),
                           validator: (value) => (value == null || value.trim().isEmpty) ? "Username is required." : null,
                           textInputAction: TextInputAction.next,

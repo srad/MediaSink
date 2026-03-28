@@ -14,12 +14,7 @@ import "../playback_progress_controller.dart";
 import "../video_player_side_effects.dart";
 
 class VideoPlayerPage extends StatefulWidget {
-  const VideoPlayerPage({
-    super.key,
-    required this.title,
-    required this.url,
-    required this.video,
-  });
+  const VideoPlayerPage({super.key, required this.title, required this.url, required this.video});
 
   final String title;
   final String url;
@@ -33,13 +28,18 @@ enum VideoPlayerResult { deleted }
 
 enum _AnalysisMode { chapters, highlights }
 
+class _TogglePlaybackIntent extends Intent {
+  const _TogglePlaybackIntent();
+}
+
+class _SeekRelativeIntent extends Intent {
+  const _SeekRelativeIntent(this.deltaSeconds);
+
+  final double deltaSeconds;
+}
+
 class _AnalysisPoint {
-  const _AnalysisPoint({
-    required this.label,
-    required this.timestamp,
-    this.endTime,
-    this.intensity,
-  });
+  const _AnalysisPoint({required this.label, required this.timestamp, this.endTime, this.intensity});
 
   final String label;
   final double timestamp;
@@ -73,31 +73,18 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with WidgetsBindingOb
     _historyController = context.read<HistoryController>();
     _playbackProgressController = context.read<PlaybackProgressController>();
     _api = context.read<MediaSinkApi>();
-    _sideEffects = VideoPlayerSideEffects(
-      video: widget.video,
-      historyController: _historyController,
-      playbackProgressController: _playbackProgressController,
-    );
+    _sideEffects = VideoPlayerSideEffects(video: widget.video, historyController: _historyController, playbackProgressController: _playbackProgressController);
     _videoController = VideoPlayerController.networkUrl(Uri.parse(widget.url))
       ..addListener(_handlePlaybackStateChanged)
       ..initialize().then((_) async {
         final resumeEntry = _playbackProgressController.entryForVideo(widget.video);
         final durationSeconds = _videoController!.value.duration.inMilliseconds / 1000;
         final resumeSeconds = (resumeEntry?.positionSeconds ?? 0).clamp(0, durationSeconds).toDouble();
-        if (resumeSeconds >= PlaybackProgressController.minimumResumePosition.inSeconds &&
-            durationSeconds > 0 &&
-            (resumeSeconds / durationSeconds) < PlaybackProgressController.completionThreshold) {
+        if (resumeSeconds >= PlaybackProgressController.minimumResumePosition.inSeconds && durationSeconds > 0 && (resumeSeconds / durationSeconds) < PlaybackProgressController.completionThreshold) {
           await _videoController!.seekTo(Duration(milliseconds: (resumeSeconds * 1000).round()));
           _sideEffects.restorePosition(resumeSeconds);
         }
-        _chewieController = ChewieController(
-          videoPlayerController: _videoController!,
-          autoPlay: true,
-          allowFullScreen: true,
-          allowPlaybackSpeedChanging: true,
-          deviceOrientationsOnEnterFullScreen: DeviceOrientation.values,
-          deviceOrientationsAfterFullScreen: DeviceOrientation.values,
-        );
+        _chewieController = ChewieController(videoPlayerController: _videoController!, autoPlay: true, allowFullScreen: true, allowPlaybackSpeedChanging: true, deviceOrientationsOnEnterFullScreen: DeviceOrientation.values, deviceOrientationsAfterFullScreen: DeviceOrientation.values);
         _syncFullscreenWithOrientation(force: true);
         if (mounted) {
           setState(() {});
@@ -143,11 +130,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with WidgetsBindingOb
       return;
     }
 
-      try {
-        final results = await Future.wait<dynamic>(<Future<dynamic>>[
-        _api.getAnalysis(recordingId),
-        _api.getPreviewManifest(recordingId),
-      ]);
+    try {
+      final results = await Future.wait<dynamic>(<Future<dynamic>>[_api.getAnalysis(recordingId), _api.getPreviewManifest(recordingId)]);
       if (!mounted) {
         return;
       }
@@ -209,34 +193,32 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with WidgetsBindingOb
 
     if (_analysisMode == _AnalysisMode.chapters) {
       final scenes = _analysis?.scenes ?? const <DbSceneInfo>[];
-      return scenes.asMap().entries.map((entry) {
-        final index = entry.key;
-        final scene = entry.value;
-        final start = _clampToDuration(scene.startTime?.toDouble() ?? 0, safeMaxDuration);
-        final end = _clampToDuration(scene.endTime?.toDouble() ?? start, safeMaxDuration);
-        return _AnalysisPoint(
-          label: "Chapter ${index + 1} • ${_formatTime(start)}-${_formatTime(end)}",
-          timestamp: start,
-          endTime: end,
-          intensity: scene.changeIntensity?.toDouble(),
-        );
-      }).toList(growable: false);
+      return scenes
+          .asMap()
+          .entries
+          .map((entry) {
+            final index = entry.key;
+            final scene = entry.value;
+            final start = _clampToDuration(scene.startTime?.toDouble() ?? 0, safeMaxDuration);
+            final end = _clampToDuration(scene.endTime?.toDouble() ?? start, safeMaxDuration);
+            return _AnalysisPoint(label: "Chapter ${index + 1} • ${_formatTime(start)}-${_formatTime(end)}", timestamp: start, endTime: end, intensity: scene.changeIntensity?.toDouble());
+          })
+          .toList(growable: false);
     }
 
     final highlights = _analysis?.highlights ?? const <DbHighlightInfo>[];
-    return highlights.asMap().entries.map((entry) {
-      final index = entry.key;
-      final highlight = entry.value;
-      final timestamp = _clampToDuration(highlight.timestamp?.toDouble() ?? highlight.startTime?.toDouble() ?? 0, safeMaxDuration);
-      final end = _clampToDuration(highlight.endTime?.toDouble() ?? timestamp, safeMaxDuration);
-      final type = (highlight.type == null || highlight.type!.isEmpty) ? "Highlight" : _capitalize(highlight.type!);
-      return _AnalysisPoint(
-        label: "$type ${index + 1} • ${_formatTime(timestamp)}",
-        timestamp: timestamp,
-        endTime: end,
-        intensity: highlight.intensity?.toDouble(),
-      );
-    }).toList(growable: false);
+    return highlights
+        .asMap()
+        .entries
+        .map((entry) {
+          final index = entry.key;
+          final highlight = entry.value;
+          final timestamp = _clampToDuration(highlight.timestamp?.toDouble() ?? highlight.startTime?.toDouble() ?? 0, safeMaxDuration);
+          final end = _clampToDuration(highlight.endTime?.toDouble() ?? timestamp, safeMaxDuration);
+          final type = (highlight.type == null || highlight.type!.isEmpty) ? "Highlight" : _capitalize(highlight.type!);
+          return _AnalysisPoint(label: "$type ${index + 1} • ${_formatTime(timestamp)}", timestamp: timestamp, endTime: end, intensity: highlight.intensity?.toDouble());
+        })
+        .toList(growable: false);
   }
 
   double get _currentDurationSeconds {
@@ -293,6 +275,20 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with WidgetsBindingOb
     await _seekTo(current + deltaSeconds, resetTimelineFollow: true);
   }
 
+  Future<void> _togglePlayback() async {
+    final controller = _videoController;
+    if (controller == null || !controller.value.isInitialized) {
+      return;
+    }
+
+    if (controller.value.isPlaying) {
+      await controller.pause();
+      return;
+    }
+
+    await controller.play();
+  }
+
   Future<void> _goToAnalysisPoint(int index) async {
     final items = _analysisItems;
     if (items.isEmpty) {
@@ -342,13 +338,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with WidgetsBindingOb
     }
 
     final positionSeconds = value.position.inMilliseconds / 1000;
-    unawaited(
-      _sideEffects.handlePlaybackTick(
-        isPlaying: value.isPlaying,
-        positionSeconds: positionSeconds,
-        durationSeconds: value.duration.inMilliseconds / 1000,
-      ),
-    );
+    unawaited(_sideEffects.handlePlaybackTick(isPlaying: value.isPlaying, positionSeconds: positionSeconds, durationSeconds: value.duration.inMilliseconds / 1000));
   }
 
   Future<void> _persistPlaybackProgress() async {
@@ -363,10 +353,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with WidgetsBindingOb
 
     final positionSeconds = value.position.inMilliseconds / 1000;
     final durationSeconds = value.duration.inMilliseconds / 1000;
-    await _sideEffects.persistPlaybackProgress(
-      positionSeconds: positionSeconds,
-      durationSeconds: durationSeconds,
-    );
+    await _sideEffects.persistPlaybackProgress(positionSeconds: positionSeconds, durationSeconds: durationSeconds);
   }
 
   Future<void> _confirmDeleteVideo() async {
@@ -381,14 +368,8 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with WidgetsBindingOb
         title: const Text("Delete video?"),
         content: Text("${widget.video.filename} will be deleted."),
         actions: <Widget>[
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text("Cancel"),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text("Delete"),
-          ),
+          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text("Cancel")),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text("Delete")),
         ],
       ),
     );
@@ -423,45 +404,57 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with WidgetsBindingOb
     final theme = Theme.of(context);
     final canDelete = widget.video.recordingId != null;
 
-    return Scaffold(
-      backgroundColor: theme.colorScheme.surface,
-      appBar: AppBar(
-        title: Text(widget.title),
-        actions: <Widget>[
-          if (canDelete)
-            IconButton(
-              onPressed: _deletingVideo ? null : _confirmDeleteVideo,
-              tooltip: "Delete video",
-              icon: _deletingVideo
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.delete_outline_rounded),
-            ),
-        ],
-      ),
-      body: SafeArea(
-        top: false,
-        bottom: false,
-        child: Column(
-          children: <Widget>[
-            Expanded(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Colors.black,
-                  border: Border(
-                    bottom: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.35)),
+    return Shortcuts(
+      shortcuts: const <ShortcutActivator, Intent>{SingleActivator(LogicalKeyboardKey.select): _TogglePlaybackIntent(), SingleActivator(LogicalKeyboardKey.enter): _TogglePlaybackIntent(), SingleActivator(LogicalKeyboardKey.numpadEnter): _TogglePlaybackIntent(), SingleActivator(LogicalKeyboardKey.space): _TogglePlaybackIntent(), SingleActivator(LogicalKeyboardKey.mediaPlayPause): _TogglePlaybackIntent(), SingleActivator(LogicalKeyboardKey.arrowLeft): _SeekRelativeIntent(-10), SingleActivator(LogicalKeyboardKey.arrowRight): _SeekRelativeIntent(10), SingleActivator(LogicalKeyboardKey.mediaRewind): _SeekRelativeIntent(-10), SingleActivator(LogicalKeyboardKey.mediaFastForward): _SeekRelativeIntent(10)},
+      child: Actions(
+        actions: <Type, Action<Intent>>{
+          _TogglePlaybackIntent: CallbackAction<_TogglePlaybackIntent>(
+            onInvoke: (_) {
+              _togglePlayback();
+              return null;
+            },
+          ),
+          _SeekRelativeIntent: CallbackAction<_SeekRelativeIntent>(
+            onInvoke: (intent) {
+              _seekBy(intent.deltaSeconds);
+              return null;
+            },
+          ),
+        },
+        child: Focus(
+          autofocus: true,
+          child: Scaffold(
+            backgroundColor: theme.colorScheme.surface,
+            appBar: AppBar(
+              title: Text(widget.title),
+              actions: <Widget>[
+                if (canDelete)
+                  IconButton(
+                    onPressed: _deletingVideo ? null : _confirmDeleteVideo,
+                    tooltip: "Delete video",
+                    icon: _deletingVideo ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.delete_outline_rounded),
                   ),
-                ),
-                child: Center(
-                  child: _chewieController == null ? const CircularProgressIndicator() : Chewie(controller: _chewieController!),
-                ),
+              ],
+            ),
+            body: SafeArea(
+              top: false,
+              bottom: false,
+              child: Column(
+                children: <Widget>[
+                  Expanded(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Colors.black,
+                        border: Border(bottom: BorderSide(color: theme.colorScheme.outlineVariant.withValues(alpha: 0.35))),
+                      ),
+                      child: Center(child: _chewieController == null ? const CircularProgressIndicator() : Chewie(controller: _chewieController!)),
+                    ),
+                  ),
+                  _buildAnalysisPanel(context),
+                ],
               ),
             ),
-            _buildAnalysisPanel(context),
-          ],
+          ),
         ),
       ),
     );
@@ -475,9 +468,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with WidgetsBindingOb
     final hasAnalysisData = hasChapters || hasHighlights;
     final items = _analysisItems;
     final frameUrls = _timelineFrameUrls(_api);
-    final hasPreviewTimeline =
-        (_previewManifest?.previewPath?.isNotEmpty ?? false) ||
-        frameUrls.isNotEmpty;
+    final hasPreviewTimeline = (_previewManifest?.previewPath?.isNotEmpty ?? false) || frameUrls.isNotEmpty;
 
     return ValueListenableBuilder<VideoPlayerValue>(
       valueListenable: _videoController ?? ValueNotifier<VideoPlayerValue>(VideoPlayerValue(duration: Duration.zero)),
@@ -493,24 +484,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with WidgetsBindingOb
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
-            if (hasPreviewTimeline)
-              _TimelineStripe(
-                key: _timelineStripeKey,
-                frameUrls: frameUrls,
-                previewPath: _previewManifest?.previewPath,
-                previewTimestamps: _previewManifest?.timestamps ?? const <int>[],
-                fileBaseUrl: context.read<MediaSinkApi>().config.fileBaseUrl,
-                durationSeconds: durationSeconds,
-                currentPositionSeconds: positionSeconds,
-                scenes: _analysis?.scenes ?? const <DbSceneInfo>[],
-                highlights: _analysis?.highlights ?? const <DbHighlightInfo>[],
-                mode: _analysisMode,
-                selectedIndex: _currentAnalysisIndex,
-                isPlaying: isPlaying,
-                followResetTick: _timelineFollowResetTick,
-                onSeek: _seekTo,
-                onControlsChanged: _handleTimelineControlsChanged,
-              ),
+            if (hasPreviewTimeline) _TimelineStripe(key: _timelineStripeKey, frameUrls: frameUrls, previewPath: _previewManifest?.previewPath, previewTimestamps: _previewManifest?.timestamps ?? const <int>[], fileBaseUrl: context.read<MediaSinkApi>().config.fileBaseUrl, durationSeconds: durationSeconds, currentPositionSeconds: positionSeconds, scenes: _analysis?.scenes ?? const <DbSceneInfo>[], highlights: _analysis?.highlights ?? const <DbHighlightInfo>[], mode: _analysisMode, selectedIndex: _currentAnalysisIndex, isPlaying: isPlaying, followResetTick: _timelineFollowResetTick, onSeek: _seekTo, onControlsChanged: _handleTimelineControlsChanged),
             SafeArea(
               top: false,
               bottom: false,
@@ -535,101 +509,47 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with WidgetsBindingOb
                         children: <Widget>[
                           Expanded(
                             child: SegmentedButton<_AnalysisMode>(
-                              style: SegmentedButton.styleFrom(
-                                visualDensity: VisualDensity.compact,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                              ),
+                              style: SegmentedButton.styleFrom(visualDensity: VisualDensity.compact, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
                               segments: <ButtonSegment<_AnalysisMode>>[
-                                if (hasChapters)
-                                  const ButtonSegment<_AnalysisMode>(
-                                    value: _AnalysisMode.chapters,
-                                    label: Text("Chapters"),
-                                    icon: Icon(Icons.bookmarks_rounded),
-                                  ),
-                                if (hasHighlights)
-                                  const ButtonSegment<_AnalysisMode>(
-                                    value: _AnalysisMode.highlights,
-                                    label: Text("Highlights"),
-                                    icon: Icon(Icons.auto_awesome_rounded),
-                                  ),
+                                if (hasChapters) const ButtonSegment<_AnalysisMode>(value: _AnalysisMode.chapters, label: Text("Chapters"), icon: Icon(Icons.bookmarks_rounded)),
+                                if (hasHighlights) const ButtonSegment<_AnalysisMode>(value: _AnalysisMode.highlights, label: Text("Highlights"), icon: Icon(Icons.auto_awesome_rounded)),
                               ],
                               selected: <_AnalysisMode>{_analysisMode},
                               onSelectionChanged: (selection) => _setAnalysisMode(selection.first),
                             ),
                           ),
                           const SizedBox(width: 8),
-                          _SmallNavButton(
-                            icon: Icons.chevron_left_rounded,
-                            enabled: _currentAnalysisIndex > 0,
-                            onPressed: () => _goToAnalysisPoint(_currentAnalysisIndex - 1),
-                          ),
+                          _SmallNavButton(icon: Icons.chevron_left_rounded, enabled: _currentAnalysisIndex > 0, onPressed: () => _goToAnalysisPoint(_currentAnalysisIndex - 1)),
                           const SizedBox(width: 6),
                           Container(
                             constraints: const BoxConstraints(minWidth: 90),
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-                            decoration: BoxDecoration(
-                              color: theme.colorScheme.primary.withValues(alpha: 0.08),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              _analysisCounterLabel(items),
-                              textAlign: TextAlign.center,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.labelLarge,
-                            ),
+                            decoration: BoxDecoration(color: theme.colorScheme.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(10)),
+                            child: Text(_analysisCounterLabel(items), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.labelLarge),
                           ),
                           const SizedBox(width: 6),
-                          _SmallNavButton(
-                            icon: Icons.chevron_right_rounded,
-                            enabled: items.isNotEmpty && _currentAnalysisIndex < items.length - 1,
-                            onPressed: () => _goToAnalysisPoint(_currentAnalysisIndex + 1),
-                          ),
+                          _SmallNavButton(icon: Icons.chevron_right_rounded, enabled: items.isNotEmpty && _currentAnalysisIndex < items.length - 1, onPressed: () => _goToAnalysisPoint(_currentAnalysisIndex + 1)),
                         ],
                       ),
                     const SizedBox(height: 10),
                     Row(
                       children: <Widget>[
                         if (hasPreviewTimeline) ...<Widget>[
-                          _ZoomButton(
-                            icon: isTimelineLocked ? Icons.lock_rounded : Icons.lock_open_rounded,
-                            enabled: true,
-                            onPressed: () => _timelineStripeKey.currentState?.toggleFollowPlayback(),
-                          ),
+                          _ZoomButton(icon: isTimelineLocked ? Icons.lock_rounded : Icons.lock_open_rounded, enabled: true, onPressed: () => _timelineStripeKey.currentState?.toggleFollowPlayback()),
                           const SizedBox(width: 6),
-                          _ZoomButton(
-                            icon: Icons.remove_rounded,
-                            enabled: canZoomOut,
-                            onPressed: () => _timelineStripeKey.currentState?.zoomOut(),
-                          ),
+                          _ZoomButton(icon: Icons.remove_rounded, enabled: canZoomOut, onPressed: () => _timelineStripeKey.currentState?.zoomOut()),
                           const SizedBox(width: 6),
                           SizedBox(
                             width: 38,
-                            child: Text(
-                              "${zoomFactor.toStringAsFixed(1)}x",
-                              textAlign: TextAlign.center,
-                              style: theme.textTheme.labelMedium,
-                            ),
+                            child: Text("${zoomFactor.toStringAsFixed(1)}x", textAlign: TextAlign.center, style: theme.textTheme.labelMedium),
                           ),
                           const SizedBox(width: 6),
-                          _ZoomButton(
-                            icon: Icons.add_rounded,
-                            enabled: canZoomIn,
-                            onPressed: () => _timelineStripeKey.currentState?.zoomIn(),
-                          ),
+                          _ZoomButton(icon: Icons.add_rounded, enabled: canZoomIn, onPressed: () => _timelineStripeKey.currentState?.zoomIn()),
                         ],
                         const Spacer(),
-                        _SkipButton(
-                          icon: Icons.replay_30_rounded,
-                          label: "30s",
-                          onPressed: () => _seekBy(-30),
-                        ),
+                        _SkipButton(icon: Icons.replay_30_rounded, label: "30s", onPressed: () => _seekBy(-30)),
                         const SizedBox(width: 8),
-                        _SkipButton(
-                          icon: Icons.forward_30_rounded,
-                          label: "30s",
-                          onPressed: () => _seekBy(30),
-                        ),
+                        _SkipButton(icon: Icons.forward_30_rounded, label: "30s", onPressed: () => _seekBy(30)),
                       ],
                     ),
                   ],
@@ -660,23 +580,7 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> with WidgetsBindingOb
 }
 
 class _TimelineStripe extends StatefulWidget {
-  const _TimelineStripe({
-    super.key,
-    required this.frameUrls,
-    required this.previewPath,
-    required this.previewTimestamps,
-    required this.fileBaseUrl,
-    required this.durationSeconds,
-    required this.currentPositionSeconds,
-    required this.scenes,
-    required this.highlights,
-    required this.mode,
-    required this.selectedIndex,
-    required this.isPlaying,
-    required this.followResetTick,
-    required this.onSeek,
-    this.onControlsChanged,
-  });
+  const _TimelineStripe({super.key, required this.frameUrls, required this.previewPath, required this.previewTimestamps, required this.fileBaseUrl, required this.durationSeconds, required this.currentPositionSeconds, required this.scenes, required this.highlights, required this.mode, required this.selectedIndex, required this.isPlaying, required this.followResetTick, required this.onSeek, this.onControlsChanged});
 
   final List<String> frameUrls;
   final String? previewPath;
@@ -765,13 +669,7 @@ class _TimelineStripeState extends State<_TimelineStripe> {
 
   List<double> get _normalizedTimestamps {
     final duration = _safeDuration;
-    final values = widget.previewTimestamps
-        .map((value) => value.toDouble())
-        .where((value) => value.isFinite && value >= 0)
-        .map((value) => math.min(value, duration))
-        .toSet()
-        .toList(growable: false)
-      ..sort();
+    final values = widget.previewTimestamps.map((value) => value.toDouble()).where((value) => value.isFinite && value >= 0).map((value) => math.min(value, duration)).toSet().toList(growable: false)..sort();
     return values;
   }
 
@@ -831,14 +729,7 @@ class _TimelineStripeState extends State<_TimelineStripe> {
         final nextTimestamp = index + 1 < timestamps.length ? timestamps[index + 1] : _safeDuration;
         final tileStartTime = index == 0 ? 0.0 : timestamp;
         final tileEndTime = math.max(nextTimestamp, tileStartTime + 0.1);
-        tiles.add(
-          _VisiblePreviewTile(
-            key: "$timestamp-$index",
-            left: tileStartTime * _pixelsPerSecond,
-            width: math.max((tileEndTime - tileStartTime) * _pixelsPerSecond, 1),
-            src: _previewFrameUrl(timestamp),
-          ),
-        );
+        tiles.add(_VisiblePreviewTile(key: "$timestamp-$index", left: tileStartTime * _pixelsPerSecond, width: math.max((tileEndTime - tileStartTime) * _pixelsPerSecond, 1), src: _previewFrameUrl(timestamp)));
       }
       return tiles;
     }
@@ -850,14 +741,7 @@ class _TimelineStripeState extends State<_TimelineStripe> {
       final bucketCenter = bucketStart + ((bucketEnd - bucketStart) / 2);
       final chosenIndex = _findNearestTimestampIndex(timestamps, bucketCenter);
       final chosenTimestamp = timestamps[chosenIndex];
-      tiles.add(
-        _VisiblePreviewTile(
-          key: "${bucketStart.toStringAsFixed(3)}-$chosenTimestamp",
-          left: bucketStart * _pixelsPerSecond,
-          width: math.max((bucketEnd - bucketStart) * _pixelsPerSecond, 1),
-            src: _previewFrameUrl(chosenTimestamp),
-        ),
-      );
+      tiles.add(_VisiblePreviewTile(key: "${bucketStart.toStringAsFixed(3)}-$chosenTimestamp", left: bucketStart * _pixelsPerSecond, width: math.max((bucketEnd - bucketStart) * _pixelsPerSecond, 1), src: _previewFrameUrl(chosenTimestamp)));
     }
     return tiles;
   }
@@ -876,9 +760,7 @@ class _TimelineStripeState extends State<_TimelineStripe> {
       return false;
     }
 
-    final isManualDrag =
-        (notification is ScrollStartNotification && notification.dragDetails != null) ||
-        (notification is ScrollUpdateNotification && notification.dragDetails != null);
+    final isManualDrag = (notification is ScrollStartNotification && notification.dragDetails != null) || (notification is ScrollUpdateNotification && notification.dragDetails != null);
     if (isManualDrag && _followPlayback) {
       setState(() {
         _followPlayback = false;
@@ -986,11 +868,7 @@ class _TimelineStripeState extends State<_TimelineStripe> {
 
     final targetOffset = _clamp((widget.currentPositionSeconds * _pixelsPerSecond) - (_viewportWidth / 2), 0, math.max(_timelineWidth - _viewportWidth, 0));
     if ((_scrollController.offset - targetOffset).abs() > (_viewportWidth * 0.35)) {
-      _scrollController.animateTo(
-        targetOffset,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOut,
-      );
+      _scrollController.animateTo(targetOffset, duration: const Duration(milliseconds: 220), curve: Curves.easeOut);
     }
   }
 
@@ -1067,20 +945,10 @@ class _TimelineStripeState extends State<_TimelineStripe> {
                                 ),
                               DecoratedBox(
                                 decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topCenter,
-                                    end: Alignment.bottomCenter,
-                                    colors: <Color>[
-                                      Colors.black.withValues(alpha: 0.05),
-                                      Colors.black.withValues(alpha: 0.20),
-                                    ],
-                                  ),
+                                  gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: <Color>[Colors.black.withValues(alpha: 0.05), Colors.black.withValues(alpha: 0.20)]),
                                 ),
                               ),
-                              if (widget.mode == _AnalysisMode.chapters)
-                                ..._buildSceneOverlays()
-                              else
-                                ..._buildHighlightOverlays(),
+                              if (widget.mode == _AnalysisMode.chapters) ..._buildSceneOverlays() else ..._buildHighlightOverlays(),
                               Positioned(
                                 left: _clamp(widget.currentPositionSeconds * _pixelsPerSecond, 0, _timelineWidth),
                                 top: 0,
@@ -1116,16 +984,8 @@ class _TimelineStripeState extends State<_TimelineStripe> {
               child: Stack(
                 clipBehavior: Clip.none,
                 children: <Widget>[
-                  Positioned(
-                    left: 0,
-                    bottom: 0,
-                    child: Text(_formatTime(_visibleStartSeconds), style: theme.textTheme.bodySmall),
-                  ),
-                  Positioned(
-                    right: 0,
-                    bottom: 0,
-                    child: Text(_formatTime(_visibleEndSeconds), style: theme.textTheme.bodySmall),
-                  ),
+                  Positioned(left: 0, bottom: 0, child: Text(_formatTime(_visibleStartSeconds), style: theme.textTheme.bodySmall)),
+                  Positioned(right: 0, bottom: 0, child: Text(_formatTime(_visibleEndSeconds), style: theme.textTheme.bodySmall)),
                   if (_isPlayheadVisible)
                     Positioned(
                       left: _clamp(_playheadViewportX - 32, 0, math.max(_viewportWidth - 64, 0)),
@@ -1135,18 +995,11 @@ class _TimelineStripeState extends State<_TimelineStripe> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: <Widget>[
-                            Container(
-                              width: 1,
-                              height: 6,
-                              color: Colors.white.withValues(alpha: 0.85),
-                            ),
+                            Container(width: 1, height: 6, color: Colors.white.withValues(alpha: 0.85)),
                             const SizedBox(height: 2),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.55),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
+                              decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.55), borderRadius: BorderRadius.circular(999)),
                               child: Text(
                                 _formatTime(widget.currentPositionSeconds),
                                 textAlign: TextAlign.center,
@@ -1175,23 +1028,9 @@ class _TimelineStripeState extends State<_TimelineStripe> {
       final isSelected = index == widget.selectedIndex;
       final boundaryColor = _sceneBoundaryColor(scene.changeIntensity?.toDouble() ?? 0);
 
-      widgets.add(
-        _SceneBoundaryMarker(
-          left: start * _pixelsPerSecond,
-          color: isSelected ? Colors.white : boundaryColor,
-          width: isSelected ? 3 : 2,
-          opacity: isSelected ? 0.95 : 0.82,
-        ),
-      );
+      widgets.add(_SceneBoundaryMarker(left: start * _pixelsPerSecond, color: isSelected ? Colors.white : boundaryColor, width: isSelected ? 3 : 2, opacity: isSelected ? 0.95 : 0.82));
       if (isSelected) {
-        widgets.add(
-          _SceneBoundaryMarker(
-            left: end * _pixelsPerSecond,
-            color: Colors.white,
-            width: 3,
-            opacity: 0.95,
-          ),
-        );
+        widgets.add(_SceneBoundaryMarker(left: end * _pixelsPerSecond, color: Colors.white, width: 3, opacity: 0.95));
       }
     }
     return widgets;
@@ -1212,9 +1051,7 @@ class _TimelineStripeState extends State<_TimelineStripe> {
           top: 0,
           bottom: 8,
           child: Container(
-            decoration: BoxDecoration(
-              color: (isSelected ? Colors.white : Colors.amberAccent).withValues(alpha: isSelected ? 0.28 : opacity),
-            ),
+            decoration: BoxDecoration(color: (isSelected ? Colors.white : Colors.amberAccent).withValues(alpha: isSelected ? 0.28 : opacity)),
           ),
         ),
       );
@@ -1288,12 +1125,7 @@ class _TimelinePreviewFallback extends StatelessWidget {
 }
 
 class _VisiblePreviewTile {
-  const _VisiblePreviewTile({
-    required this.key,
-    required this.left,
-    required this.width,
-    required this.src,
-  });
+  const _VisiblePreviewTile({required this.key, required this.left, required this.width, required this.src});
 
   final String key;
   final double left;
@@ -1302,12 +1134,7 @@ class _VisiblePreviewTile {
 }
 
 class _SceneBoundaryMarker extends StatelessWidget {
-  const _SceneBoundaryMarker({
-    required this.left,
-    required this.color,
-    required this.width,
-    required this.opacity,
-  });
+  const _SceneBoundaryMarker({required this.left, required this.color, required this.width, required this.opacity});
 
   final double left;
   final Color color;
@@ -1323,10 +1150,7 @@ class _SceneBoundaryMarker extends StatelessWidget {
       child: IgnorePointer(
         child: Opacity(
           opacity: opacity,
-          child: Container(
-            width: width,
-            color: color,
-          ),
+          child: Container(width: width, color: color),
         ),
       ),
     );
@@ -1334,11 +1158,7 @@ class _SceneBoundaryMarker extends StatelessWidget {
 }
 
 class _SmallNavButton extends StatelessWidget {
-  const _SmallNavButton({
-    required this.icon,
-    required this.enabled,
-    required this.onPressed,
-  });
+  const _SmallNavButton({required this.icon, required this.enabled, required this.onPressed});
 
   final IconData icon;
   final bool enabled;
@@ -1348,22 +1168,14 @@ class _SmallNavButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return FilledButton.tonal(
       onPressed: enabled ? onPressed : null,
-      style: FilledButton.styleFrom(
-        minimumSize: const Size(42, 42),
-        padding: EdgeInsets.zero,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
+      style: FilledButton.styleFrom(minimumSize: const Size(42, 42), padding: EdgeInsets.zero, tapTargetSize: MaterialTapTargetSize.shrinkWrap),
       child: Icon(icon),
     );
   }
 }
 
 class _SkipButton extends StatelessWidget {
-  const _SkipButton({
-    required this.icon,
-    required this.label,
-    required this.onPressed,
-  });
+  const _SkipButton({required this.icon, required this.label, required this.onPressed});
 
   final IconData icon;
   final String label;
@@ -1373,11 +1185,7 @@ class _SkipButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return FilledButton.tonalIcon(
       onPressed: onPressed,
-      style: FilledButton.styleFrom(
-        minimumSize: const Size(0, 48),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
+      style: FilledButton.styleFrom(minimumSize: const Size(0, 48), padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
       icon: Icon(icon, size: 22),
       label: Text(label),
     );
@@ -1385,11 +1193,7 @@ class _SkipButton extends StatelessWidget {
 }
 
 class _ZoomButton extends StatelessWidget {
-  const _ZoomButton({
-    required this.icon,
-    required this.enabled,
-    required this.onPressed,
-  });
+  const _ZoomButton({required this.icon, required this.enabled, required this.onPressed});
 
   final IconData icon;
   final bool enabled;
@@ -1403,11 +1207,7 @@ class _ZoomButton extends StatelessWidget {
       child: InkWell(
         onTap: enabled ? onPressed : null,
         borderRadius: BorderRadius.circular(8),
-        child: SizedBox(
-          width: 34,
-          height: 34,
-          child: Icon(icon, size: 18, color: enabled ? Theme.of(context).colorScheme.primary : Theme.of(context).disabledColor),
-        ),
+        child: SizedBox(width: 34, height: 34, child: Icon(icon, size: 18, color: enabled ? Theme.of(context).colorScheme.primary : Theme.of(context).disabledColor)),
       ),
     );
   }

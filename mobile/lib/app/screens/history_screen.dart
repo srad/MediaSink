@@ -2,11 +2,14 @@ import "package:flutter/material.dart";
 import "package:provider/provider.dart";
 
 import "../formatters.dart";
+import "../grid_layout.dart";
 import "../history_controller.dart";
 import "../media_sink_api.dart";
 import "../models.dart";
 import "../widgets/inline_error_banner.dart";
 import "../widgets/preview_frame.dart";
+import "../widgets/responsive_card_grid.dart";
+import "channel_detail_screen.dart";
 import "video_player_page.dart";
 
 class HistoryScreen extends StatelessWidget {
@@ -16,6 +19,7 @@ class HistoryScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = context.watch<HistoryController>();
     final api = context.read<MediaSinkApi>();
+    final spec = mediaGridSpec(context);
 
     if (controller.loading && controller.entries.isEmpty) {
       return const Center(child: CircularProgressIndicator());
@@ -25,10 +29,7 @@ class HistoryScreen extends StatelessWidget {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: const _HistoryEmptyState(),
-          ),
+          child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 420), child: const _HistoryEmptyState()),
         ),
       );
     }
@@ -42,25 +43,35 @@ class HistoryScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
             child: InlineErrorBanner(message: controller.error!, onRetry: () => controller.reload()),
           ),
-        for (final entry in controller.entries) ...<Widget>[
-          _HistoryCard(
-            entry: entry,
-            previewUrl: api.previewUrl(entry.video),
-            onOpen: () => _openHistoryEntry(context, controller, api, entry),
-            onRemove: () => controller.removeEntry(entry),
-          ),
-          const SizedBox(height: 10),
-        ],
+        ResponsiveCardGrid(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          minItemWidth: spec.minItemWidth,
+          maxColumns: spec.maxColumns,
+          childAspectRatio: 3.35,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          itemCount: controller.entries.length,
+          itemBuilder: (context, index) {
+            final entry = controller.entries[index];
+            return _HistoryCard(
+              entry: entry,
+              previewUrl: api.previewUrl(entry.video),
+              onOpen: () => _openHistoryEntry(context, controller, api, entry),
+              onOpenChannel: entry.video.channelId == null
+                  ? null
+                  : () {
+                      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ChannelDetailScreen(channelId: entry.video.channelId!)));
+                    },
+              onRemove: () => controller.removeEntry(entry),
+            );
+          },
+        ),
       ],
     );
   }
 
-  Future<void> _openHistoryEntry(
-    BuildContext context,
-    HistoryController controller,
-    MediaSinkApi api,
-    PlayedVideoHistoryEntry entry,
-  ) async {
+  Future<void> _openHistoryEntry(BuildContext context, HistoryController controller, MediaSinkApi api, PlayedVideoHistoryEntry entry) async {
     try {
       final video = await controller.resolveVideo(entry);
       if (!context.mounted) {
@@ -69,11 +80,7 @@ class HistoryScreen extends StatelessWidget {
 
       final result = await Navigator.of(context).push<VideoPlayerResult>(
         MaterialPageRoute<VideoPlayerResult>(
-          builder: (_) => VideoPlayerPage(
-            title: video.filename,
-            url: api.videoFileUrl(video),
-            video: video,
-          ),
+          builder: (_) => VideoPlayerPage(title: video.filename, url: api.videoFileUrl(video), video: video),
         ),
       );
 
@@ -85,9 +92,7 @@ class HistoryScreen extends StatelessWidget {
         return;
       }
       final message = error.toString();
-      final text = message.toLowerCase().contains("404") || message.toLowerCase().contains("not found")
-          ? "Video is no longer available. Removed from history."
-          : message;
+      final text = message.toLowerCase().contains("404") || message.toLowerCase().contains("not found") ? "Video is no longer available. Removed from history." : message;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
     }
   }
@@ -109,29 +114,16 @@ class _HistoryEmptyState extends StatelessWidget {
             Container(
               width: 64,
               height: 64,
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Icon(
-                Icons.history_rounded,
-                size: 34,
-                color: theme.colorScheme.primary,
-              ),
+              decoration: BoxDecoration(color: theme.colorScheme.primary.withValues(alpha: 0.10), borderRadius: BorderRadius.circular(18)),
+              child: Icon(Icons.history_rounded, size: 34, color: theme.colorScheme.primary),
             ),
             const SizedBox(height: 16),
-            Text(
-              "No played videos yet",
-              textAlign: TextAlign.center,
-              style: theme.textTheme.titleMedium,
-            ),
+            Text("No played videos yet", textAlign: TextAlign.center, style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
             Text(
               "Videos you watch for a few seconds will appear here, so you can jump back in later.",
               textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
           ],
         ),
@@ -141,17 +133,13 @@ class _HistoryEmptyState extends StatelessWidget {
 }
 
 class _HistoryCard extends StatelessWidget {
-  const _HistoryCard({
-    required this.entry,
-    required this.previewUrl,
-    required this.onOpen,
-    required this.onRemove,
-  });
+  const _HistoryCard({required this.entry, required this.previewUrl, required this.onOpen, required this.onRemove, this.onOpenChannel});
 
   final PlayedVideoHistoryEntry entry;
   final String previewUrl;
   final VoidCallback onOpen;
   final VoidCallback onRemove;
+  final VoidCallback? onOpenChannel;
 
   @override
   Widget build(BuildContext context) {
@@ -161,16 +149,12 @@ class _HistoryCard extends StatelessWidget {
         onTap: onOpen,
         borderRadius: BorderRadius.circular(10),
         child: Padding(
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(8),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              PreviewFrame(
-                imageUrl: previewUrl,
-                width: 128,
-                height: 72,
-              ),
-              const SizedBox(width: 12),
+              PreviewFrame(imageUrl: previewUrl, width: 122, height: 84),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -186,45 +170,30 @@ class _HistoryCard extends StatelessWidget {
                       entry.video.channelName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
+                      style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
                     Wrap(
-                      spacing: 10,
-                      runSpacing: 6,
+                      spacing: 8,
+                      runSpacing: 4,
                       children: <Widget>[
                         // _HistoryMetaChip(
                         //   icon: Icons.history_rounded,
                         //   label: playedLabel,
                         // ),
-                        _HistoryMetaChip(
-                          icon: Icons.timer_rounded,
-                          label: formatDuration(entry.video.duration),
-                        ),
-                        _HistoryMetaChip(
-                          icon: Icons.sd_storage_rounded,
-                          label: formatBytes(entry.video.size),
-                        ),
+                        _HistoryMetaChip(icon: Icons.timer_rounded, label: formatDuration(entry.video.duration)),
+                        _HistoryMetaChip(icon: Icons.sd_storage_rounded, label: formatBytes(entry.video.size)),
                       ],
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 6),
               Column(
                 children: <Widget>[
-                  IconButton(
-                    tooltip: "Play",
-                    onPressed: onOpen,
-                    icon: const Icon(Icons.play_arrow_rounded),
-                  ),
-                  IconButton(
-                    tooltip: "Remove from history",
-                    onPressed: onRemove,
-                    icon: const Icon(Icons.history_toggle_off_rounded),
-                  ),
+                  if (onOpenChannel != null) IconButton(tooltip: "Open channel", onPressed: onOpenChannel, visualDensity: VisualDensity.compact, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32), icon: const Icon(Icons.grid_view_rounded)),
+                  IconButton(tooltip: "Play", onPressed: onOpen, visualDensity: VisualDensity.compact, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32), icon: const Icon(Icons.play_arrow_rounded)),
+                  IconButton(tooltip: "Remove from history", onPressed: onRemove, visualDensity: VisualDensity.compact, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32), icon: const Icon(Icons.history_toggle_off_rounded)),
                 ],
               ),
             ],
@@ -236,10 +205,7 @@ class _HistoryCard extends StatelessWidget {
 }
 
 class _HistoryMetaChip extends StatelessWidget {
-  const _HistoryMetaChip({
-    required this.icon,
-    required this.label,
-  });
+  const _HistoryMetaChip({required this.icon, required this.label});
 
   final IconData icon;
   final String label;
@@ -248,20 +214,14 @@ class _HistoryMetaChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.primary.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(999),
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(color: theme.colorScheme.primary.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(999)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           Icon(icon, size: 14, color: theme.colorScheme.primary),
-          const SizedBox(width: 5),
-          Text(
-            label,
-            style: theme.textTheme.labelMedium,
-          ),
+          const SizedBox(width: 4),
+          Text(label, style: theme.textTheme.labelMedium),
         ],
       ),
     );

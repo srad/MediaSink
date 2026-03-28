@@ -2,6 +2,7 @@ import "package:flutter/material.dart";
 import "package:provider/provider.dart";
 
 import "../../api/export.dart";
+import "../action_confirmation.dart";
 import "../formatters.dart";
 import "../library_controller.dart";
 import "../media_sink_api.dart";
@@ -89,6 +90,10 @@ class VideoDetailScreen extends StatelessWidget {
                   ),
                   FilledButton.tonalIcon(
                     onPressed: () async {
+                      final confirmed = await confirmAction(context, title: "Refresh preview?", message: "Queue preview regeneration for ${video.filename}?", confirmLabel: "Queue");
+                      if (!confirmed) {
+                        return;
+                      }
                       await library.refreshPreview(video);
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Preview regeneration queued.")));
@@ -99,6 +104,10 @@ class VideoDetailScreen extends StatelessWidget {
                   ),
                   FilledButton.tonalIcon(
                     onPressed: () async {
+                      final confirmed = await confirmAction(context, title: "Delete video?", message: "Delete ${video.filename}?", confirmLabel: "Delete", destructive: true);
+                      if (!confirmed) {
+                        return;
+                      }
                       await library.deleteVideo(video);
                       if (context.mounted) {
                         Navigator.of(context).pop();

@@ -2,14 +2,10 @@ import "dart:async";
 
 import "package:flutter/material.dart";
 
+import "remote_focusable_action.dart";
+
 class InteractiveVideoPreview extends StatefulWidget {
-  const InteractiveVideoPreview({
-    super.key,
-    required this.coverUrl,
-    required this.frameUrls,
-    required this.onTap,
-    this.height = 180,
-  });
+  const InteractiveVideoPreview({super.key, required this.coverUrl, required this.frameUrls, required this.onTap, this.height = 180});
 
   final String coverUrl;
   final List<String> frameUrls;
@@ -84,8 +80,10 @@ class _InteractiveVideoPreviewState extends State<InteractiveVideoPreview> {
     return MouseRegion(
       onEnter: (_) => _setPreviewing(true),
       onExit: (_) => _setPreviewing(false),
-      child: GestureDetector(
-        onTap: widget.onTap,
+      child: RemoteFocusableAction(
+        onPressed: widget.onTap,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
+        onFocusChange: _setPreviewing,
         onLongPressStart: (_) => _setPreviewing(true),
         onLongPressEnd: (_) => _setPreviewing(false),
         onLongPressCancel: () => _setPreviewing(false),
@@ -104,12 +102,7 @@ class _InteractiveVideoPreviewState extends State<InteractiveVideoPreview> {
                   errorBuilder: (context, error, stackTrace) {
                     return ColoredBox(
                       color: theme.colorScheme.surfaceContainerHighest,
-                      child: Center(
-                        child: Icon(
-                          Icons.image_not_supported_outlined,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
+                      child: Center(child: Icon(Icons.image_not_supported_outlined, color: theme.colorScheme.onSurfaceVariant)),
                     );
                   },
                 ),

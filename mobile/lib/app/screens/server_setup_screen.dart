@@ -72,6 +72,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                         const SizedBox(height: 24),
                         TextFormField(
                           controller: _originController,
+                          autofocus: true,
                           decoration: const InputDecoration(labelText: "Server URL", hintText: "http://192.168.1.50:3000", border: OutlineInputBorder()),
                           validator: (value) {
                             final trimmed = value?.trim() ?? "";

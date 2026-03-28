@@ -2,9 +2,11 @@ import "package:flutter/material.dart";
 import "package:url_launcher/url_launcher.dart";
 
 import "../../api/export.dart";
+import "../action_confirmation.dart";
 import "../formatters.dart";
 import "preview_frame.dart";
 import "recording_indicator.dart";
+import "remote_focusable_action.dart";
 
 class ClassicStreamCard extends StatelessWidget {
   const ClassicStreamCard({super.key, required this.channel, required this.previewUrl, required this.onOpenDetails, required this.onEdit, required this.onDelete, required this.onTogglePause, required this.onToggleFavorite});
@@ -29,14 +31,17 @@ class ClassicStreamCard extends StatelessWidget {
     await launchUrl(uri);
   }
 
+  String get _channelLabel => channel.displayName ?? channel.channelName ?? "channel";
+
   @override
   Widget build(BuildContext context) {
     return Card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          GestureDetector(
-            onTap: onOpenDetails,
+          RemoteFocusableAction(
+            onPressed: onOpenDetails,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
             child: Stack(
               children: <Widget>[
                 ClipRRect(
@@ -61,20 +66,26 @@ class ClassicStreamCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                GestureDetector(
-                  onTap: _openExternal,
-                  child: Row(
-                    children: <Widget>[
-                      Expanded(
-                        child: Text(
-                          channel.displayName ?? channel.channelName ?? "Channel",
-                          style: TextStyle(fontSize: 20, color: Theme.of(context).colorScheme.primary),
-                          overflow: TextOverflow.ellipsis,
+                RemoteFocusableAction(
+                  onPressed: () {
+                    _openExternal();
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+                    child: Row(
+                      children: <Widget>[
+                        Expanded(
+                          child: Text(
+                            channel.displayName ?? channel.channelName ?? "Channel",
+                            style: TextStyle(fontSize: 20, color: Theme.of(context).colorScheme.primary),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 4),
-                      const Icon(Icons.link),
-                    ],
+                        const SizedBox(width: 4),
+                        const Icon(Icons.link),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -109,12 +120,27 @@ class ClassicStreamCard extends StatelessWidget {
                     const SizedBox(width: 5),
                     Text("${channel.recordingsCount ?? 0}"),
                     const Spacer(),
-                    IconButton(visualDensity: VisualDensity.compact, padding: EdgeInsets.zero, onPressed: onDelete, icon: const Icon(Icons.delete_rounded)),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      onPressed: () async {
+                        final confirmed = await confirmAction(context, title: "Delete channel?", message: "Delete $_channelLabel?", confirmLabel: "Delete", destructive: true);
+                        if (confirmed) {
+                          onDelete();
+                        }
+                      },
+                      icon: const Icon(Icons.delete_rounded),
+                    ),
                     IconButton(visualDensity: VisualDensity.compact, padding: EdgeInsets.zero, onPressed: onEdit, icon: const Icon(Icons.edit_rounded)),
                     IconButton(
                       visualDensity: VisualDensity.compact,
                       padding: EdgeInsets.zero,
-                      onPressed: onTogglePause,
+                      onPressed: () async {
+                        final confirmed = await confirmAction(context, title: (channel.isPaused ?? false) ? "Resume channel?" : "Pause channel?", message: "${(channel.isPaused ?? false) ? "Resume" : "Pause"} $_channelLabel?", confirmLabel: (channel.isPaused ?? false) ? "Resume" : "Pause");
+                        if (confirmed) {
+                          onTogglePause();
+                        }
+                      },
                       icon: Icon((channel.isPaused ?? false) ? Icons.play_circle_fill : Icons.pause_circle_filled_rounded, color: Colors.lightGreen, size: 26),
                     ),
                     IconButton(

@@ -1,20 +1,15 @@
+import "dart:async";
+
 import "package:flutter_test/flutter_test.dart";
 import "package:mediasink_app/api/export.dart";
 import "package:mediasink_app/app/models.dart";
+import "package:mediasink_app/app/session_storage.dart";
 import "package:mediasink_app/app/session_controller.dart";
 
 import "test_support/app_test_support.dart";
 
 class _ControllableMediaSinkApi extends FakeMediaSinkApi {
-  _ControllableMediaSinkApi({
-    required super.config,
-    super.token,
-    super.onUnauthorized,
-    super.channels,
-    super.loginToken,
-    this.failLogin = false,
-    this.failGetChannels = false,
-  });
+  _ControllableMediaSinkApi({required super.config, super.token, super.onUnauthorized, super.channels, super.loginToken, this.failLogin = false, this.failGetChannels = false});
 
   final bool failLogin;
   final bool failGetChannels;
@@ -37,14 +32,7 @@ class _ControllableMediaSinkApi extends FakeMediaSinkApi {
 }
 
 class _SessionFixture {
-  _SessionFixture({
-    Map<String, String> storageValues = const <String, String>{},
-    this.buildInfo = testBuildInfo,
-    this.channels = const <ServicesChannelInfo>[],
-    this.loginToken = "test-token",
-    this.failStoredTokenValidation = false,
-    this.failLogin = false,
-  }) : storage = MemorySessionStorage(storageValues);
+  _SessionFixture({Map<String, String> storageValues = const <String, String>{}, this.buildInfo = testBuildInfo, this.channels = const <ServicesChannelInfo>[], this.loginToken = "test-token", this.failStoredTokenValidation = false, this.failLogin = false}) : storage = MemorySessionStorage(storageValues);
 
   final MemorySessionStorage storage;
   final AppBuildInfo buildInfo;
@@ -60,27 +48,43 @@ class _SessionFixture {
       autoBootstrap: autoBootstrap,
       buildInfoLoader: (_) async => buildInfo,
       apiFactory: ({required config, token, onUnauthorized}) {
-        final api = _ControllableMediaSinkApi(
-          config: config,
-          token: token,
-          onUnauthorized: onUnauthorized,
-          channels: channels,
-          loginToken: loginToken,
-          failLogin: failLogin && token == null,
-          failGetChannels: failStoredTokenValidation && token != null,
-        );
+        final api = _ControllableMediaSinkApi(config: config, token: token, onUnauthorized: onUnauthorized, channels: channels, loginToken: loginToken, failLogin: failLogin && token == null, failGetChannels: failStoredTokenValidation && token != null);
         createdApis.add(api);
         return api;
       },
       socketFactory: ({required config, required token}) {
-        return FakeMediaSinkSocketService(
-          config: config,
-          token: token,
-          initialState: SocketConnectionState.connected,
-        );
+        return FakeMediaSinkSocketService(config: config, token: token, initialState: SocketConnectionState.connected);
       },
     );
   }
+}
+
+class _ThrowingSessionStorage implements AppSessionStorage {
+  const _ThrowingSessionStorage(this.error);
+
+  final Object error;
+
+  @override
+  Future<String?> read({required String key}) async => throw error;
+
+  @override
+  Future<void> write({required String key, required String value}) async => throw error;
+
+  @override
+  Future<void> delete({required String key}) async => throw error;
+}
+
+class _HangingSessionStorage implements AppSessionStorage {
+  const _HangingSessionStorage();
+
+  @override
+  Future<String?> read({required String key}) => Completer<String?>().future;
+
+  @override
+  Future<void> write({required String key, required String value}) => Completer<void>().future;
+
+  @override
+  Future<void> delete({required String key}) => Completer<void>().future;
 }
 
 void main() {
@@ -88,10 +92,7 @@ void main() {
 
   test("bootstrap with stored server and no token reaches logged out with derived config", () async {
     final fixture = _SessionFixture(
-      storageValues: storedLoggedOutSession(
-        origin: "http://server-one:3000",
-        username: "alice",
-      ),
+      storageValues: storedLoggedOutSession(origin: "http://server-one:3000", username: "alice"),
     );
     final controller = fixture.createController();
 
@@ -109,11 +110,7 @@ void main() {
 
   test("bootstrap with stored token authenticates and connects the socket", () async {
     final fixture = _SessionFixture(
-      storageValues: storedAuthenticatedSession(
-        origin: "http://server-one:3000",
-        username: "alice",
-        token: "persisted-token",
-      ),
+      storageValues: storedAuthenticatedSession(origin: "http://server-one:3000", username: "alice", token: "persisted-token"),
       channels: <ServicesChannelInfo>[sampleChannel()],
     );
     final controller = fixture.createController();
@@ -130,11 +127,7 @@ void main() {
   });
 
   test("bootstrap with incompatible api version blocks login and clears stored token", () async {
-    const incompatibleBuildInfo = AppBuildInfo(
-      apiVersion: "9.9.9",
-      version: "1.0.0-test",
-      build: "test-build",
-    );
+    const incompatibleBuildInfo = AppBuildInfo(apiVersion: "9.9.9", version: "1.0.0-test", build: "test-build");
     final fixture = _SessionFixture(
       storageValues: storedAuthenticatedSession(token: "persisted-token"),
       buildInfo: incompatibleBuildInfo,
@@ -152,10 +145,7 @@ void main() {
   });
 
   test("bootstrap with expired stored token falls back to login and clears token", () async {
-    final fixture = _SessionFixture(
-      storageValues: storedAuthenticatedSession(token: "expired-token"),
-      failStoredTokenValidation: true,
-    );
+    final fixture = _SessionFixture(storageValues: storedAuthenticatedSession(token: "expired-token"), failStoredTokenValidation: true);
     final controller = fixture.createController();
 
     await controller.bootstrap();
@@ -170,10 +160,7 @@ void main() {
 
   test("configure server normalizes origin, stores it, and clears any token", () async {
     final fixture = _SessionFixture(
-      storageValues: storedAuthenticatedSession(
-        origin: "http://old-server:3000",
-        token: "persisted-token",
-      ),
+      storageValues: storedAuthenticatedSession(origin: "http://old-server:3000", token: "persisted-token"),
     );
     final controller = fixture.createController();
 
@@ -189,10 +176,7 @@ void main() {
 
   test("login stores the username and token and transitions to authenticated", () async {
     final fixture = _SessionFixture(
-      storageValues: storedLoggedOutSession(
-        origin: "http://server-one:3000",
-        username: "old-user",
-      ),
+      storageValues: storedLoggedOutSession(origin: "http://server-one:3000", username: "old-user"),
       channels: <ServicesChannelInfo>[sampleChannel()],
       loginToken: "fresh-token",
     );
@@ -210,10 +194,7 @@ void main() {
   });
 
   test("login failure returns to logged out without storing a token", () async {
-    final fixture = _SessionFixture(
-      storageValues: storedLoggedOutSession(origin: "http://server-one:3000"),
-      failLogin: true,
-    );
+    final fixture = _SessionFixture(storageValues: storedLoggedOutSession(origin: "http://server-one:3000"), failLogin: true);
     final controller = fixture.createController();
 
     await controller.bootstrap();
@@ -228,11 +209,7 @@ void main() {
 
   test("unauthorized handler logs out but keeps the configured server", () async {
     final fixture = _SessionFixture(
-      storageValues: storedAuthenticatedSession(
-        origin: "http://server-one:3000",
-        username: "alice",
-        token: "persisted-token",
-      ),
+      storageValues: storedAuthenticatedSession(origin: "http://server-one:3000", username: "alice", token: "persisted-token"),
       channels: <ServicesChannelInfo>[sampleChannel()],
     );
     final controller = fixture.createController();
@@ -250,14 +227,7 @@ void main() {
   });
 
   test("bootstrap migrates legacy storage keys before restoring the session", () async {
-    final fixture = _SessionFixture(
-      storageValues: <String, String>{
-        "server_url": "http://legacy-server:3000/",
-        "server_username": "legacy-user",
-        "ws_jwt": "legacy-token",
-      },
-      channels: <ServicesChannelInfo>[sampleChannel()],
-    );
+    final fixture = _SessionFixture(storageValues: <String, String>{"server_url": "http://legacy-server:3000/", "server_username": "legacy-user", "ws_jwt": "legacy-token"}, channels: <ServicesChannelInfo>[sampleChannel()]);
     final controller = fixture.createController();
 
     await controller.bootstrap();
@@ -269,5 +239,23 @@ void main() {
     expect(await fixture.storage.read(key: testUsernameKey), "legacy-user");
     expect(await fixture.storage.read(key: testTokenKey), "legacy-token");
     expect(await fixture.storage.read(key: "ws_url"), isNull);
+  });
+
+  test("bootstrap falls back to unconfigured when storage throws", () async {
+    final controller = AppSessionController(storage: _ThrowingSessionStorage(Exception("Storage unavailable")), autoBootstrap: false, buildInfoLoader: (_) async => testBuildInfo);
+
+    await controller.bootstrap();
+
+    expect(controller.status, SessionStatus.unconfigured);
+    expect(controller.message, "Storage unavailable");
+  });
+
+  test("bootstrap times out hung storage instead of staying on booting", () async {
+    final controller = AppSessionController(storage: const _HangingSessionStorage(), storageOperationTimeout: const Duration(milliseconds: 10), autoBootstrap: false, buildInfoLoader: (_) async => testBuildInfo);
+
+    await controller.bootstrap();
+
+    expect(controller.status, SessionStatus.unconfigured);
+    expect(controller.message, "Timed out while trying to read app storage.");
   });
 }

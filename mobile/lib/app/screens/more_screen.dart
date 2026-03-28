@@ -1,6 +1,7 @@
 import "package:flutter/material.dart";
 import "package:provider/provider.dart";
 
+import "../action_confirmation.dart";
 import "../channels_controller.dart";
 import "../session_controller.dart";
 import "about_screen.dart";
@@ -50,7 +51,18 @@ class MoreScreen extends StatelessWidget {
           ),
         ),
         Card(
-          child: ListTile(title: const Text("Sign out"), subtitle: const Text("Clear the current session token"), trailing: const Icon(Icons.logout), onTap: () => session.logout()),
+          child: ListTile(
+            title: const Text("Sign out"),
+            subtitle: const Text("Clear the current session token"),
+            trailing: const Icon(Icons.logout),
+            onTap: () async {
+              final confirmed = await confirmAction(context, title: "Sign out?", message: "Clear the current session token on this device?", confirmLabel: "Sign out");
+              if (!confirmed) {
+                return;
+              }
+              await session.logout();
+            },
+          ),
         ),
       ],
     );

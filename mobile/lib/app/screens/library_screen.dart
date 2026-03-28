@@ -3,10 +3,12 @@ import "package:provider/provider.dart";
 
 import "../library_controller.dart";
 import "../formatters.dart";
+import "../grid_layout.dart";
 import "../media_sink_api.dart";
 import "../models.dart";
 import "../widgets/classic_video_card.dart";
 import "../widgets/inline_error_banner.dart";
+import "../widgets/responsive_card_grid.dart";
 import "channel_detail_screen.dart";
 import "video_player_page.dart";
 import "../../api/export.dart";
@@ -18,6 +20,7 @@ class LibraryScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = context.watch<LibraryController>();
     final api = context.read<MediaSinkApi>();
+    final spec = mediaGridSpec(context);
     final videos = controller.videos;
 
     return RefreshIndicator(
@@ -41,11 +44,7 @@ class LibraryScreen extends StatelessWidget {
           const SizedBox(height: 8),
           _FiltersLauncherCard(controller: controller),
           _ResultsSummaryCard(controller: controller),
-          if (controller.loading && videos.isNotEmpty)
-            const Padding(
-              padding: EdgeInsets.fromLTRB(12, 0, 12, 10),
-              child: LinearProgressIndicator(),
-            ),
+          if (controller.loading && videos.isNotEmpty) const Padding(padding: EdgeInsets.fromLTRB(12, 0, 12, 10), child: LinearProgressIndicator()),
           if (controller.loading && videos.isEmpty)
             const Padding(
               padding: EdgeInsets.all(24),
@@ -56,37 +55,46 @@ class LibraryScreen extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
               child: InlineErrorBanner(message: controller.error!, onRetry: controller.refresh),
             ),
-          if (!controller.loading && videos.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text("No videos available for this view."),
-            ),
-          for (final video in videos)
+          if (!controller.loading && videos.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text("No videos available for this view.")),
+          if (videos.isNotEmpty)
             Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-                child: ClassicVideoCard(
-                  video: video,
-                  previewUrl: api.previewUrl(video),
-                  previewFrames: api.previewFrames(video),
-                  onOpen: () async => _openVideo(context, controller, api, video),
-                  onPlay: () async => _openVideo(context, controller, api, video),
-                onDownload: () async {
-                  final path = await api.downloadVideo(video);
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Saved to $path")));
-                  }
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+              child: ResponsiveCardGrid(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                minItemWidth: spec.minItemWidth,
+                maxColumns: spec.maxColumns,
+                mainAxisExtent: 268,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                itemCount: videos.length,
+                itemBuilder: (context, index) {
+                  final video = videos[index];
+                  return ClassicVideoCard(
+                    video: video,
+                    previewUrl: api.previewUrl(video),
+                    previewFrames: api.previewFrames(video),
+                    onOpen: () async => _openVideo(context, controller, api, video),
+                    onPlay: () async => _openVideo(context, controller, api, video),
+                    onDownload: () async {
+                      final path = await api.downloadVideo(video);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Saved to $path")));
+                      }
+                    },
+                    onDelete: () async {
+                      await controller.deleteVideo(video);
+                    },
+                    onToggleBookmark: () async {
+                      await controller.toggleBookmark(video);
+                    },
+                    onOpenChannel: video.channelId == null
+                        ? null
+                        : () {
+                            Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ChannelDetailScreen(channelId: video.channelId!)));
+                          },
+                  );
                 },
-                onDelete: () async {
-                  await controller.deleteVideo(video);
-                },
-                onToggleBookmark: () async {
-                  await controller.toggleBookmark(video);
-                },
-                onOpenChannel: video.channelId == null
-                    ? null
-                    : () {
-                        Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ChannelDetailScreen(channelId: video.channelId!)));
-                      },
               ),
             ),
           if (controller.section == LibrarySection.latest && controller.totalPages > 1) _PaginationCard(controller: controller),
@@ -122,29 +130,17 @@ class _FiltersLauncherCard extends StatelessWidget {
           dense: true,
           contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
           leading: const Icon(Icons.tune_rounded),
-          title: Text(
-            switch (controller.section) {
-              LibrarySection.latest => "Latest filters",
-              LibrarySection.bookmarks => "Bookmark filter",
-              LibrarySection.random => "Random limit",
-            },
-            style: theme.textTheme.titleSmall,
-          ),
+          title: Text(switch (controller.section) {
+            LibrarySection.latest => "Latest filters",
+            LibrarySection.bookmarks => "Bookmark filter",
+            LibrarySection.random => "Random limit",
+          }, style: theme.textTheme.titleSmall),
           subtitle: Text(_filterSummary(controller)),
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              if (controller.section == LibrarySection.random)
-                IconButton(
-                  onPressed: controller.loading ? null : controller.refresh,
-                  icon: const Icon(Icons.refresh_rounded),
-                  tooltip: "Refresh random videos",
-                ),
-              FilledButton.tonalIcon(
-                onPressed: controller.loading ? null : () => _openFilters(context, controller),
-                icon: const Icon(Icons.tune_rounded),
-                label: const Text("Filters"),
-              ),
+              if (controller.section == LibrarySection.random) IconButton(onPressed: controller.loading ? null : controller.refresh, icon: const Icon(Icons.refresh_rounded), tooltip: "Refresh random videos"),
+              FilledButton.tonalIcon(onPressed: controller.loading ? null : () => _openFilters(context, controller), icon: const Icon(Icons.tune_rounded), label: const Text("Filters")),
             ],
           ),
         ),
@@ -246,9 +242,7 @@ Future<void> _showLatestFiltersSheet(BuildContext context, LibraryController con
                   DropdownButtonFormField<int>(
                     initialValue: draftPageSize,
                     decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Limit"),
-                    items: LibraryController.pageSizeOptions
-                        .map((value) => DropdownMenuItem<int>(value: value, child: Text(value.toString())))
-                        .toList(growable: false),
+                    items: LibraryController.pageSizeOptions.map((value) => DropdownMenuItem<int>(value: value, child: Text(value.toString()))).toList(growable: false),
                     onChanged: (value) {
                       if (value != null) {
                         setModalState(() => draftPageSize = value);
@@ -273,11 +267,7 @@ Future<void> _showLatestFiltersSheet(BuildContext context, LibraryController con
                         onPressed: () async {
                           final navigator = Navigator.of(context);
                           navigator.pop();
-                          await controller.applyLatestFilters(
-                            sortColumn: draftSortColumn,
-                            sortOrder: draftSortOrder,
-                            pageSize: draftPageSize,
-                          );
+                          await controller.applyLatestFilters(sortColumn: draftSortColumn, sortOrder: draftSortOrder, pageSize: draftPageSize);
                         },
                         child: const Text("Apply"),
                       ),
@@ -388,9 +378,7 @@ Future<void> _showRandomFiltersSheet(BuildContext context, LibraryController con
                   DropdownButtonFormField<int>(
                     initialValue: draftLimit,
                     decoration: const InputDecoration(border: OutlineInputBorder(), labelText: "Limit"),
-                    items: LibraryController.pageSizeOptions
-                        .map((value) => DropdownMenuItem<int>(value: value, child: Text(value.toString())))
-                        .toList(growable: false),
+                    items: LibraryController.pageSizeOptions.map((value) => DropdownMenuItem<int>(value: value, child: Text(value.toString()))).toList(growable: false),
                     onChanged: (value) {
                       if (value != null) {
                         setModalState(() => draftLimit = value);
@@ -435,15 +423,9 @@ class _ResultsSummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = switch (controller.section) {
-      LibrarySection.latest => controller.totalCount == 0
-          ? "No filtered videos"
-          : "Showing ${controller.visibleStart}-${controller.visibleEnd} of ${controller.totalCount} videos",
-      LibrarySection.bookmarks => controller.videos.isEmpty
-          ? "No bookmarked videos"
-          : "${controller.videos.length} bookmarked video${controller.videos.length == 1 ? "" : "s"}",
-      LibrarySection.random => controller.videos.isEmpty
-          ? "No random videos"
-          : "${controller.videos.length} random video${controller.videos.length == 1 ? "" : "s"}",
+      LibrarySection.latest => controller.totalCount == 0 ? "No filtered videos" : "Showing ${controller.visibleStart}-${controller.visibleEnd} of ${controller.totalCount} videos",
+      LibrarySection.bookmarks => controller.videos.isEmpty ? "No bookmarked videos" : "${controller.videos.length} bookmarked video${controller.videos.length == 1 ? "" : "s"}",
+      LibrarySection.random => controller.videos.isEmpty ? "No random videos" : "${controller.videos.length} random video${controller.videos.length == 1 ? "" : "s"}",
     };
 
     return Padding(
@@ -451,19 +433,13 @@ class _ResultsSummaryCard extends StatelessWidget {
       child: Card(
         child: ListTile(
           dense: true,
-          leading: Icon(
-            switch (controller.section) {
-              LibrarySection.latest => Icons.filter_alt_rounded,
-              LibrarySection.bookmarks => Icons.favorite_rounded,
-              LibrarySection.random => Icons.shuffle_rounded,
-            },
-          ),
+          leading: Icon(switch (controller.section) {
+            LibrarySection.latest => Icons.filter_alt_rounded,
+            LibrarySection.bookmarks => Icons.favorite_rounded,
+            LibrarySection.random => Icons.shuffle_rounded,
+          }),
           title: Text(label),
-          subtitle: controller.section == LibrarySection.latest && controller.totalCount > 0
-              ? Text(
-                  "Page ${controller.currentPage} / ${controller.totalPages} • ${formatBytes(controller.videos.fold<int>(0, (sum, video) => sum + (video.size ?? 0)))} on this page",
-                )
-              : null,
+          subtitle: controller.section == LibrarySection.latest && controller.totalCount > 0 ? Text("Page ${controller.currentPage} / ${controller.totalPages} • ${formatBytes(controller.videos.fold<int>(0, (sum, video) => sum + (video.size ?? 0)))} on this page") : null,
         ),
       ),
     );
@@ -486,13 +462,7 @@ class _PaginationCard extends StatelessWidget {
             children: <Widget>[
               SizedBox(
                 width: 84,
-                child: _PagerNavButton(
-                  label: "Prev",
-                  icon: Icons.chevron_left_rounded,
-                  trailingIcon: false,
-                  enabled: !controller.loading && controller.canGoToPreviousPage,
-                  onPressed: controller.previousPage,
-                ),
+                child: _PagerNavButton(label: "Prev", icon: Icons.chevron_left_rounded, trailingIcon: false, enabled: !controller.loading && controller.canGoToPreviousPage, onPressed: controller.previousPage),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -504,19 +474,11 @@ class _PaginationCard extends StatelessWidget {
                       children: <Widget>[
                         for (final page in controller.visiblePageItems)
                           if (page == null)
-                            const Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 4),
-                              child: Text("..."),
-                            )
+                            const Padding(padding: EdgeInsets.symmetric(horizontal: 4), child: Text("..."))
                           else
                             Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 3),
-                              child: _PagerPageButton(
-                                label: page.toString(),
-                                selected: page == controller.currentPage,
-                                enabled: !controller.loading,
-                                onPressed: () => controller.goToPage(page),
-                              ),
+                              child: _PagerPageButton(label: page.toString(), selected: page == controller.currentPage, enabled: !controller.loading, onPressed: () => controller.goToPage(page)),
                             ),
                       ],
                     ),
@@ -526,22 +488,12 @@ class _PaginationCard extends StatelessWidget {
               const SizedBox(width: 8),
               SizedBox(
                 width: 84,
-                child: _PagerNavButton(
-                  label: "Next",
-                  icon: Icons.chevron_right_rounded,
-                  trailingIcon: true,
-                  enabled: !controller.loading && controller.canGoToNextPage,
-                  onPressed: controller.nextPage,
-                ),
+                child: _PagerNavButton(label: "Next", icon: Icons.chevron_right_rounded, trailingIcon: true, enabled: !controller.loading && controller.canGoToNextPage, onPressed: controller.nextPage),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          Text(
-            "Showing ${controller.visibleStart}-${controller.visibleEnd} of ${controller.totalCount}",
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
+          Text("Showing ${controller.visibleStart}-${controller.visibleEnd} of ${controller.totalCount}", textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
         ],
       ),
     );
@@ -549,13 +501,7 @@ class _PaginationCard extends StatelessWidget {
 }
 
 class _PagerNavButton extends StatelessWidget {
-  const _PagerNavButton({
-    required this.label,
-    required this.icon,
-    required this.trailingIcon,
-    required this.enabled,
-    required this.onPressed,
-  });
+  const _PagerNavButton({required this.label, required this.icon, required this.trailingIcon, required this.enabled, required this.onPressed});
 
   final String label;
   final IconData icon;
@@ -567,29 +513,14 @@ class _PagerNavButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return FilledButton.tonal(
       onPressed: enabled ? onPressed : null,
-      style: FilledButton.styleFrom(
-        minimumSize: const Size(84, 36),
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        visualDensity: VisualDensity.compact,
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: trailingIcon
-            ? <Widget>[Text(label), const SizedBox(width: 4), Icon(icon, size: 18)]
-            : <Widget>[Icon(icon, size: 18), const SizedBox(width: 4), Text(label)],
-      ),
+      style: FilledButton.styleFrom(minimumSize: const Size(84, 36), padding: const EdgeInsets.symmetric(horizontal: 10), tapTargetSize: MaterialTapTargetSize.shrinkWrap, visualDensity: VisualDensity.compact),
+      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: trailingIcon ? <Widget>[Text(label), const SizedBox(width: 4), Icon(icon, size: 18)] : <Widget>[Icon(icon, size: 18), const SizedBox(width: 4), Text(label)]),
     );
   }
 }
 
 class _PagerPageButton extends StatelessWidget {
-  const _PagerPageButton({
-    required this.label,
-    required this.selected,
-    required this.enabled,
-    required this.onPressed,
-  });
+  const _PagerPageButton({required this.label, required this.selected, required this.enabled, required this.onPressed});
 
   final String label;
   final bool selected;
@@ -598,25 +529,12 @@ class _PagerPageButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final style = OutlinedButton.styleFrom(
-      minimumSize: const Size(40, 36),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: VisualDensity.compact,
-    );
+    final style = OutlinedButton.styleFrom(minimumSize: const Size(40, 36), padding: const EdgeInsets.symmetric(horizontal: 12), tapTargetSize: MaterialTapTargetSize.shrinkWrap, visualDensity: VisualDensity.compact);
 
     if (selected) {
-      return FilledButton.tonal(
-        onPressed: enabled ? onPressed : null,
-        style: style,
-        child: Text(label),
-      );
+      return FilledButton.tonal(onPressed: enabled ? onPressed : null, style: style, child: Text(label));
     }
 
-    return OutlinedButton(
-      onPressed: enabled ? onPressed : null,
-      style: style,
-      child: Text(label),
-    );
+    return OutlinedButton(onPressed: enabled ? onPressed : null, style: style, child: Text(label));
   }
 }

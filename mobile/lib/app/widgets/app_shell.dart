@@ -28,20 +28,18 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
-    final pages = <Widget>[
-      const StreamsScreen(),
-      const ChannelsScreen(embedded: true),
-      const LibraryScreen(),
-      const HistoryScreen(),
-      const JobsScreen(),
-    ];
+    final pages = <Widget>[const StreamsScreen(), const ChannelsScreen(embedded: true), const LibraryScreen(), const HistoryScreen(), const JobsScreen()];
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_titles[_index]),
-        actions: _buildAppBarActions(context),
+      appBar: AppBar(title: Text(_titles[_index]), actions: _buildAppBarActions(context)),
+      body: SafeArea(
+        top: false,
+        bottom: false,
+        child: FocusTraversalGroup(
+          policy: ReadingOrderTraversalPolicy(),
+          child: IndexedStack(index: _index, children: pages),
+        ),
       ),
-      body: SafeArea(top: false, bottom: false, child: IndexedStack(index: _index, children: pages)),
       bottomNavigationBar: SafeArea(
         top: false,
         child: BottomNavigationBar(
@@ -67,11 +65,7 @@ class _AppShellState extends State<AppShell> {
       IconButton(
         tooltip: "Settings",
         onPressed: () {
-          Navigator.of(context).push(
-            MaterialPageRoute<void>(
-              builder: (_) => SettingsScreen(session: widget.session),
-            ),
-          );
+          Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => SettingsScreen(session: widget.session)));
         },
         icon: const Icon(Icons.settings_outlined),
       ),
@@ -83,11 +77,7 @@ class _AppShellState extends State<AppShell> {
     return <Widget>[
       Consumer<HistoryController>(
         builder: (context, controller, _) {
-          return IconButton(
-            tooltip: "Clear history",
-            onPressed: controller.loading || controller.entries.isEmpty ? null : () => _confirmClearHistory(context, controller),
-            icon: const Icon(Icons.delete_sweep_rounded),
-          );
+          return IconButton(tooltip: "Clear history", onPressed: controller.loading || controller.entries.isEmpty ? null : () => _confirmClearHistory(context, controller), icon: const Icon(Icons.delete_sweep_rounded));
         },
       ),
     ];
@@ -109,11 +99,7 @@ class _AppShellState extends State<AppShell> {
       ),
       Padding(
         padding: const EdgeInsets.only(right: 8),
-        child: _AppBarActionPill(
-          onPressed: () => openChannelEditorFlow(context),
-          icon: const Icon(Icons.add_rounded, size: 18),
-          label: const Text("Add"),
-        ),
+        child: _AppBarActionPill(onPressed: () => openChannelEditorFlow(context), icon: const Icon(Icons.add_rounded, size: 18), label: const Text("Add")),
       ),
     ];
   }
@@ -126,14 +112,8 @@ class _AppShellState extends State<AppShell> {
           title: const Text("Confirm"),
           content: Text(controller.isRecorderRunning ? "Pause recording?" : "Resume recording?"),
           actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text("Cancel"),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text("OK"),
-            ),
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text("Cancel")),
+            FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text("OK")),
           ],
         );
       },
@@ -154,14 +134,8 @@ class _AppShellState extends State<AppShell> {
           title: const Text("Clear history?"),
           content: const Text("The played video history for this server will be removed from this device."),
           actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text("Cancel"),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text("Clear"),
-            ),
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text("Cancel")),
+            FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: const Text("Clear")),
           ],
         );
       },
@@ -176,11 +150,7 @@ class _AppShellState extends State<AppShell> {
 }
 
 class _AppBarActionPill extends StatelessWidget {
-  const _AppBarActionPill({
-    required this.onPressed,
-    required this.icon,
-    required this.label,
-  });
+  const _AppBarActionPill({required this.onPressed, required this.icon, required this.label});
 
   final VoidCallback onPressed;
   final Widget icon;
@@ -188,10 +158,7 @@ class _AppBarActionPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textStyle = Theme.of(context).textTheme.labelMedium?.copyWith(
-      color: Colors.white,
-      fontWeight: FontWeight.w700,
-    );
+    final textStyle = Theme.of(context).textTheme.labelMedium?.copyWith(color: Colors.white, fontWeight: FontWeight.w700);
 
     return Center(
       child: SizedBox(
@@ -213,14 +180,7 @@ class _AppBarActionPill extends StatelessWidget {
             data: const IconThemeData(color: Colors.white, size: 18),
             child: DefaultTextStyle(
               style: textStyle ?? const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  icon,
-                  const SizedBox(width: 6),
-                  label,
-                ],
-              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: <Widget>[icon, const SizedBox(width: 6), label]),
             ),
           ),
         ),

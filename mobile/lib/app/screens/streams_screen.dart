@@ -3,9 +3,11 @@ import "package:provider/provider.dart";
 
 import "../../api/export.dart";
 import "../channels_controller.dart";
+import "../grid_layout.dart";
 import "../media_sink_api.dart";
 import "../widgets/classic_stream_card.dart";
 import "../widgets/inline_error_banner.dart";
+import "../widgets/responsive_card_grid.dart";
 import "channel_detail_screen.dart";
 import "channel_editor_sheet.dart";
 
@@ -97,20 +99,25 @@ class _StreamsScreenState extends State<StreamsScreen> with SingleTickerProvider
                 ),
               ),
               const SizedBox(width: 8),
-              IconButton.filledTonal(
-                onPressed: () => controller.setStreamFavoritesOnly(!controller.streamFavoritesOnly),
-                tooltip: controller.streamFavoritesOnly ? "Show all streams" : "Show favorites only",
-                icon: Icon(controller.streamFavoritesOnly ? Icons.favorite_rounded : Icons.favorite_border_rounded),
-              ),
+              IconButton.filledTonal(onPressed: () => controller.setStreamFavoritesOnly(!controller.streamFavoritesOnly), tooltip: controller.streamFavoritesOnly ? "Show all streams" : "Show favorites only", icon: Icon(controller.streamFavoritesOnly ? Icons.favorite_rounded : Icons.favorite_border_rounded)),
             ],
           ),
         ),
         TabBar(
           controller: _tabController,
           tabs: <Tab>[
-            Tab(text: "Online (${onlineChannels.length})", icon: const _StreamTabIcon(icon: Icons.fiber_manual_record_rounded, color: Colors.redAccent)),
-            Tab(text: "Offline (${offlineChannels.length})", icon: const _StreamTabIcon(icon: Icons.portable_wifi_off_rounded, color: Colors.blueGrey)),
-            Tab(text: "Disabled (${disabledChannels.length})", icon: const _StreamTabIcon(icon: Icons.do_not_disturb_alt_rounded, color: Colors.amber)),
+            Tab(
+              text: "Online (${onlineChannels.length})",
+              icon: const _StreamTabIcon(icon: Icons.fiber_manual_record_rounded, color: Colors.redAccent),
+            ),
+            Tab(
+              text: "Offline (${offlineChannels.length})",
+              icon: const _StreamTabIcon(icon: Icons.portable_wifi_off_rounded, color: Colors.blueGrey),
+            ),
+            Tab(
+              text: "Disabled (${disabledChannels.length})",
+              icon: const _StreamTabIcon(icon: Icons.do_not_disturb_alt_rounded, color: Colors.amber),
+            ),
           ],
         ),
         if (controller.error != null)
@@ -177,26 +184,14 @@ class _StreamTabIcon extends StatelessWidget {
     return Container(
       width: 26,
       height: 26,
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
-      ),
+      decoration: BoxDecoration(color: color.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(999)),
       child: Icon(icon, size: 16, color: color),
     );
   }
 }
 
 class _ChannelTabList extends StatelessWidget {
-  const _ChannelTabList({
-    required this.channels,
-    required this.api,
-    required this.onRefresh,
-    required this.onOpenDetails,
-    required this.onEdit,
-    required this.onDelete,
-    required this.onTogglePause,
-    required this.onToggleFavorite,
-  });
+  const _ChannelTabList({required this.channels, required this.api, required this.onRefresh, required this.onOpenDetails, required this.onEdit, required this.onDelete, required this.onTogglePause, required this.onToggleFavorite});
 
   final List<ServicesChannelInfo> channels;
   final MediaSinkApi api;
@@ -209,6 +204,8 @@ class _ChannelTabList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final spec = streamGridSpec(context);
+
     if (channels.isEmpty) {
       return RefreshIndicator(
         onRefresh: onRefresh,
@@ -223,21 +220,18 @@ class _ChannelTabList extends StatelessWidget {
 
     return RefreshIndicator(
       onRefresh: onRefresh,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
-        separatorBuilder: (_, _) => const Divider(color: Colors.transparent, height: 10),
+      child: ResponsiveCardGrid(
+        minItemWidth: spec.minItemWidth,
+        maxColumns: spec.maxColumns,
+        mainAxisExtent: 320,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
         itemCount: channels.length,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
         itemBuilder: (context, index) {
           final channel = channels[index];
-          return ClassicStreamCard(
-            channel: channel,
-            previewUrl: "${api.config.fileBaseUrl}/${channel.preview ?? ""}",
-            onOpenDetails: () => onOpenDetails(channel.channelId!),
-            onEdit: () => onEdit(channel.channelId),
-            onDelete: () => onDelete(channel.channelId!),
-            onTogglePause: () => onTogglePause(channel),
-            onToggleFavorite: () => onToggleFavorite(channel),
-          );
+          return ClassicStreamCard(channel: channel, previewUrl: "${api.config.fileBaseUrl}/${channel.preview ?? ""}", onOpenDetails: () => onOpenDetails(channel.channelId!), onEdit: () => onEdit(channel.channelId), onDelete: () => onDelete(channel.channelId!), onTogglePause: () => onTogglePause(channel), onToggleFavorite: () => onToggleFavorite(channel));
         },
       ),
     );

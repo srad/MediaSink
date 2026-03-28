@@ -27,11 +27,7 @@ class JobsScreen extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(8, 8, 8, 16),
         children: <Widget>[
           _JobsHeaderCard(controller: controller, onToggleWorker: () => _confirmWorkerToggle(context, controller)),
-          if (controller.loading && jobs.isNotEmpty)
-            const Padding(
-              padding: EdgeInsets.fromLTRB(8, 0, 8, 10),
-              child: LinearProgressIndicator(),
-            ),
+          if (controller.loading && jobs.isNotEmpty) const Padding(padding: EdgeInsets.fromLTRB(8, 0, 8, 10), child: LinearProgressIndicator()),
           if (controller.loading && jobs.isEmpty)
             const Padding(
               padding: EdgeInsets.all(24),
@@ -42,14 +38,10 @@ class JobsScreen extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
               child: InlineErrorBanner(message: controller.error!, onRetry: controller.refresh),
             ),
-          if (!controller.loading && jobs.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text("No jobs in this view."),
-            ),
+          if (!controller.loading && jobs.isEmpty) const Padding(padding: EdgeInsets.all(16), child: Text("No jobs in this view.")),
           for (final job in jobs)
             Padding(
-              padding: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.only(bottom: 8),
               child: _JobCard(
                 tab: controller.tab,
                 job: job,
@@ -57,9 +49,7 @@ class JobsScreen extends StatelessWidget {
                 onOpenChannel: job.channelId == null
                     ? null
                     : () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(builder: (_) => ChannelDetailScreen(channelId: job.channelId!)),
-                        );
+                        Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => ChannelDetailScreen(channelId: job.channelId!)));
                       },
                 onOpenRecording: job.recordingId == null || job.recordingId! <= 0 ? null : () => _openRecording(context, api, job.recordingId!),
                 onInspect: () => _showJobDetails(context, api, job),
@@ -103,17 +93,10 @@ class JobsScreen extends StatelessWidget {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(controller.workerProcessing ? "Pause job worker?" : "Resume job worker?"),
-        content: Text(
-          controller.workerProcessing
-              ? "Queued jobs will stop moving until the worker is resumed."
-              : "Queued jobs will continue once the worker is resumed.",
-        ),
+        content: Text(controller.workerProcessing ? "Queued jobs will stop moving until the worker is resumed." : "Queued jobs will continue once the worker is resumed."),
         actions: <Widget>[
           TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text("Cancel")),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: Text(controller.workerProcessing ? "Pause" : "Resume"),
-          ),
+          FilledButton(onPressed: () => Navigator.of(dialogContext).pop(true), child: Text(controller.workerProcessing ? "Pause" : "Resume")),
         ],
       ),
     );
@@ -230,20 +213,9 @@ class _JobsHeaderCard extends StatelessWidget {
                     enabled: !controller.loading,
                     onSelected: controller.setRowLimit,
                     itemBuilder: (context) {
-                      return JobsController.rowLimitOptions
-                          .map(
-                            (value) => CheckedPopupMenuItem<int>(
-                              value: value,
-                              checked: controller.rowLimit == value,
-                              child: Text(value == -1 ? "All rows" : "$value rows"),
-                            ),
-                          )
-                          .toList(growable: false);
+                      return JobsController.rowLimitOptions.map((value) => CheckedPopupMenuItem<int>(value: value, checked: controller.rowLimit == value, child: Text(value == -1 ? "All rows" : "$value rows"))).toList(growable: false);
                     },
-                    child: _HeaderChip(
-                      icon: Icons.table_rows_rounded,
-                      label: controller.rowLimit == -1 ? "Rows: All" : "Rows: ${controller.rowLimit}",
-                    ),
+                    child: _HeaderChip(icon: Icons.table_rows_rounded, label: controller.rowLimit == -1 ? "Rows: All" : "Rows: ${controller.rowLimit}"),
                   ),
                 ],
               ),
@@ -251,15 +223,7 @@ class _JobsHeaderCard extends StatelessWidget {
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: JobsTab.values
-                    .map(
-                      (tab) => ChoiceChip(
-                        label: Text(_tabLabel(tab)),
-                        selected: controller.tab == tab,
-                        onSelected: controller.loading ? null : (_) => controller.setTab(tab),
-                      ),
-                    )
-                    .toList(growable: false),
+                children: JobsTab.values.map((tab) => ChoiceChip(label: Text(_tabLabel(tab)), selected: controller.tab == tab, onSelected: controller.loading ? null : (_) => controller.setTab(tab))).toList(growable: false),
               ),
               const SizedBox(height: 12),
               Wrap(
@@ -267,19 +231,9 @@ class _JobsHeaderCard extends StatelessWidget {
                 runSpacing: 8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: <Widget>[
-                  _HeaderChip(
-                    icon: controller.workerProcessing ? Icons.play_circle_fill_rounded : Icons.pause_circle_filled_rounded,
-                    label: controller.workerProcessing ? "Worker on" : "Worker paused",
-                  ),
-                  _HeaderChip(
-                    icon: Icons.pending_actions_rounded,
-                    label: "${controller.processingCount} running · ${controller.queuedCount} queued",
-                  ),
-                  FilledButton.tonalIcon(
-                    onPressed: controller.togglingWorker ? null : onToggleWorker,
-                    icon: Icon(controller.workerProcessing ? Icons.pause_rounded : Icons.play_arrow_rounded),
-                    label: Text(controller.workerProcessing ? "Pause" : "Resume"),
-                  ),
+                  _HeaderChip(icon: controller.workerProcessing ? Icons.play_circle_fill_rounded : Icons.pause_circle_filled_rounded, label: controller.workerProcessing ? "Worker on" : "Worker paused"),
+                  _HeaderChip(icon: Icons.pending_actions_rounded, label: "${controller.processingCount} running · ${controller.queuedCount} queued"),
+                  FilledButton.tonalIcon(onPressed: controller.togglingWorker ? null : onToggleWorker, icon: Icon(controller.workerProcessing ? Icons.pause_rounded : Icons.play_arrow_rounded), label: Text(controller.workerProcessing ? "Pause" : "Resume")),
                 ],
               ),
             ],
@@ -319,15 +273,7 @@ class _HeaderChip extends StatelessWidget {
 }
 
 class _JobCard extends StatelessWidget {
-  const _JobCard({
-    required this.tab,
-    required this.job,
-    required this.isDeleting,
-    required this.onOpenChannel,
-    required this.onOpenRecording,
-    required this.onInspect,
-    required this.onDelete,
-  });
+  const _JobCard({required this.tab, required this.job, required this.isDeleting, required this.onOpenChannel, required this.onOpenRecording, required this.onInspect, required this.onDelete});
 
   final JobsTab tab;
   final DbJob job;
@@ -341,7 +287,7 @@ class _JobCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.fromLTRB(10, 9, 10, 9),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
@@ -353,59 +299,33 @@ class _JobCard extends StatelessWidget {
                 _TaskBadge(label: _formatTask(job.task)),
                 const Spacer(),
                 Flexible(
-                  child: Text(
-                    _timeLabel(tab, job),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.bodySmall,
-                    textAlign: TextAlign.end,
-                  ),
+                  child: Text(_timeLabel(tab, job), maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodySmall, textAlign: TextAlign.end),
                 ),
               ],
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 6),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 const Icon(Icons.hub_rounded, size: 18),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    job.channelName ?? "Unknown channel",
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
+                  child: Text(job.channelName ?? "Unknown channel", maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleMedium),
                 ),
-                if (onOpenChannel != null)
-                  IconButton(
-                    onPressed: onOpenChannel,
-                    icon: const Icon(Icons.grid_view_rounded),
-                    visualDensity: VisualDensity.compact,
-                    tooltip: "Open channel",
-                  ),
-                if (onOpenRecording != null)
-                  IconButton(
-                    onPressed: onOpenRecording,
-                    icon: const Icon(Icons.local_movies_rounded),
-                    visualDensity: VisualDensity.compact,
-                    tooltip: "Open recording",
-                  ),
+                if (onOpenChannel != null) IconButton(onPressed: onOpenChannel, icon: const Icon(Icons.grid_view_rounded), visualDensity: VisualDensity.compact, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32), tooltip: "Open channel"),
+                if (onOpenRecording != null) IconButton(onPressed: onOpenRecording, icon: const Icon(Icons.local_movies_rounded), visualDensity: VisualDensity.compact, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32), tooltip: "Open recording"),
               ],
             ),
-            if ((job.filename ?? "").isNotEmpty) ...<Widget>[
-              const SizedBox(height: 4),
-              Text(job.filename!, maxLines: 1, overflow: TextOverflow.ellipsis),
-            ],
-            const SizedBox(height: 10),
-            if (tab == JobsTab.active) _ActiveJobProgress(job: job) else Text(_detailText(job), maxLines: 2, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: 10),
+            if ((job.filename ?? "").isNotEmpty) ...<Widget>[const SizedBox(height: 2), Text(job.filename!, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodySmall)],
+            if (tab == JobsTab.active) ...<Widget>[const SizedBox(height: 6), _ActiveJobProgress(job: job)],
+            const SizedBox(height: 6),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: <Widget>[
                 Expanded(
                   child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
+                    spacing: 6,
+                    runSpacing: 6,
                     children: <Widget>[
                       _MetaPill(icon: Icons.speed_rounded, label: _priorityLabel(job.priority)),
                       _MetaPill(icon: Icons.schedule_rounded, label: _formatJobDuration(job)),
@@ -413,15 +333,13 @@ class _JobCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (tab != JobsTab.active)
-                  IconButton(
-                    onPressed: onInspect,
-                    icon: const Icon(Icons.visibility_outlined),
-                    tooltip: "Inspect job",
-                  ),
+                if (tab != JobsTab.active) IconButton(onPressed: onInspect, icon: const Icon(Icons.visibility_outlined), visualDensity: VisualDensity.compact, padding: EdgeInsets.zero, constraints: const BoxConstraints(minWidth: 32, minHeight: 32), tooltip: "Inspect job"),
                 IconButton(
                   onPressed: isDeleting ? null : onDelete,
                   icon: isDeleting ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.delete_outline_rounded),
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                   tooltip: "Delete job",
                 ),
               ],
@@ -451,7 +369,7 @@ class _StatusBadge extends StatelessWidget {
     };
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(color: colors.$1, borderRadius: BorderRadius.circular(999)),
       child: Text(
         _statusLabel(tab, job),
@@ -470,11 +388,8 @@ class _TaskBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.45),
-        borderRadius: BorderRadius.circular(999),
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(color: theme.colorScheme.secondaryContainer.withValues(alpha: 0.45), borderRadius: BorderRadius.circular(999)),
       child: Text(label, style: Theme.of(context).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w700)),
     );
   }
@@ -488,7 +403,7 @@ class _ActiveJobProgress extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!(job.active ?? false)) {
-      return Text(_detailText(job), maxLines: 2, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodySmall);
+      return const SizedBox.shrink();
     }
 
     final progress = _progressValue(job.progress);
@@ -507,8 +422,6 @@ class _ActiveJobProgress extends StatelessWidget {
             Text("${progress.toStringAsFixed(0)}%", style: Theme.of(context).textTheme.bodySmall),
           ],
         ),
-        const SizedBox(height: 6),
-        Text(_detailText(job), maxLines: 2, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.bodySmall),
       ],
     );
   }
@@ -523,11 +436,8 @@ class _MetaPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(999),
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+      decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.4), borderRadius: BorderRadius.circular(999)),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
@@ -556,13 +466,7 @@ class _JobsPaginationBar extends StatelessWidget {
             children: <Widget>[
               SizedBox(
                 width: 84,
-                child: _PagerNavButton(
-                  label: "Prev",
-                  icon: Icons.chevron_left_rounded,
-                  trailingIcon: false,
-                  enabled: !controller.loading && controller.currentPage > 1,
-                  onPressed: controller.previousPage,
-                ),
+                child: _PagerNavButton(label: "Prev", icon: Icons.chevron_left_rounded, trailingIcon: false, enabled: !controller.loading && controller.currentPage > 1, onPressed: controller.previousPage),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -574,19 +478,11 @@ class _JobsPaginationBar extends StatelessWidget {
                       children: <Widget>[
                         for (final page in controller.visiblePageItems)
                           if (page == null)
-                            const Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 4),
-                              child: Text("..."),
-                            )
+                            const Padding(padding: EdgeInsets.symmetric(horizontal: 4), child: Text("..."))
                           else
                             Padding(
                               padding: const EdgeInsets.symmetric(horizontal: 3),
-                              child: _PagerPageButton(
-                                label: page.toString(),
-                                selected: page == controller.currentPage,
-                                enabled: !controller.loading,
-                                onPressed: () => controller.goToPage(page),
-                              ),
+                              child: _PagerPageButton(label: page.toString(), selected: page == controller.currentPage, enabled: !controller.loading, onPressed: () => controller.goToPage(page)),
                             ),
                       ],
                     ),
@@ -596,22 +492,12 @@ class _JobsPaginationBar extends StatelessWidget {
               const SizedBox(width: 8),
               SizedBox(
                 width: 84,
-                child: _PagerNavButton(
-                  label: "Next",
-                  icon: Icons.chevron_right_rounded,
-                  trailingIcon: true,
-                  enabled: !controller.loading && controller.currentPage < controller.totalPages,
-                  onPressed: controller.nextPage,
-                ),
+                child: _PagerNavButton(label: "Next", icon: Icons.chevron_right_rounded, trailingIcon: true, enabled: !controller.loading && controller.currentPage < controller.totalPages, onPressed: controller.nextPage),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          Text(
-            "Page ${controller.currentPage} / ${controller.totalPages}",
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
+          Text("Page ${controller.currentPage} / ${controller.totalPages}", textAlign: TextAlign.center, style: Theme.of(context).textTheme.bodySmall),
         ],
       ),
     );
@@ -619,13 +505,7 @@ class _JobsPaginationBar extends StatelessWidget {
 }
 
 class _PagerNavButton extends StatelessWidget {
-  const _PagerNavButton({
-    required this.label,
-    required this.icon,
-    required this.trailingIcon,
-    required this.enabled,
-    required this.onPressed,
-  });
+  const _PagerNavButton({required this.label, required this.icon, required this.trailingIcon, required this.enabled, required this.onPressed});
 
   final String label;
   final IconData icon;
@@ -637,29 +517,14 @@ class _PagerNavButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return FilledButton.tonal(
       onPressed: enabled ? onPressed : null,
-      style: FilledButton.styleFrom(
-        minimumSize: const Size(84, 36),
-        padding: const EdgeInsets.symmetric(horizontal: 10),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        visualDensity: VisualDensity.compact,
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: trailingIcon
-            ? <Widget>[Text(label), const SizedBox(width: 4), Icon(icon, size: 18)]
-            : <Widget>[Icon(icon, size: 18), const SizedBox(width: 4), Text(label)],
-      ),
+      style: FilledButton.styleFrom(minimumSize: const Size(84, 36), padding: const EdgeInsets.symmetric(horizontal: 10), tapTargetSize: MaterialTapTargetSize.shrinkWrap, visualDensity: VisualDensity.compact),
+      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: trailingIcon ? <Widget>[Text(label), const SizedBox(width: 4), Icon(icon, size: 18)] : <Widget>[Icon(icon, size: 18), const SizedBox(width: 4), Text(label)]),
     );
   }
 }
 
 class _PagerPageButton extends StatelessWidget {
-  const _PagerPageButton({
-    required this.label,
-    required this.selected,
-    required this.enabled,
-    required this.onPressed,
-  });
+  const _PagerPageButton({required this.label, required this.selected, required this.enabled, required this.onPressed});
 
   final String label;
   final bool selected;
@@ -668,26 +533,13 @@ class _PagerPageButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final style = OutlinedButton.styleFrom(
-      minimumSize: const Size(40, 36),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      visualDensity: VisualDensity.compact,
-    );
+    final style = OutlinedButton.styleFrom(minimumSize: const Size(40, 36), padding: const EdgeInsets.symmetric(horizontal: 12), tapTargetSize: MaterialTapTargetSize.shrinkWrap, visualDensity: VisualDensity.compact);
 
     if (selected) {
-      return FilledButton.tonal(
-        onPressed: enabled ? onPressed : null,
-        style: style,
-        child: Text(label),
-      );
+      return FilledButton.tonal(onPressed: enabled ? onPressed : null, style: style, child: Text(label));
     }
 
-    return OutlinedButton(
-      onPressed: enabled ? onPressed : null,
-      style: style,
-      child: Text(label),
-    );
+    return OutlinedButton(onPressed: enabled ? onPressed : null, style: style, child: Text(label));
   }
 }
 
@@ -729,10 +581,7 @@ class _DetailBlock extends StatelessWidget {
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
-            borderRadius: BorderRadius.circular(10),
-          ),
+          decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.35), borderRadius: BorderRadius.circular(10)),
           child: SelectableText(value),
         ),
       ],
@@ -799,8 +648,6 @@ String _statusLabel(JobsTab tab, DbJob job) {
   }
   return "Canceled";
 }
-
-String _detailText(DbJob job) => job.info ?? job.filename ?? job.command ?? "-";
 
 String _timeLabel(JobsTab tab, DbJob job) {
   if (tab == JobsTab.active) {

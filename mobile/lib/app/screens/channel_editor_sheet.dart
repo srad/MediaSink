@@ -2,17 +2,12 @@ import "package:flutter/material.dart";
 import "package:provider/provider.dart";
 
 import "../../api/export.dart";
+import "../action_confirmation.dart";
 import "../channels_controller.dart";
 
-const _channelEditorSheetAnimationStyle = AnimationStyle(
-  duration: Duration(milliseconds: 320),
-  reverseDuration: Duration(milliseconds: 280),
-);
+const _channelEditorSheetAnimationStyle = AnimationStyle(duration: Duration(milliseconds: 320), reverseDuration: Duration(milliseconds: 280));
 
-Future<RequestsChannelRequest?> showChannelEditorSheet(
-  BuildContext context, {
-  ServicesChannelInfo? initial,
-}) {
+Future<RequestsChannelRequest?> showChannelEditorSheet(BuildContext context, {ServicesChannelInfo? initial}) {
   return showModalBottomSheet<RequestsChannelRequest>(
     context: context,
     isScrollControlled: true,
@@ -27,6 +22,13 @@ Future<void> openChannelEditorFlow(BuildContext context, {int? id}) async {
   final request = await showChannelEditorSheet(context, initial: initial);
 
   if (request != null) {
+    if (!context.mounted) {
+      return;
+    }
+    final confirmed = await confirmAction(context, title: id == null ? "Create channel?" : "Save channel changes?", message: id == null ? "Create channel \"${request.displayName}\"?" : "Save changes for channel \"${request.displayName}\"?", confirmLabel: id == null ? "Create" : "Save");
+    if (!confirmed) {
+      return;
+    }
     await controller.saveChannel(id: id, request: request);
   }
 }
@@ -95,12 +97,7 @@ class _ChannelEditorSheetState extends State<ChannelEditorSheet> {
       child: AnimatedPadding(
         duration: const Duration(milliseconds: 150),
         curve: Curves.easeOut,
-        padding: EdgeInsets.only(
-          left: 16,
-          right: 16,
-          top: verticalMargin,
-          bottom: bottomInset + verticalMargin,
-        ),
+        padding: EdgeInsets.only(left: 16, right: 16, top: verticalMargin, bottom: bottomInset + verticalMargin),
         child: SingleChildScrollView(
           child: Form(
             key: _formKey,
