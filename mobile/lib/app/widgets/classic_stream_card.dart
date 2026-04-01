@@ -120,34 +120,68 @@ class ClassicStreamCard extends StatelessWidget {
                     const SizedBox(width: 5),
                     Text("${channel.recordingsCount ?? 0}"),
                     const Spacer(),
-                    IconButton(
-                      visualDensity: VisualDensity.compact,
-                      padding: EdgeInsets.zero,
+                    RemoteFocusableAction(
                       onPressed: () async {
                         final confirmed = await confirmAction(context, title: "Delete channel?", message: "Delete $_channelLabel?", confirmLabel: "Delete", destructive: true);
                         if (confirmed) {
                           onDelete();
                         }
                       },
-                      icon: const Icon(Icons.delete_rounded),
+                      borderRadius: BorderRadius.circular(20),
+                      focusPadding: 0,
+                      scaleOnFocus: 1.08,
+                      child: IconButton(
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        onPressed: () async {
+                          final confirmed = await confirmAction(context, title: "Delete channel?", message: "Delete $_channelLabel?", confirmLabel: "Delete", destructive: true);
+                          if (confirmed) {
+                            onDelete();
+                          }
+                        },
+                        icon: const Icon(Icons.delete_rounded),
+                      ),
                     ),
-                    IconButton(visualDensity: VisualDensity.compact, padding: EdgeInsets.zero, onPressed: onEdit, icon: const Icon(Icons.edit_rounded)),
-                    IconButton(
-                      visualDensity: VisualDensity.compact,
-                      padding: EdgeInsets.zero,
+                    RemoteFocusableAction(
+                      onPressed: onEdit,
+                      borderRadius: BorderRadius.circular(20),
+                      focusPadding: 0,
+                      scaleOnFocus: 1.08,
+                      child: IconButton(visualDensity: VisualDensity.compact, padding: EdgeInsets.zero, onPressed: onEdit, icon: const Icon(Icons.edit_rounded)),
+                    ),
+                    RemoteFocusableAction(
                       onPressed: () async {
                         final confirmed = await confirmAction(context, title: (channel.isPaused ?? false) ? "Resume channel?" : "Pause channel?", message: "${(channel.isPaused ?? false) ? "Resume" : "Pause"} $_channelLabel?", confirmLabel: (channel.isPaused ?? false) ? "Resume" : "Pause");
                         if (confirmed) {
                           onTogglePause();
                         }
                       },
-                      icon: Icon((channel.isPaused ?? false) ? Icons.play_circle_fill : Icons.pause_circle_filled_rounded, color: Colors.lightGreen, size: 26),
+                      borderRadius: BorderRadius.circular(20),
+                      focusPadding: 0,
+                      scaleOnFocus: 1.08,
+                      child: IconButton(
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        onPressed: () async {
+                          final confirmed = await confirmAction(context, title: (channel.isPaused ?? false) ? "Resume channel?" : "Pause channel?", message: "${(channel.isPaused ?? false) ? "Resume" : "Pause"} $_channelLabel?", confirmLabel: (channel.isPaused ?? false) ? "Resume" : "Pause");
+                          if (confirmed) {
+                            onTogglePause();
+                          }
+                        },
+                        icon: Icon((channel.isPaused ?? false) ? Icons.play_circle_fill : Icons.pause_circle_filled_rounded, color: Colors.lightGreen, size: 26),
+                      ),
                     ),
-                    IconButton(
-                      visualDensity: VisualDensity.compact,
-                      padding: EdgeInsets.zero,
+                    RemoteFocusableAction(
                       onPressed: onToggleFavorite,
-                      icon: Icon(Icons.favorite_rounded, color: (channel.fav ?? false) ? Colors.pink : Colors.grey, size: 24),
+                      borderRadius: BorderRadius.circular(20),
+                      focusPadding: 0,
+                      scaleOnFocus: 1.08,
+                      child: IconButton(
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        onPressed: onToggleFavorite,
+                        icon: Icon(Icons.favorite_rounded, color: (channel.fav ?? false) ? Colors.pink : Colors.grey, size: 24),
+                      ),
                     ),
                   ],
                 ),

@@ -1,4 +1,5 @@
 import "package:flutter/material.dart";
+import "package:flutter/services.dart";
 import "package:provider/provider.dart";
 
 import "../models.dart";
@@ -14,11 +15,19 @@ class ServerSetupScreen extends StatefulWidget {
 class _ServerSetupScreenState extends State<ServerSetupScreen> {
   late final TextEditingController _originController;
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final FocusNode _originFocusNode = FocusNode();
 
   @override
   void initState() {
     super.initState();
     _originController = TextEditingController();
+    // Fire TV / Android TV may not show the keyboard on programmatic focus;
+    // explicitly request it whenever the field gains focus.
+    _originFocusNode.addListener(() {
+      if (_originFocusNode.hasFocus) {
+        SystemChannels.textInput.invokeMethod<void>("TextInput.show");
+      }
+    });
   }
 
   @override
@@ -32,6 +41,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
 
   @override
   void dispose() {
+    _originFocusNode.dispose();
     _originController.dispose();
     super.dispose();
   }
@@ -72,6 +82,7 @@ class _ServerSetupScreenState extends State<ServerSetupScreen> {
                         const SizedBox(height: 24),
                         TextFormField(
                           controller: _originController,
+                          focusNode: _originFocusNode,
                           autofocus: true,
                           decoration: const InputDecoration(labelText: "Server URL", hintText: "http://192.168.1.50:3000", border: OutlineInputBorder()),
                           validator: (value) {

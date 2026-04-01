@@ -13,90 +13,30 @@ const String testServerOriginKey = "ms_server_origin";
 const String testUsernameKey = "ms_username";
 const String testTokenKey = "ms_token";
 
-const AppBuildInfo testBuildInfo = AppBuildInfo(
-  apiVersion: AppSessionController.supportedApiVersion,
-  version: "1.0.0-test",
-  build: "test-build",
-);
+const AppBuildInfo testBuildInfo = AppBuildInfo(apiVersion: AppSessionController.supportedApiVersion, version: "1.0.0-test", build: "test-build");
 
-Map<String, String> storedLoggedOutSession({
-  String origin = "http://test.mediasink.local:3000",
-  String username = "tester",
-}) {
-  return <String, String>{
-    testServerOriginKey: origin,
-    testUsernameKey: username,
-  };
+Map<String, String> storedLoggedOutSession({String origin = "http://test.mediasink.local:3000", String username = "tester"}) {
+  return <String, String>{testServerOriginKey: origin, testUsernameKey: username};
 }
 
-Map<String, String> storedAuthenticatedSession({
-  String origin = "http://test.mediasink.local:3000",
-  String username = "tester",
-  String token = "test-token",
-}) {
-  return <String, String>{
-    testServerOriginKey: origin,
-    testUsernameKey: username,
-    testTokenKey: token,
-  };
+Map<String, String> storedAuthenticatedSession({String origin = "http://test.mediasink.local:3000", String username = "tester", String token = "test-token"}) {
+  return <String, String>{testServerOriginKey: origin, testUsernameKey: username, testTokenKey: token};
 }
 
 ServerConfig testServerConfig([String origin = "http://test.mediasink.local:3000"]) {
   return ServerConfig.create(origin: origin, buildInfo: testBuildInfo);
 }
 
-ServicesChannelInfo sampleChannel({
-  int id = 1,
-  String name = "Sample Channel",
-  bool isOnline = true,
-}) {
-  return ServicesChannelInfo(
-    channelId: id,
-    channelName: name,
-    displayName: name,
-    fav: true,
-    isOnline: isOnline,
-    isPaused: false,
-    isRecording: isOnline,
-    preview: "Sample Channel/.previews/live.jpg",
-    tags: const <String>["test"],
-    url: "https://example.com/$id",
-    recordingsCount: 1,
-  );
+ServicesChannelInfo sampleChannel({int id = 1, String name = "Sample Channel", bool isOnline = true}) {
+  return ServicesChannelInfo(channelId: id, channelName: name, displayName: name, fav: true, isOnline: isOnline, isPaused: false, isRecording: isOnline, preview: "Sample Channel/.previews/live.jpg", tags: const <String>["test"], url: "https://example.com/$id", recordingsCount: 1);
 }
 
-DbRecording sampleVideo({
-  int id = 1,
-  String channelName = "Sample Channel",
-}) {
-  return DbRecording(
-    channelName: channelName,
-    filename: "video_$id.mp4",
-    pathRelative: "$channelName/video_$id.mp4",
-    videoType: "mp4",
-    bookmark: true,
-    channelId: 1,
-    createdAt: "2026-03-27T12:00:00Z",
-    duration: 120,
-    recordingId: id,
-    size: 1024 * id,
-  );
+DbRecording sampleVideo({int id = 1, String channelName = "Sample Channel"}) {
+  return DbRecording(channelName: channelName, filename: "video_$id.mp4", pathRelative: "$channelName/video_$id.mp4", videoType: "mp4", bookmark: true, channelId: 1, createdAt: "2026-03-27T12:00:00Z", duration: 120, recordingId: id, size: 1024 * id);
 }
 
-DbJob sampleJob({
-  int id = 1,
-  DbJobStatus status = DbJobStatus.open,
-}) {
-  return DbJob(
-    jobId: id,
-    status: status,
-    task: DbJobTask.previewFrames,
-    active: status == DbJobStatus.open,
-    channelName: "Sample Channel",
-    filename: "video_$id.mp4",
-    progress: status == DbJobStatus.open ? "25" : "100",
-    createdAt: "2026-03-27T12:00:00Z",
-  );
+DbJob sampleJob({int id = 1, DbJobStatus status = DbJobStatus.open}) {
+  return DbJob(jobId: id, status: status, task: DbJobTask.previewFrames, active: status == DbJobStatus.open, channelName: "Sample Channel", filename: "video_$id.mp4", progress: status == DbJobStatus.open ? "25" : "100", createdAt: "2026-03-27T12:00:00Z");
 }
 
 class MemorySessionStorage implements AppSessionStorage {
@@ -244,21 +184,11 @@ class FakeMediaSinkApi extends MediaSinkApi {
   }
 
   @override
-  Future<ResponsesVideoFilterResponse> filterVideos({
-    required RequestsVideoSortColumn sortColumn,
-    required ModelsSortOrder sortOrder,
-    int take = 100,
-    int skip = 0,
-  }) async {
+  Future<ResponsesVideoFilterResponse> filterVideos({required RequestsVideoSortColumn sortColumn, required ModelsSortOrder sortOrder, int take = 100, int skip = 0}) async {
     filterVideosCalls += 1;
     _throwIfConfigured(filterVideosError);
     final page = latestVideos.skip(skip).take(take).toList(growable: false);
-    return ResponsesVideoFilterResponse(
-      skip: skip,
-      take: take,
-      totalCount: latestVideos.length,
-      videos: page,
-    );
+    return ResponsesVideoFilterResponse(skip: skip, take: take, totalCount: latestVideos.length, videos: page);
   }
 
   @override
@@ -281,13 +211,7 @@ class FakeMediaSinkApi extends MediaSinkApi {
     _throwIfConfigured(setVideoBookmarkError);
     final nextBookmark = !isBookmarked;
     _replaceVideoBookmark(latestVideos, recordingId, nextBookmark);
-    final matchingVideo = latestVideos.cast<DbRecording?>().firstWhere(
-      (video) => video?.recordingId == recordingId,
-      orElse: () => bookmarkedVideos.cast<DbRecording?>().firstWhere(
-        (video) => video?.recordingId == recordingId,
-        orElse: () => null,
-      ),
-    );
+    final matchingVideo = latestVideos.cast<DbRecording?>().firstWhere((video) => video?.recordingId == recordingId, orElse: () => bookmarkedVideos.cast<DbRecording?>().firstWhere((video) => video?.recordingId == recordingId, orElse: () => null));
     if (matchingVideo == null) {
       return;
     }
@@ -314,22 +238,12 @@ class FakeMediaSinkApi extends MediaSinkApi {
   }
 
   @override
-  Future<ResponsesJobsResponse> getJobs({
-    required List<DbJobStatus> states,
-    required DbJobOrder sortOrder,
-    int take = 100,
-    int skip = 0,
-  }) async {
+  Future<ResponsesJobsResponse> getJobs({required List<DbJobStatus> states, required DbJobOrder sortOrder, int take = 100, int skip = 0}) async {
     getJobsCalls += 1;
     _throwIfConfigured(getJobsError);
     final filtered = states.isEmpty ? jobs : jobs.where((job) => states.contains(job.status)).toList(growable: false);
     final page = filtered.skip(skip).take(take).toList(growable: false);
-    return ResponsesJobsResponse(
-      jobs: page,
-      skip: skip,
-      take: take,
-      totalCount: filtered.length,
-    );
+    return ResponsesJobsResponse(jobs: page, skip: skip, take: take, totalCount: filtered.length);
   }
 
   @override
@@ -379,11 +293,7 @@ class FakeMediaSinkApi extends MediaSinkApi {
 }
 
 class FakeMediaSinkSocketService extends MediaSinkSocketService {
-  FakeMediaSinkSocketService({
-    required super.config,
-    required super.token,
-    SocketConnectionState initialState = SocketConnectionState.connected,
-  }) : _state = initialState;
+  FakeMediaSinkSocketService({required super.config, required super.token, SocketConnectionState initialState = SocketConnectionState.connected}) : _state = initialState;
 
   final StreamController<SocketEventMessage> _controller = StreamController<SocketEventMessage>.broadcast();
   SocketConnectionState _state;
@@ -453,49 +363,17 @@ class TestErrorTracker {
   }
 }
 
-AppSessionController createTestSessionController({
-  Map<String, String> storageValues = const <String, String>{},
-  AppBuildInfo buildInfo = testBuildInfo,
-  List<ServicesChannelInfo> channels = const <ServicesChannelInfo>[],
-  bool recorderRunning = false,
-  List<DbRecording> latestVideos = const <DbRecording>[],
-  List<DbRecording> bookmarkedVideos = const <DbRecording>[],
-  List<DbRecording> randomVideos = const <DbRecording>[],
-  List<DbJob> jobs = const <DbJob>[],
-  bool workerProcessing = false,
-  SocketConnectionState socketState = SocketConnectionState.connected,
-  Object? loginError,
-  Object? getChannelsError,
-  List<FakeMediaSinkApi>? createdApis,
-  List<FakeMediaSinkSocketService>? createdSockets,
-}) {
+AppSessionController createTestSessionController({AppSessionStorage? storage, Map<String, String> storageValues = const <String, String>{}, AppBuildInfo buildInfo = testBuildInfo, List<ServicesChannelInfo> channels = const <ServicesChannelInfo>[], bool recorderRunning = false, List<DbRecording> latestVideos = const <DbRecording>[], List<DbRecording> bookmarkedVideos = const <DbRecording>[], List<DbRecording> randomVideos = const <DbRecording>[], List<DbJob> jobs = const <DbJob>[], bool workerProcessing = false, SocketConnectionState socketState = SocketConnectionState.connected, Object? loginError, Object? getChannelsError, List<FakeMediaSinkApi>? createdApis, List<FakeMediaSinkSocketService>? createdSockets}) {
   return AppSessionController(
-    storage: MemorySessionStorage(storageValues),
+    storage: storage ?? MemorySessionStorage(storageValues),
     buildInfoLoader: (_) async => buildInfo,
     apiFactory: ({required config, token, onUnauthorized}) {
-      final api = FakeMediaSinkApi(
-        config: config,
-        token: token,
-        onUnauthorized: onUnauthorized,
-        channels: channels,
-        recorderRunning: recorderRunning,
-        latestVideos: latestVideos,
-        bookmarkedVideos: bookmarkedVideos,
-        randomVideos: randomVideos,
-        jobs: jobs,
-        workerProcessing: workerProcessing,
-        loginError: token == null ? loginError : null,
-        getChannelsError: token != null ? getChannelsError : null,
-      );
+      final api = FakeMediaSinkApi(config: config, token: token, onUnauthorized: onUnauthorized, channels: channels, recorderRunning: recorderRunning, latestVideos: latestVideos, bookmarkedVideos: bookmarkedVideos, randomVideos: randomVideos, jobs: jobs, workerProcessing: workerProcessing, loginError: token == null ? loginError : null, getChannelsError: token != null ? getChannelsError : null);
       createdApis?.add(api);
       return api;
     },
     socketFactory: ({required config, required token}) {
-      final socket = FakeMediaSinkSocketService(
-        config: config,
-        token: token,
-        initialState: socketState,
-      );
+      final socket = FakeMediaSinkSocketService(config: config, token: token, initialState: socketState);
       createdSockets?.add(socket);
       return socket;
     },

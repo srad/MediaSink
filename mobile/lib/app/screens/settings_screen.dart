@@ -5,6 +5,7 @@ import "../action_confirmation.dart";
 import "../models.dart";
 import "../session_controller.dart";
 import "../theme_controller.dart";
+import "../widgets/remote_focusable_action.dart";
 import "about_screen.dart";
 
 class SettingsScreen extends StatelessWidget {
@@ -285,9 +286,11 @@ class _SettingsActionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
+    return RemoteFocusableAction(
+      onPressed: onTap,
       borderRadius: BorderRadius.circular(10),
+      scaleOnFocus: 1.0,
+      focusPadding: 0,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 2),
         child: Row(

@@ -1,4 +1,5 @@
 import "package:flutter/material.dart";
+import "package:flutter/services.dart";
 import "package:provider/provider.dart";
 
 import "../action_confirmation.dart";
@@ -36,12 +37,18 @@ class ChannelsScreen extends StatefulWidget {
 
 class _ChannelsScreenState extends State<ChannelsScreen> {
   late final TextEditingController _searchController;
+  final FocusNode _searchFocusNode = FocusNode();
   bool _initialized = false;
 
   @override
   void initState() {
     super.initState();
     _searchController = TextEditingController();
+    _searchFocusNode.addListener(() {
+      if (_searchFocusNode.hasFocus) {
+        SystemChannels.textInput.invokeMethod<void>("TextInput.show");
+      }
+    });
   }
 
   @override
@@ -57,6 +64,7 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -150,6 +158,7 @@ class _ChannelsScreenState extends State<ChannelsScreen> {
                 Expanded(
                   child: TextField(
                     controller: _searchController,
+                    focusNode: _searchFocusNode,
                     onChanged: controller.setChannelsSearchQuery,
                     decoration: InputDecoration(
                       hintText: "search... #tag",

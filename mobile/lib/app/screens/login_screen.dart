@@ -1,4 +1,5 @@
 import "package:flutter/material.dart";
+import "package:flutter/services.dart";
 import "package:provider/provider.dart";
 
 import "../action_confirmation.dart";
@@ -16,12 +17,25 @@ class _LoginScreenState extends State<LoginScreen> {
   late final TextEditingController _usernameController;
   late final TextEditingController _passwordController;
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final FocusNode _usernameFocusNode = FocusNode();
+  final FocusNode _passwordFocusNode = FocusNode();
+
+  void _showKeyboardOnFocus(FocusNode node) {
+    node.addListener(() {
+      if (node.hasFocus) {
+        SystemChannels.textInput.invokeMethod<void>("TextInput.show");
+      }
+    });
+  }
 
   @override
   void initState() {
     super.initState();
     _usernameController = TextEditingController();
     _passwordController = TextEditingController();
+    // Fire TV / Android TV may not show the keyboard on programmatic focus.
+    _showKeyboardOnFocus(_usernameFocusNode);
+    _showKeyboardOnFocus(_passwordFocusNode);
   }
 
   @override
@@ -35,6 +49,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
+    _usernameFocusNode.dispose();
+    _passwordFocusNode.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -90,6 +106,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 12),
                         TextFormField(
                           controller: _usernameController,
+                          focusNode: _usernameFocusNode,
                           autofocus: true,
                           decoration: const InputDecoration(labelText: "Username", border: OutlineInputBorder()),
                           validator: (value) => (value == null || value.trim().isEmpty) ? "Username is required." : null,
@@ -98,6 +115,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         const SizedBox(height: 16),
                         TextFormField(
                           controller: _passwordController,
+                          focusNode: _passwordFocusNode,
                           decoration: const InputDecoration(labelText: "Password", border: OutlineInputBorder()),
                           obscureText: true,
                           validator: (value) => (value == null || value.isEmpty) ? "Password is required." : null,

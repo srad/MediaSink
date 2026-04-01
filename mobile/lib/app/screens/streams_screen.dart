@@ -1,4 +1,5 @@
 import "package:flutter/material.dart";
+import "package:flutter/services.dart";
 import "package:provider/provider.dart";
 
 import "../../api/export.dart";
@@ -21,6 +22,7 @@ class StreamsScreen extends StatefulWidget {
 class _StreamsScreenState extends State<StreamsScreen> with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   late final TextEditingController _searchController;
+  final FocusNode _searchFocusNode = FocusNode();
   bool _initialized = false;
 
   @override
@@ -28,6 +30,11 @@ class _StreamsScreenState extends State<StreamsScreen> with SingleTickerProvider
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _searchController = TextEditingController();
+    _searchFocusNode.addListener(() {
+      if (_searchFocusNode.hasFocus) {
+        SystemChannels.textInput.invokeMethod<void>("TextInput.show");
+      }
+    });
     _tabController.addListener(_handleTabChanged);
   }
 
@@ -49,6 +56,7 @@ class _StreamsScreenState extends State<StreamsScreen> with SingleTickerProvider
       ..removeListener(_handleTabChanged)
       ..dispose();
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -80,6 +88,7 @@ class _StreamsScreenState extends State<StreamsScreen> with SingleTickerProvider
               Expanded(
                 child: TextField(
                   controller: _searchController,
+                  focusNode: _searchFocusNode,
                   onChanged: controller.setStreamSearchQuery,
                   decoration: InputDecoration(
                     hintText: "search... #tag",

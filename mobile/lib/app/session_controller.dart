@@ -83,7 +83,7 @@ class AppSessionController extends ChangeNotifier {
 
       if (config.apiVersion != supportedApiVersion) {
         _token = null;
-        await _deleteStorage(_tokenKey);
+        await _deleteStorageBestEffort(_tokenKey);
         _setState(SessionStatus.incompatibleVersion, message: "This app expects API $supportedApiVersion but the server reports ${config.apiVersion.isEmpty ? "an empty version" : config.apiVersion}.");
         return;
       }
@@ -114,14 +114,14 @@ class AppSessionController extends ChangeNotifier {
       final config = ServerConfig.create(origin: normalized, buildInfo: buildInfo);
       _savedOrigin = normalized;
       _config = config;
-      await _writeStorage(_serverOriginKey, normalized);
+      await _writeStorageBestEffort(_serverOriginKey, normalized);
 
       if (config.apiVersion != supportedApiVersion) {
         _setState(SessionStatus.incompatibleVersion, message: "The server uses API ${config.apiVersion.isEmpty ? "unknown" : config.apiVersion}; this app supports $supportedApiVersion.");
         return;
       }
 
-      await _deleteStorage(_tokenKey);
+      await _deleteStorageBestEffort(_tokenKey);
       _token = null;
       await _disposeSocket();
       _api = null;
@@ -149,7 +149,7 @@ class AppSessionController extends ChangeNotifier {
   }
 
   Future<void> logout() async {
-    await _deleteStorage(_tokenKey);
+    await _deleteStorageBestEffort(_tokenKey);
     _token = null;
     _api = null;
     await _disposeSocket();
@@ -158,7 +158,7 @@ class AppSessionController extends ChangeNotifier {
 
   Future<void> resetServer() async {
     await logout();
-    await _deleteStorage(_serverOriginKey);
+    await _deleteStorageBestEffort(_serverOriginKey);
     _config = null;
     _savedOrigin = null;
     _setState(SessionStatus.unconfigured, message: null);
@@ -183,7 +183,7 @@ class AppSessionController extends ChangeNotifier {
       try {
         await api.getChannels();
       } catch (_) {
-        await _deleteStorage(_tokenKey);
+        await _deleteStorageBestEffort(_tokenKey);
         _token = null;
         _api = null;
         _setState(SessionStatus.loggedOut, message: "Stored session expired. Sign in again.");
@@ -195,8 +195,8 @@ class AppSessionController extends ChangeNotifier {
     _savedUsername = username;
     _api = api;
 
-    await _writeStorage(_tokenKey, token);
-    await _writeStorage(_usernameKey, username);
+    await _writeStorageBestEffort(_tokenKey, token);
+    await _writeStorageBestEffort(_usernameKey, username);
 
     await _disposeSocket();
     _socket = _socketFactory(config: config, token: token)
@@ -213,17 +213,17 @@ class AppSessionController extends ChangeNotifier {
     final legacyToken = await _readStorage(_legacyJwtKey);
 
     if ((await _readStorage(_serverOriginKey)) == null && legacyServerUrl != null && legacyServerUrl.isNotEmpty) {
-      await _writeStorage(_serverOriginKey, ServerConfig.normalizeOrigin(legacyServerUrl));
+      await _writeStorageBestEffort(_serverOriginKey, ServerConfig.normalizeOrigin(legacyServerUrl));
     }
     if ((await _readStorage(_usernameKey)) == null && legacyUsername != null && legacyUsername.isNotEmpty) {
-      await _writeStorage(_usernameKey, legacyUsername);
+      await _writeStorageBestEffort(_usernameKey, legacyUsername);
     }
     if ((await _readStorage(_tokenKey)) == null && legacyToken != null && legacyToken.isNotEmpty) {
-      await _writeStorage(_tokenKey, legacyToken);
+      await _writeStorageBestEffort(_tokenKey, legacyToken);
     }
 
-    await _deleteStorage(_legacyWebSocketUrlKey);
-    await _deleteStorage(_legacyPasswordKey);
+    await _deleteStorageBestEffort(_legacyWebSocketUrlKey);
+    await _deleteStorageBestEffort(_legacyPasswordKey);
   }
 
   Future<void> _disposeSocket() async {
@@ -261,6 +261,22 @@ class AppSessionController extends ChangeNotifier {
 
   Future<void> _deleteStorage(String key) {
     return _runStorageOperation<void>("delete", key, () => _storage.delete(key: key));
+  }
+
+  Future<void> _writeStorageBestEffort(String key, String value) async {
+    try {
+      await _writeStorage(key, value);
+    } catch (_) {
+      // Keep the current in-memory session usable even when persistence is unavailable.
+    }
+  }
+
+  Future<void> _deleteStorageBestEffort(String key) async {
+    try {
+      await _deleteStorage(key);
+    } catch (_) {
+      // Keep the current in-memory session usable even when persistence is unavailable.
+    }
   }
 
   Future<T> _runStorageOperation<T>(String action, String key, Future<T> Function() operation) async {

@@ -87,6 +87,25 @@ class _HangingSessionStorage implements AppSessionStorage {
   Future<void> delete({required String key}) => Completer<void>().future;
 }
 
+class _WriteDeleteThrowingSessionStorage implements AppSessionStorage {
+  _WriteDeleteThrowingSessionStorage([Map<String, String>? initialValues]) : _values = <String, String>{...?initialValues};
+
+  final Map<String, String> _values;
+
+  @override
+  Future<String?> read({required String key}) async => _values[key];
+
+  @override
+  Future<void> write({required String key, required String value}) async {
+    throw Exception("Storage write unavailable");
+  }
+
+  @override
+  Future<void> delete({required String key}) async {
+    throw Exception("Storage delete unavailable");
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -205,6 +224,40 @@ void main() {
     expect(controller.token, isNull);
     expect(controller.socket, isNull);
     expect(await fixture.storage.read(key: testTokenKey), isNull);
+  });
+
+  test("configure server still reaches logged out when storage writes fail", () async {
+    final storage = _WriteDeleteThrowingSessionStorage();
+    final controller = AppSessionController(storage: storage, autoBootstrap: false, buildInfoLoader: (_) async => testBuildInfo);
+
+    await controller.configureServer("http://demo.local:3000/");
+
+    expect(controller.status, SessionStatus.loggedOut);
+    expect(controller.savedOrigin, "http://demo.local:3000");
+    expect(controller.config?.origin, "http://demo.local:3000");
+    expect(controller.token, isNull);
+  });
+
+  test("login still authenticates when storage writes fail", () async {
+    final controller = AppSessionController(
+      storage: _WriteDeleteThrowingSessionStorage(storedLoggedOutSession(origin: "http://demo.local:3000")),
+      autoBootstrap: false,
+      buildInfoLoader: (_) async => testBuildInfo,
+      apiFactory: ({required config, token, onUnauthorized}) {
+        return _ControllableMediaSinkApi(config: config, token: token, onUnauthorized: onUnauthorized, channels: <ServicesChannelInfo>[sampleChannel()]);
+      },
+      socketFactory: ({required config, required token}) {
+        return FakeMediaSinkSocketService(config: config, token: token, initialState: SocketConnectionState.connected);
+      },
+    );
+
+    await controller.bootstrap();
+    await controller.login(username: "alice", password: "secret");
+
+    expect(controller.status, SessionStatus.authenticated);
+    expect(controller.savedUsername, "alice");
+    expect(controller.token, "test-token");
+    expect(controller.socketConnectionState, SocketConnectionState.connected);
   });
 
   test("unauthorized handler logs out but keeps the configured server", () async {

@@ -1,4 +1,5 @@
 import "package:flutter/material.dart";
+import "package:flutter/services.dart";
 import "package:provider/provider.dart";
 
 import "../../api/export.dart";
@@ -53,6 +54,21 @@ class _ChannelEditorSheetState extends State<ChannelEditorSheet> {
   late final TextEditingController _tagsController;
   bool _paused = false;
 
+  final FocusNode _channelNameFocusNode = FocusNode();
+  final FocusNode _displayNameFocusNode = FocusNode();
+  final FocusNode _urlFocusNode = FocusNode();
+  final FocusNode _minDurationFocusNode = FocusNode();
+  final FocusNode _skipStartFocusNode = FocusNode();
+  final FocusNode _tagsFocusNode = FocusNode();
+
+  void _showKeyboardOnFocus(FocusNode node) {
+    node.addListener(() {
+      if (node.hasFocus) {
+        SystemChannels.textInput.invokeMethod<void>("TextInput.show");
+      }
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -64,10 +80,22 @@ class _ChannelEditorSheetState extends State<ChannelEditorSheet> {
     _skipStartController = TextEditingController(text: (initial?.skipStart ?? 0).toString());
     _tagsController = TextEditingController(text: (initial?.tags ?? const <String>[]).join(", "));
     _paused = initial?.isPaused ?? false;
+    _showKeyboardOnFocus(_channelNameFocusNode);
+    _showKeyboardOnFocus(_displayNameFocusNode);
+    _showKeyboardOnFocus(_urlFocusNode);
+    _showKeyboardOnFocus(_minDurationFocusNode);
+    _showKeyboardOnFocus(_skipStartFocusNode);
+    _showKeyboardOnFocus(_tagsFocusNode);
   }
 
   @override
   void dispose() {
+    _channelNameFocusNode.dispose();
+    _displayNameFocusNode.dispose();
+    _urlFocusNode.dispose();
+    _minDurationFocusNode.dispose();
+    _skipStartFocusNode.dispose();
+    _tagsFocusNode.dispose();
     _channelNameController.dispose();
     _displayNameController.dispose();
     _urlController.dispose();
@@ -108,18 +136,21 @@ class _ChannelEditorSheetState extends State<ChannelEditorSheet> {
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _channelNameController,
+                  focusNode: _channelNameFocusNode,
                   decoration: const InputDecoration(labelText: "Channel name", border: OutlineInputBorder()),
                   validator: (value) => (value == null || value.trim().isEmpty) ? "Required" : null,
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _displayNameController,
+                  focusNode: _displayNameFocusNode,
                   decoration: const InputDecoration(labelText: "Display name", border: OutlineInputBorder()),
                   validator: (value) => (value == null || value.trim().isEmpty) ? "Required" : null,
                 ),
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _urlController,
+                  focusNode: _urlFocusNode,
                   decoration: const InputDecoration(labelText: "Stream URL", border: OutlineInputBorder()),
                   validator: (value) => (value == null || value.trim().isEmpty) ? "Required" : null,
                 ),
@@ -129,6 +160,7 @@ class _ChannelEditorSheetState extends State<ChannelEditorSheet> {
                     Expanded(
                       child: TextFormField(
                         controller: _minDurationController,
+                        focusNode: _minDurationFocusNode,
                         decoration: const InputDecoration(labelText: "Min duration", border: OutlineInputBorder()),
                         keyboardType: TextInputType.number,
                       ),
@@ -137,6 +169,7 @@ class _ChannelEditorSheetState extends State<ChannelEditorSheet> {
                     Expanded(
                       child: TextFormField(
                         controller: _skipStartController,
+                        focusNode: _skipStartFocusNode,
                         decoration: const InputDecoration(labelText: "Skip start", border: OutlineInputBorder()),
                         keyboardType: TextInputType.number,
                       ),
@@ -146,6 +179,7 @@ class _ChannelEditorSheetState extends State<ChannelEditorSheet> {
                 const SizedBox(height: 12),
                 TextFormField(
                   controller: _tagsController,
+                  focusNode: _tagsFocusNode,
                   decoration: const InputDecoration(labelText: "Tags", helperText: "Comma-separated", border: OutlineInputBorder()),
                 ),
                 SwitchListTile(title: const Text("Start paused"), value: _paused, onChanged: (value) => setState(() => _paused = value)),

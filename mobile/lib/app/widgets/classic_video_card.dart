@@ -5,6 +5,7 @@ import "../../api/export.dart";
 import "../action_confirmation.dart";
 import "../formatters.dart";
 import "interactive_video_preview.dart";
+import "remote_focusable_action.dart";
 
 class ClassicVideoCard extends StatelessWidget {
   const ClassicVideoCard({super.key, required this.video, required this.previewUrl, required this.previewFrames, required this.onOpen, required this.onPlay, required this.onDownload, required this.onDelete, required this.onToggleBookmark, this.onOpenChannel});
@@ -127,14 +128,16 @@ class _VideoActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Material(
-      color: backgroundColor ?? theme.colorScheme.primary.withValues(alpha: 0.08),
+    return RemoteFocusableAction(
+      onPressed: onPressed,
       borderRadius: BorderRadius.circular(9),
-      child: InkWell(
-        onTap: onPressed,
-        borderRadius: BorderRadius.circular(9),
-        child: Tooltip(
-          message: tooltip,
+      focusPadding: 1,
+      scaleOnFocus: 1.05,
+      child: Tooltip(
+        message: tooltip,
+        child: Material(
+          color: backgroundColor ?? theme.colorScheme.primary.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(9),
           child: SizedBox(
             width: size,
             height: size,

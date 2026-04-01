@@ -1,4 +1,5 @@
 import "package:flutter/material.dart";
+import "package:flutter/services.dart";
 import "package:provider/provider.dart";
 
 import "../channels_controller.dart";
@@ -26,33 +27,57 @@ class _AppShellState extends State<AppShell> {
 
   static const _titles = <String>["Streams", "Channels", "Videos", "History", "Jobs"];
 
+  void _switchTab(int delta) {
+    final next = (_index + delta).clamp(0, _titles.length - 1);
+    if (next != _index) {
+      setState(() => _index = next);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[const StreamsScreen(), const ChannelsScreen(embedded: true), const LibraryScreen(), const HistoryScreen(), const JobsScreen()];
 
-    return Scaffold(
-      appBar: AppBar(title: Text(_titles[_index]), actions: _buildAppBarActions(context)),
-      body: SafeArea(
-        top: false,
-        bottom: false,
-        child: FocusTraversalGroup(
-          policy: ReadingOrderTraversalPolicy(),
-          child: IndexedStack(index: _index, children: pages),
-        ),
-      ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: BottomNavigationBar(
-          currentIndex: _index,
-          type: BottomNavigationBarType.fixed,
-          onTap: (value) => setState(() => _index = value),
-          items: const <BottomNavigationBarItem>[
-            BottomNavigationBarItem(icon: Icon(Icons.sensors), label: "Streams"),
-            BottomNavigationBarItem(icon: Icon(Icons.tv), label: "Channels"),
-            BottomNavigationBarItem(icon: Icon(Icons.video_library_outlined), label: "Videos"),
-            BottomNavigationBarItem(icon: Icon(Icons.history_rounded), label: "History"),
-            BottomNavigationBarItem(icon: Icon(Icons.work_outline), label: "Jobs"),
-          ],
+    return Shortcuts(
+      shortcuts: const <ShortcutActivator, Intent>{
+        SingleActivator(LogicalKeyboardKey.arrowLeft, alt: true): _SwitchTabIntent(-1),
+        SingleActivator(LogicalKeyboardKey.arrowRight, alt: true): _SwitchTabIntent(1),
+      },
+      child: Actions(
+        actions: <Type, Action<Intent>>{
+          _SwitchTabIntent: CallbackAction<_SwitchTabIntent>(onInvoke: (intent) {
+            _switchTab(intent.delta);
+            return null;
+          }),
+        },
+        child: Focus(
+          autofocus: true,
+          child: Scaffold(
+            appBar: AppBar(title: Text(_titles[_index]), actions: _buildAppBarActions(context)),
+            body: SafeArea(
+              top: false,
+              bottom: false,
+              child: FocusTraversalGroup(
+                policy: ReadingOrderTraversalPolicy(),
+                child: IndexedStack(index: _index, children: pages),
+              ),
+            ),
+            bottomNavigationBar: SafeArea(
+              top: false,
+              child: BottomNavigationBar(
+                currentIndex: _index,
+                type: BottomNavigationBarType.fixed,
+                onTap: (value) => setState(() => _index = value),
+                items: const <BottomNavigationBarItem>[
+                  BottomNavigationBarItem(icon: Icon(Icons.sensors), label: "Streams"),
+                  BottomNavigationBarItem(icon: Icon(Icons.tv), label: "Channels"),
+                  BottomNavigationBarItem(icon: Icon(Icons.video_library_outlined), label: "Videos"),
+                  BottomNavigationBarItem(icon: Icon(Icons.history_rounded), label: "History"),
+                  BottomNavigationBarItem(icon: Icon(Icons.work_outline), label: "Jobs"),
+                ],
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -244,4 +269,10 @@ class _RecorderActionIconState extends State<_RecorderActionIcon> with SingleTic
       child: const Icon(Icons.circle, color: Colors.redAccent, size: 12),
     );
   }
+}
+
+class _SwitchTabIntent extends Intent {
+  const _SwitchTabIntent(this.delta);
+
+  final int delta;
 }
