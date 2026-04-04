@@ -221,6 +221,8 @@ services:
     image: sedrad/mediasink
     environment:
       - SECRET=change-me
+      - LOG_LEVEL=info
+      - STREAM_DEBUG_LEVEL=error
     volumes:
       - /path/to/recordings:/recordings
     ports:
@@ -236,6 +238,8 @@ services:
     environment:
       - TZ=${TIMEZONE}
       - SECRET=${SECRET}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - STREAM_DEBUG_LEVEL=${STREAM_DEBUG_LEVEL:-error}
     volumes:
       - ${DATA_PATH}:/recordings
       - ${DISK}:/disk
@@ -253,6 +257,8 @@ compose variables (host-side only, not passed into the container):
 | `SECRET` | `change-me` | JWT signing secret — **required** |
 | `DATA_PATH` | `/path/to/your/recordings` | Host path mounted as `/recordings` |
 | `DISK` | `/mnt/disk1` | Host path mounted as `/disk` |
+| `LOG_LEVEL` | `info` | Application log verbosity passed through to the container |
+| `STREAM_DEBUG_LEVEL` | `error` | Verbosity for `yt-dlp` and `ffmpeg` stream diagnostics |
 
 Application environment variables (passed into the container, all optional):
 
@@ -265,8 +271,27 @@ Application environment variables (passed into the container, all optional):
 | `DATA_DIR` | no | `.previews` | Preview/thumbnail cache directory |
 | `DATA_DISK` | no | `/disk` | Disk mount path used for storage status queries |
 | `NET_ADAPTER` | no | `eth0` | Network interface for bandwidth monitoring |
+| `LOG_LEVEL` | no | `info` | Application logrus level. Supports `panic`, `fatal`, `error`, `warn`, `info`, `debug`, `trace` |
+| `STREAM_DEBUG_LEVEL` | no | `error` | Stream downloader/capture verbosity. Supports `quiet`, `error`, `warning`, `info`, `debug`, `trace` |
 | `DB_ADAPTER` | no | `sqlite` | Relational adapter setting. The shipped v2 server currently boots a SQLite/sqlite-vec-backed vector pipeline and should be treated as SQLite-first. |
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | no | — | Relevant only for non-SQLite adapters in the lower DB layer; they are not part of the primary v2 runtime path. |
+
+To debug stream failures, start with:
+
+```sh
+docker run --rm -p 3000:3000 \
+  -e SECRET=change-me \
+  -e LOG_LEVEL=debug \
+  -e STREAM_DEBUG_LEVEL=debug \
+  -v /path/to/recordings:/recordings \
+  -v /path/to/disk:/disk \
+  sedrad/mediasink
+```
+
+Recommended values:
+- normal runtime: `LOG_LEVEL=info` and `STREAM_DEBUG_LEVEL=error`
+- stream debugging: `LOG_LEVEL=debug` and `STREAM_DEBUG_LEVEL=debug`
+- maximum command verbosity: `LOG_LEVEL=debug` and `STREAM_DEBUG_LEVEL=trace`
 
 The web UI is available at `http://<host>:3000` and the API at `http://<host>:3000/api/v2`.
 

@@ -35,6 +35,8 @@ type Cfg struct {
 	DataDisk               string
 	NetworkDev             string
 	DataPath               string
+	LogLevel               log.Level
+	StreamDebugProfile     *StreamDebugProfile
 }
 
 var (
@@ -52,12 +54,19 @@ func mustEnv(key string) string {
 
 func Read() Cfg {
 	once.Do(func() {
+		streamDebugLevel, streamDebugErr := ParseStreamDebugLevel(os.Getenv("STREAM_DEBUG_LEVEL"))
+		if streamDebugErr != nil {
+			log.Warnf("invalid STREAM_DEBUG_LEVEL %q, defaulting to %q: %v", os.Getenv("STREAM_DEBUG_LEVEL"), streamDebugLevel, streamDebugErr)
+		}
+
 		cached = Cfg{
 			DbFileName:             mustEnv("DB_FILENAME"),
 			RecordingsAbsolutePath: mustEnv("REC_PATH"),
 			DataPath:               mustEnv("DATA_DIR"),
 			DataDisk:               mustEnv("DATA_DISK"),
 			NetworkDev:             mustEnv("NET_ADAPTER"),
+			LogLevel:               log.GetLevel(),
+			StreamDebugProfile:     NewStreamDebugProfile(streamDebugLevel),
 		}
 	})
 	return cached

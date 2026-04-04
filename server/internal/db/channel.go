@@ -11,6 +11,7 @@ import (
 
 	"github.com/astaxie/beego/utils"
 	log "github.com/sirupsen/logrus"
+	"github.com/srad/mediasink/server/config"
 	"gorm.io/gorm"
 )
 
@@ -139,59 +140,68 @@ func (channel *Channel) Update() error {
 	return err
 }
 
-func (channel *Channel) QueryStreamURL() (string, error) {
+func (channel *Channel) QueryStreamURLs() ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second) // 30-second timeout
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "yt-dlp",
-		"--force-ipv4",
-		// "--ignore-errors", // Removed for better error handling
-		"--no-warnings",
-		"-f", "best", // Or "best/bestvideo" if you have a strong reason for that specific fallback
-		"--get-url",
-		channel.URL,
-	)
+	debugProfile := config.Read().StreamDebugProfile
+	cmdArgs := buildQueryStreamURLArgs(channel.URL, debugProfile)
+	cmd := exec.CommandContext(ctx, "yt-dlp", cmdArgs...)
+
+	if debugProfile.LogCommandDetails() {
+		if executablePath, err := exec.LookPath("yt-dlp"); err == nil {
+			log.Debugf("[QueryStreamURL] using yt-dlp executable %q", executablePath)
+		}
+		log.Debugf("[QueryStreamURL] executing: yt-dlp %s", strings.Join(cmdArgs, " "))
+	}
 
 	outputBytes, err := cmd.CombinedOutput()
 	output := strings.TrimSpace(string(outputBytes))
 
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return "", fmt.Errorf("yt-dlp command timed out for URL %s", channel.URL)
+		return nil, fmt.Errorf("yt-dlp command timed out for URL %s", channel.URL)
 	}
 
 	if err != nil {
 		// err from exec.CommandContext will be non-nil if youtube-dl exits with a non-zero status
 		// output will contain stderr from youtube-dl, which is useful context
-		return "", fmt.Errorf("yt-dlp failed for URL %s: %v\nOutput: %s", channel.URL, err, output)
+		return nil, fmt.Errorf("yt-dlp failed for URL %s: %v\nOutput: %s", channel.URL, err, output)
 	}
 
-	// Basic validation: Does the output look like a URL?
-	// This is especially important if you were to re-add --ignore-errors.
-	// Even without it, youtube-dl might succeed (exit 0) but return multiple lines or an unexpected string.
-	// A more robust check might involve parsing the URL or checking for multiple lines.
-	if output == "" || (!strings.HasPrefix(output, "http://") && !strings.HasPrefix(output, "https://") && !strings.HasPrefix(output, "rtmp://")) {
-		// Consider if output might contain multiple URLs (one per line)
-		// For now, assume a single URL or an error string if it doesn't look like a URL
-		lines := strings.Split(output, "\n")
-		if len(lines) > 0 && (strings.HasPrefix(lines[0], "http://") || strings.HasPrefix(lines[0], "https://") || strings.HasPrefix(lines[0], "rtmp://")) {
-			// If the first line looks like a URL, use it (e.g. some extractors print metadata then the URL)
-			return lines[0], nil
-		}
-		return "", fmt.Errorf("yt-dlp returned empty or invalid output for URL %s: %s", channel.URL, output)
+	urls := extractStreamURLs(output)
+	if len(urls) == 0 {
+		return nil, fmt.Errorf("yt-dlp returned empty or invalid output for URL %s: %s", channel.URL, output)
 	}
 
-	// If output contains multiple URLs (e.g. from a playlist if -g is used without --no-playlist),
-	// this will return all of them, separated by newlines.
-	// Your application needs to handle this (e.g., pick the first one).
-	// For a single video, it should be one URL.
-	// If you expect only one URL, you might want to split by newline and take lines[0].
+	return urls, nil
+}
+
+func buildQueryStreamURLArgs(channelURL string, debugProfile *config.StreamDebugProfile) []string {
+	args := []string{
+		"--force-ipv4",
+	}
+	args = append(args, debugProfile.YTDLPArgs()...)
+	args = append(args,
+		"-f", "bv*+ba/b",
+		"--get-url",
+		channelURL,
+	)
+	return args
+}
+
+func extractStreamURLs(output string) []string {
 	lines := strings.Split(output, "\n")
-	if len(lines) > 0 {
-		return lines[0], nil // Return the first URL if multiple are given
+	urls := make([]string, 0, len(lines))
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if strings.HasPrefix(line, "http://") || strings.HasPrefix(line, "https://") || strings.HasPrefix(line, "rtmp://") {
+			urls = append(urls, line)
+		}
 	}
-
-	// This part should ideally not be reached if the previous checks are robust.
-	return "", fmt.Errorf("yt-dlp returned unexpected data for URL %s: %s", channel.URL, output)
+	return urls
 }
 
 func ChannelList() ([]*Channel, error) {

@@ -15,24 +15,26 @@ import (
 	"time"
 
 	log "github.com/sirupsen/logrus"
+	"github.com/srad/mediasink/server/config"
 	"github.com/srad/mediasink/server/internal/db"
 	"github.com/srad/mediasink/server/internal/util"
 	"github.com/srad/mediasink/server/internal/ws"
 )
 
 type StreamInfo struct {
-	IsOnline      bool                 `json:"isOnline" extensions:"!x-nullable"`
-	IsTerminating bool                 `extensions:"!x-nullable"`
-	URL           string               `extensions:"!x-nullable"`
+	IsOnline      bool           `json:"isOnline" extensions:"!x-nullable"`
+	IsTerminating bool           `extensions:"!x-nullable"`
+	URL           string         `extensions:"!x-nullable"`
+	InputURLs     []string       `extensions:"!x-nullable"`
 	ChannelName   db.ChannelName `json:"channelName" extensions:"!x-nullable"`
 }
 
 type ProcessInfo struct {
 	ID     db.ChannelID `json:"id"`
-	Pid    int                `json:"pid"`
-	Path   string             `json:"path"`
-	Args   string             `json:"args"`
-	Output string             `json:"output"`
+	Pid    int          `json:"pid"`
+	Path   string       `json:"path"`
+	Args   string       `json:"args"`
+	Output string       `json:"output"`
 }
 
 var (
@@ -54,10 +56,13 @@ func (si *StreamInfo) Screenshot() error {
 }
 
 // CaptureChannel Starts and also waits for the stream to end or being killed
-func CaptureChannel(id db.ChannelID, url string, skip uint) error {
+func CaptureChannel(id db.ChannelID, inputURLs []string, skip uint) error {
 	channel, err := db.GetChannelByID(id)
 	if err != nil {
 		return fmt.Errorf("CaptureChannel: failed to get channel %d: %w", id, err)
+	}
+	if len(inputURLs) == 0 {
+		return fmt.Errorf("CaptureChannel: no input URLs resolved for channel %d", id)
 	}
 
 	activeRecLock.Lock() // Lock before checking and potentially modifying streams/recInfo
@@ -81,11 +86,12 @@ func CaptureChannel(id db.ChannelID, url string, skip uint) error {
 	}
 
 	log.Infoln("----------------------------------------Capturing----------------------------------------")
-	log.Infof("URL: %s", url)
+	log.Infof("URLs: %s", strings.Join(inputURLs, ", "))
 	log.Infof("To: %s", outputFilePath)
 
+	debugProfile := config.Read().StreamDebugProfile
 	ffmpegExecutable := "ffmpeg"
-	cmdArgs := []string{"-hide_banner", "-loglevel", "error", "-i", url, "-ss", fmt.Sprintf("%d", skip), "-movflags", "faststart", "-c", "copy", outputFilePath}
+	cmdArgs := buildCaptureCommandArgs(inputURLs, skip, outputFilePath, debugProfile)
 	cmdToRun := exec.Command(ffmpegExecutable, cmdArgs...)
 
 	// Store in maps under lock
@@ -94,6 +100,12 @@ func CaptureChannel(id db.ChannelID, url string, skip uint) error {
 	activeRecLock.Unlock() // Unlock after map modifications, before blocking operations (Start/Wait)
 
 	log.Infof("Executing: %s %s", ffmpegExecutable, strings.Join(cmdArgs, " "))
+	if debugProfile.LogCommandDetails() {
+		if executablePath, err := exec.LookPath(ffmpegExecutable); err == nil {
+			log.Debugf("[Capture] using ffmpeg executable %q", executablePath)
+		}
+		log.Debugf("[Capture] ffmpeg args for %s: %s", channel.ChannelName, strings.Join(cmdArgs, " "))
+	}
 
 	var stderrBuf bytes.Buffer
 	stderrPipe, pipeErr := cmdToRun.StderrPipe()
@@ -113,7 +125,12 @@ func CaptureChannel(id db.ChannelID, url string, skip uint) error {
 
 	if err := cmdToRun.Start(); err != nil {
 		// Log stderr if available, even if Start fails (though less likely to have output then)
-		log.Errorf("[Capture] cmd.Start failed for %s: %v. Stderr: %s", channel.ChannelName, err, stderrBuf.String())
+		stderrOutput := strings.TrimSpace(stderrBuf.String())
+		if stderrOutput != "" {
+			log.Errorf("[Capture] cmd.Start failed for %s: %v. Stderr: %s", channel.ChannelName, err, stderrOutput)
+		} else {
+			log.Errorf("[Capture] cmd.Start failed for %s: %v", channel.ChannelName, err)
+		}
 		// The calling goroutine in Start() will call DeleteStreamData to clean up map entries.
 		return fmt.Errorf("ffmpeg cmd.Start failed for %s: %w", channel.ChannelName, err)
 	}
@@ -123,18 +140,22 @@ func CaptureChannel(id db.ChannelID, url string, skip uint) error {
 
 	// At this point, the stderr copying goroutine should have finished or will finish soon.
 	// stderrBuf will contain the stderr output.
-	stderrOutput := stderrBuf.String()
-	if len(stderrOutput) > 0 {
-		log.Warnf("[Capture] ffmpeg stderr for %s:\n%s", channel.ChannelName, stderrOutput)
-	}
+	stderrOutput := strings.TrimSpace(stderrBuf.String())
 
 	if waitErr != nil {
 		var exitErr *exec.ExitError
 		// Check if it's an ExitError and if the code is 255 (often from os.Interrupt)
 		if errors.As(waitErr, &exitErr) && exitErr.Sys().(syscall.WaitStatus).ExitStatus() == 255 {
 			log.Infof("[Capture] ffmpeg for %s exited with status 255 (likely intentional stop via Interrupt).", channel.ChannelName)
+			if stderrOutput != "" && debugProfile.LogCommandOutputOnSuccess() {
+				log.Debugf("[Capture] ffmpeg stderr for %s during shutdown:\n%s", channel.ChannelName, stderrOutput)
+			}
 		} else {
-			log.Errorf("[Capture] ffmpeg process for '%s' exited with error: %v", channel.ChannelName, waitErr)
+			if stderrOutput != "" {
+				log.Errorf("[Capture] ffmpeg process for '%s' exited with error: %v\nstderr:\n%s", channel.ChannelName, waitErr, stderrOutput)
+			} else {
+				log.Errorf("[Capture] ffmpeg process for '%s' exited with error: %v", channel.ChannelName, waitErr)
+			}
 			// Attempt to remove the possibly corrupted/incomplete output file
 			if errRemove := os.Remove(outputFilePath); errRemove != nil {
 				log.Errorf("[Capture] Error deleting recording file '%s' after ffmpeg error: %v", outputFilePath, errRemove)
@@ -143,6 +164,9 @@ func CaptureChannel(id db.ChannelID, url string, skip uint) error {
 		}
 	} else {
 		log.Infof("[Capture] ffmpeg process for %s finished successfully.", channel.ChannelName)
+		if stderrOutput != "" && debugProfile.LogCommandOutputOnSuccess() {
+			log.Debugf("[Capture] ffmpeg stderr for %s:\n%s", channel.ChannelName, stderrOutput)
+		}
 	}
 
 	recDuration := time.Since(recording.CreatedAt)
@@ -231,7 +255,11 @@ func Start(id db.ChannelID) (bool, error) {
 		return false, fmt.Errorf("start: failed to unpause channel %d: %w", id, err)
 	}
 
-	url, queryErr := channel.QueryStreamURL() // Assuming QueryStreamURL is thread-safe
+	inputURLs, queryErr := channel.QueryStreamURLs()
+	primaryURL := ""
+	if len(inputURLs) > 0 {
+		primaryURL = inputURLs[0]
+	}
 
 	// This was the panic site for "concurrent map writes"
 	streamInfoLock.Lock()
@@ -241,8 +269,9 @@ func Start(id db.ChannelID) (bool, error) {
 		currentIsTerminating = siExisting.IsTerminating
 	}
 	streamInfo[channel.ChannelID] = &StreamInfo{
-		IsOnline:      url != "" && queryErr == nil, // Mark online only if URL found AND no query error
-		URL:           url,
+		IsOnline:      primaryURL != "" && queryErr == nil, // Mark online only if URL found AND no query error
+		URL:           primaryURL,
+		InputURLs:     append([]string(nil), inputURLs...),
 		ChannelName:   channel.ChannelName,
 		IsTerminating: currentIsTerminating,
 	}
@@ -251,22 +280,22 @@ func Start(id db.ChannelID) (bool, error) {
 	if queryErr != nil {
 		return false, queryErr // Return the queryErr so checkStreams can log it
 	}
-	if url == "" {
+	if primaryURL == "" {
 		return false, nil // Not an error, just stream is offline
 	}
 
-	log.Infof("[Start] Initiating stream capture for '%s' at '%s'", channel.ChannelName, url)
+	log.Infof("[Start] Initiating stream capture for '%s' with %d input URL(s)", channel.ChannelName, len(inputURLs))
 
 	go func() {
 		// This util.ExtractFirstFrame is for the live snapshot.
-		if errSnapshot := util.ExtractFirstFrame(url, filepath.Join(channel.ChannelName.AbsoluteChannelDataPath(), db.SnapshotFilename)); errSnapshot != nil {
+		if errSnapshot := util.ExtractFirstFrame(primaryURL, filepath.Join(channel.ChannelName.AbsoluteChannelDataPath(), db.SnapshotFilename)); errSnapshot != nil {
 			log.Errorf("[Start] Error extracting live snapshot for %s: %v", channel.ChannelName, errSnapshot)
 		}
 	}()
 
 	go func() {
-		log.Infof("[Start] Goroutine launched to capture channel %s (ID: %d), URL: %s", channel.ChannelName, id, url)
-		if errCap := CaptureChannel(id, url, channel.SkipStart); errCap != nil {
+		log.Infof("[Start] Goroutine launched to capture channel %s (ID: %d), URLs: %s", channel.ChannelName, id, strings.Join(inputURLs, ", "))
+		if errCap := CaptureChannel(id, inputURLs, channel.SkipStart); errCap != nil {
 			log.Errorf("[Start] CaptureChannel for %s (ID: %d) returned error: %v", channel.ChannelName, id, errCap)
 		}
 		// DeleteStreamData is crucial for cleanup after CaptureChannel completes or errors.
@@ -431,6 +460,22 @@ func ProcessList() []*ProcessInfo {
 		})
 	}
 	return infoList
+}
+
+func buildCaptureCommandArgs(inputURLs []string, skip uint, outputFilePath string, debugProfile *config.StreamDebugProfile) []string {
+	args := []string{
+		"-hide_banner",
+		"-loglevel", debugProfile.FFmpegLogLevel(),
+	}
+	for _, inputURL := range inputURLs {
+		args = append(args, "-i", inputURL)
+	}
+	args = append(args, "-ss", fmt.Sprintf("%d", skip))
+	if len(inputURLs) > 1 {
+		args = append(args, "-map", "0:v:0", "-map", "1:a:0")
+	}
+	args = append(args, "-movflags", "faststart", "-c", "copy", outputFilePath)
+	return args
 }
 
 // startThumbnailWorker Creates in intervals snapshots of the video as a preview.

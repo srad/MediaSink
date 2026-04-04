@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"os"
 	"os/signal"
 	"syscall"
 
 	log "github.com/sirupsen/logrus"
 	serverapp "github.com/srad/mediasink/server/app"
+	"github.com/srad/mediasink/server/config"
 )
 
 var (
@@ -19,6 +21,12 @@ func main() {
 	log.SetFormatter(&log.TextFormatter{
 		FullTimestamp: false,
 	})
+
+	level, err := config.ParseLogLevel(os.Getenv("LOG_LEVEL"))
+	log.SetLevel(level)
+	if err != nil {
+		log.Warnf("invalid LOG_LEVEL %q, defaulting to %q: %v", os.Getenv("LOG_LEVEL"), level, err)
+	}
 
 	log.Infof("Version: %s, Commit: %s, Api Version %s", Version, Commit, ApiVersion)
 

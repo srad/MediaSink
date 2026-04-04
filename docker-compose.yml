@@ -9,6 +9,8 @@ services:
     environment:
       - SECRET=${SECRET}
       - TZ=${TIMEZONE}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - STREAM_DEBUG_LEVEL=${STREAM_DEBUG_LEVEL:-error}
     volumes:
       - ${DATA_PATH}:/recordings
       - ${DISK}:/disk
