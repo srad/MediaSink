@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/astaxie/beego/utils"
 	log "github.com/sirupsen/logrus"
 	"github.com/srad/mediasink/server/config"
 )
@@ -227,7 +226,7 @@ func calcFps(output string) (float64, error) {
 
 func ConvertVideo(args *VideoConversionArgs, mediaType string) (*ConversionResult, error) {
 	input := filepath.Join(args.OutputPath, args.Filename)
-	if !utils.FileExists(input) {
+	if !FileExists(input) {
 		return nil, fmt.Errorf("file '%s' does not exit", input)
 	}
 

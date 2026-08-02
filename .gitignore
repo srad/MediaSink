@@ -5,6 +5,20 @@
 *.so
 *.dylib
 
+# Locally installed ONNX runtime (./server/install-onnxruntime.sh)
+/server/lib/
+
+# Virtualenv used to export the ONNX model (./server/install-model.sh)
+/server/.venv-export/
+
+# Python bytecode from the model export script
+__pycache__/
+*.py[cod]
+
+# ONNX external-weight sidecars. The committed model is self-contained (the
+# export asserts this); a stray .onnx.data is a ~120 MB leftover, never an asset.
+*.onnx.data
+
 # Test binary, built with `go test -c`
 *.test
 

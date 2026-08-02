@@ -34,17 +34,21 @@ export CGO_CFLAGS="${CGO_CFLAGS:--g -O2 -Wno-return-local-addr}"
 
 # ONNX runtime shared library — set ONNXRUNTIME_LIB to the path of
 # libonnxruntime.so if it is not on the system library path.
-# Download onnxruntime 1.24.1 from:
-#   https://github.com/microsoft/onnxruntime/releases/tag/v1.24.1
+# Easiest route: ./server/install-onnxruntime.sh (installs into server/lib/).
+# Otherwise download onnxruntime 1.28.0 from:
+#   https://github.com/microsoft/onnxruntime/releases/tag/v1.28.0
 # and extract it, then set the variable:
-#   export ONNXRUNTIME_LIB=/path/to/onnxruntime-linux-x64-1.24.1/lib/libonnxruntime.so
+#   export ONNXRUNTIME_LIB=/path/to/onnxruntime-linux-x64-1.28.0/lib/libonnxruntime.so
+# The runtime must be at least as new as the ORT API version requested by
+# github.com/yalue/onnxruntime_go (see server/go.mod), or the server aborts at startup.
 if [[ -z "${ONNXRUNTIME_LIB:-}" ]]; then
-  # Auto-detect: look for a local copy next to this script.
+  # Auto-detect: look for a local copy next to this script. The extracted-tarball
+  # paths are globbed so they stay valid across onnxruntime versions.
   for candidate in \
-    "${ROOT_DIR}/server/onnxruntime-linux-x64-1.24.1/lib/libonnxruntime.so" \
+    "${ROOT_DIR}/server/onnxruntime-linux-"*"/lib/libonnxruntime.so" \
     "${ROOT_DIR}/server/lib/libonnxruntime.so" \
     "${ROOT_DIR}/server/libonnxruntime.so" \
-    "${ROOT_DIR}/onnxruntime-linux-x64-1.24.1/lib/libonnxruntime.so" \
+    "${ROOT_DIR}/onnxruntime-linux-"*"/lib/libonnxruntime.so" \
     "${ROOT_DIR}/lib/libonnxruntime.so" \
     "${ROOT_DIR}/libonnxruntime.so"; do
     if [[ -f "${candidate}" ]]; then

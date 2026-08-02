@@ -53,25 +53,32 @@ type ModelConfig interface {
 	Description() string
 }
 
-// MobileNetV3Config is the configuration for the MobileNet V3 Large model.
-type MobileNetV3Config struct{}
+// DefaultModelName is the embedding model the server currently runs on. Frame
+// vectors are only comparable within one model, so changing this invalidates
+// every stored embedding — see the frame_vectors reset in internal/db/db.go.
+const DefaultModelName = "mobilenetv4_conv_large"
 
-func (m *MobileNetV3Config) Name() string      { return "mobilenet_v3_large" }
-func (m *MobileNetV3Config) InputSize() int    { return 224 }
-func (m *MobileNetV3Config) InputName() string { return "input" }
-func (m *MobileNetV3Config) OutputName() string { return "output" }
-func (m *MobileNetV3Config) Description() string {
-	return "MobileNet V3 Large - Lightweight feature extractor, 224x224 input"
+// MobileNetV4LargeConfig is the configuration for the MobileNet V4 Large model.
+// The exported graph applies ImageNet normalization internally, so it takes the
+// same [0,1] NCHW input as the V3 model — see scripts/export_mobilenetv4_onnx.py.
+type MobileNetV4LargeConfig struct{}
+
+func (m *MobileNetV4LargeConfig) Name() string       { return DefaultModelName }
+func (m *MobileNetV4LargeConfig) InputSize() int     { return 256 }
+func (m *MobileNetV4LargeConfig) InputName() string  { return "input" }
+func (m *MobileNetV4LargeConfig) OutputName() string { return "output" }
+func (m *MobileNetV4LargeConfig) Description() string {
+	return "MobileNet V4 Large - Feature extractor, 256x256 input"
 }
-func (m *MobileNetV3Config) PreprocessFrame(frame image.Image) ([]float32, error) {
+func (m *MobileNetV4LargeConfig) PreprocessFrame(frame image.Image) ([]float32, error) {
 	return preprocessing.ImageToTensorNCHW(frame, m.InputSize())
 }
 
 // GetModelConfig returns the configuration for the given model name.
 func GetModelConfig(modelName string) (ModelConfig, error) {
 	switch modelName {
-	case "mobilenet_v3_large":
-		return &MobileNetV3Config{}, nil
+	case DefaultModelName:
+		return &MobileNetV4LargeConfig{}, nil
 	default:
 		return nil, fmt.Errorf("unknown model: %s", modelName)
 	}

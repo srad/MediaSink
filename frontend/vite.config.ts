@@ -32,10 +32,13 @@ export default defineConfig({
     },
     rollupOptions: {
       output: {
-        // Manual chunk configuration for better code splitting
-        manualChunks: {
-          vendor: ["vue", "vue-router", "pinia"],
-          bootstrap: ["bootstrap"],
+        // Manual chunk configuration for better code splitting.
+        // Rolldown (Vite 8) dropped the object form of `manualChunks`.
+        codeSplitting: {
+          groups: [
+            { name: "vendor", test: /[\\/]node_modules[\\/](vue|vue-router|pinia|@vue[\\/][^\\/]+)[\\/]/ },
+            { name: "bootstrap", test: /[\\/]node_modules[\\/]bootstrap[\\/]/ },
+          ],
         },
       },
     },

@@ -10,6 +10,7 @@ import (
 	sqlite_vec "github.com/asg017/sqlite-vec-go-bindings/cgo"
 	log "github.com/sirupsen/logrus"
 	"github.com/srad/mediasink/server/config"
+	"github.com/srad/mediasink/server/internal/analysis/detectors/onnx"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
@@ -157,8 +158,14 @@ func migrate() {
 		log.Panicf("[Setting] Init error: %s", err)
 	}
 
-	// Drop frame_vectors if it has an older schema. Frame vectors are
-	// derived/recomputable data so rebuilding them is safe.
+	dropStaleFrameVectors()
+}
+
+// dropStaleFrameVectors drops frame_vectors when it no longer matches what the
+// current code produces — either an older table schema or vectors from a
+// different embedding model. Frame vectors are derived/recomputable data, so
+// rebuilding them is safe; the startup backfill re-queues the analysis.
+func dropStaleFrameVectors() {
 	if sqlDB, err := DB.DB(); err == nil {
 		var tableExists int
 		sqlDB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name='frame_vectors'`).Scan(&tableExists)
@@ -182,11 +189,28 @@ func migrate() {
 				}
 			}
 
+			// The embedding model is part of the contract too. Vectors from a
+			// different model have the same dimension but occupy a different
+			// space, so the table would not error — old and new rows would just
+			// be silently compared against each other and rank as noise.
+			reason := "schema update"
+			if !needsRebuild {
+				storedModel, modelErr := GetEmbeddingModel()
+				if modelErr != nil {
+					log.Warnf("[Migrate] Could not read the stored embedding model: %v", modelErr)
+				} else if storedModel != onnx.DefaultModelName {
+					log.Infof("[Migrate] Embedding model changed (%s -> %s), stored frame vectors are no longer comparable",
+						storedModel, onnx.DefaultModelName)
+					needsRebuild = true
+					reason = "embedding model change"
+				}
+			}
+
 			if needsRebuild {
 				if _, dropErr := sqlDB.Exec(`DROP TABLE IF EXISTS frame_vectors`); dropErr != nil {
-					log.Warnf("[Migrate] Could not drop frame_vectors for schema update: %v", dropErr)
+					log.Warnf("[Migrate] Could not drop frame_vectors for %s: %v", reason, dropErr)
 				} else {
-					log.Infof("[Migrate] Dropped frame_vectors for schema update (will be rebuilt on next analysis)")
+					log.Infof("[Migrate] Dropped frame_vectors for %s (will be rebuilt on next analysis)", reason)
 				}
 			}
 		}

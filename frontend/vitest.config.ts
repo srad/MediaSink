@@ -1,9 +1,12 @@
 import { fileURLToPath } from "node:url";
+import type { UserConfig } from "vite";
 import { mergeConfig, defineConfig, configDefaults } from "vitest/config";
 import viteConfig from "./vite.config";
 
+// Vite 8's `defineConfig` return type is callable, which `mergeConfig` rejects
+// (its parameter resolves to `never` for function types) — narrow it back down.
 export default mergeConfig(
-  viteConfig,
+  viteConfig as UserConfig,
   defineConfig({
     test: {
       globals: true,

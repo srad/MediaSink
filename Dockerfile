@@ -57,7 +57,10 @@ RUN npm run build
 FROM builder_base AS onnx_builder
 
 ARG TARGETARCH
-RUN ONNX_VERSION="1.24.1" && \
+# Keep in sync with github.com/yalue/onnxruntime_go in server/go.mod: the binding
+# requests a fixed ORT API version (v1.31.0 -> API 26) and refuses to start against
+# a runtime that only supports an older one, so this must be >= the binding's version.
+RUN ONNX_VERSION="1.28.0" && \
     case "${TARGETARCH}" in \
       amd64)   ONNX_ARCH="x64" ;; \
       arm64)   ONNX_ARCH="aarch64" ;; \
@@ -148,7 +151,7 @@ RUN apt-get update && \
       make \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN git clone --branch release/8.0 --depth 1 https://git.ffmpeg.org/ffmpeg.git /ffmpeg
+RUN git clone --branch release/8.1 --depth 1 https://git.ffmpeg.org/ffmpeg.git /ffmpeg
 WORKDIR /ffmpeg
 
 # Configure for static linking where possible to reduce runtime dependencies
@@ -203,6 +206,17 @@ COPY server/go.mod server/go.sum ./server/
 RUN cd /app/server && GOWORK=off go mod download && GOWORK=off go mod verify
 
 COPY . .
+
+# The ONNX model is stored in Git LFS. A checkout without LFS (shallow CI clone,
+# GIT_LFS_SKIP_SMUDGE) leaves a ~130-byte pointer file behind, which copies into
+# the image fine and only fails much later as an opaque ONNX load error at startup.
+RUN MODEL=server/assets/models/mobilenetv4_conv_large.onnx; \
+    if [ ! -f "$MODEL" ]; then \
+      echo "ERROR: $MODEL is missing. Generate it with ./server/install-model.sh" >&2; exit 1; \
+    fi; \
+    if head -c 40 "$MODEL" | grep -q "git-lfs.github.com"; then \
+      echo "ERROR: $MODEL is a Git LFS pointer, not the model. Run 'git lfs pull' before building." >&2; exit 1; \
+    fi
 
 # Overlay the pre-built frontend so go:embed picks it up
 COPY --from=frontend_builder /app/dist /app/server/frontend/dist
@@ -299,7 +313,7 @@ RUN ldconfig
 # Copy assets
 COPY ./server/assets/DMMono-Regular.ttf /usr/share/fonts/truetype/
 COPY ./server/assets/live.jpg ./assets/
-COPY --from=app_builder /app/server/assets/models/mobilenet_v3_large.onnx ./assets/models/
+COPY --from=app_builder /app/server/assets/models/ ./assets/models/
 COPY ./server/docker-entrypoint.sh ./docker-entrypoint.sh
 COPY ./server/wait-for-it.sh ./wait-for-it.sh
 RUN fc-cache -fv

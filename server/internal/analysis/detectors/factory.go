@@ -5,6 +5,7 @@ import (
 	"sync"
 
 	"github.com/srad/mediasink/server/internal/analysis/detectors/highlight"
+	"github.com/srad/mediasink/server/internal/analysis/detectors/onnx"
 	"github.com/srad/mediasink/server/internal/analysis/detectors/scene"
 )
 
@@ -19,7 +20,7 @@ var (
 type DetectorType string
 
 const (
-	DetectorTypeOnnxMobileNetV3Large DetectorType = "onnx_mobilenet_v3_large"
+	DetectorTypeOnnxMobileNetV4Large DetectorType = "onnx_mobilenetv4_conv_large"
 )
 
 // DetectorConfig holds configuration for detector selection.
@@ -31,8 +32,8 @@ type DetectorConfig struct {
 // DefaultDetectorConfig returns the default detector configuration.
 func DefaultDetectorConfig() *DetectorConfig {
 	return &DetectorConfig{
-		SceneDetector:     DetectorTypeOnnxMobileNetV3Large,
-		HighlightDetector: DetectorTypeOnnxMobileNetV3Large,
+		SceneDetector:     DetectorTypeOnnxMobileNetV4Large,
+		HighlightDetector: DetectorTypeOnnxMobileNetV4Large,
 	}
 }
 
@@ -48,8 +49,8 @@ func CreateSceneDetector(detectorType DetectorType) (SceneDetector, error) {
 
 	var err error
 	switch detectorType {
-	case DetectorTypeOnnxMobileNetV3Large:
-		sceneDetector, err = scene.NewOnnxSceneDetector("mobilenet_v3_large")
+	case DetectorTypeOnnxMobileNetV4Large:
+		sceneDetector, err = scene.NewOnnxSceneDetector(onnx.DefaultModelName)
 	default:
 		return nil, fmt.Errorf("unknown scene detector type: %s", detectorType)
 	}
@@ -73,9 +74,9 @@ func CreateEmbeddingExtractor(detectorType DetectorType) (EmbeddingExtractor, er
 
 	var err error
 	switch detectorType {
-	case DetectorTypeOnnxMobileNetV3Large:
+	case DetectorTypeOnnxMobileNetV4Large:
 		var detector SceneDetector
-		detector, err = scene.NewOnnxSceneDetector("mobilenet_v3_large")
+		detector, err = scene.NewOnnxSceneDetector(onnx.DefaultModelName)
 		if err == nil {
 			var ok bool
 			embeddingExtractor, ok = detector.(EmbeddingExtractor)
@@ -106,8 +107,8 @@ func CreateHighlightDetector(detectorType DetectorType) (HighlightDetector, erro
 
 	var err error
 	switch detectorType {
-	case DetectorTypeOnnxMobileNetV3Large:
-		highlightDetector, err = highlight.NewOnnxHighlightDetector("mobilenet_v3_large")
+	case DetectorTypeOnnxMobileNetV4Large:
+		highlightDetector, err = highlight.NewOnnxHighlightDetector(onnx.DefaultModelName)
 	default:
 		return nil, fmt.Errorf("unknown highlight detector type: %s", detectorType)
 	}
@@ -137,13 +138,13 @@ func CreateDetectors(config *DetectorConfig) (SceneDetector, HighlightDetector, 
 // AvailableSceneDetectors returns the list of available scene detector names.
 func AvailableSceneDetectors() []string {
 	return []string{
-		string(DetectorTypeOnnxMobileNetV3Large),
+		string(DetectorTypeOnnxMobileNetV4Large),
 	}
 }
 
 // AvailableHighlightDetectors returns the list of available highlight detector names.
 func AvailableHighlightDetectors() []string {
 	return []string{
-		string(DetectorTypeOnnxMobileNetV3Large),
+		string(DetectorTypeOnnxMobileNetV4Large),
 	}
 }

@@ -47,7 +47,7 @@ func SearchSimilarRecordingsByImage(r io.Reader, minSimilarity float64, limit in
 		return nil, fmt.Errorf("failed to decode image: %w", err)
 	}
 
-	extractor, err := detectors.CreateEmbeddingExtractor(detectors.DetectorTypeOnnxMobileNetV3Large)
+	extractor, err := detectors.CreateEmbeddingExtractor(detectors.DefaultDetectorConfig().SceneDetector)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create feature extractor: %w", err)
 	}

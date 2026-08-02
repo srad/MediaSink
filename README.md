@@ -11,7 +11,7 @@ MediaSink is a powerful web-based video management, editing and streaming server
 - **Media Management**: Scans all media and generate previews and organizes them. Allows bookmarking folders, channel, media items, and tagging the media.
 - **Automated Stream Recording**: Capture and store video streams automatically.
 - **REST API for Video Editing**: Perform video editing tasks programmatically.
-- **Video Analysis (ONNX + sqlite-vec)**: Detect scenes and highlights from preview frames using ONNX feature extraction and sqlite-vec similarity queries.
+- **Video Analysis (ONNX + sqlite-vec)**: Detect scenes and highlights from preview frames using MobileNetV4-Large feature extraction (1280-d embeddings) and sqlite-vec similarity queries.
 - **Integrated Web UI**: Vue 3 frontend embedded directly in the binary — served from the same port as the API, no nginx or separate deployment needed.
 - **Integrated Mobile UI**: Flutter app under `mobile/` with server setup, login, stream/channel/video browsing, history, and mobile video playback.
 - **Integrated Terminal UI**: Separate Rust CLI under `cli/` with login, live workspace views, WebSocket updates, themes, forms, and popup video playback.
@@ -31,7 +31,8 @@ This is mainly for development purposes. In production you'd use the Docker imag
 - yt-dlp
 - FFprobe
 - SQLite 3
-- ONNX Runtime shared library (for ONNX-based video analysis)
+- ONNX Runtime shared library **1.26 or newer** (for ONNX-based video analysis) — install with `./server/install-onnxruntime.sh`
+- Git LFS (the ONNX model is stored there)
 
 If you run the application outside of Docker, you must manually install the above dependencies.
 
@@ -56,10 +57,16 @@ source ~/.bashrc
 ```
 
 ### Clone the Repository
+
+The video-analysis model (~120 MB) is stored in Git LFS, so install it before cloning:
+
 ```sh
+sudo apt install git-lfs && git lfs install
 git clone https://github.com/srad/MediaSink.git
 cd MediaSink
 ```
+
+If you already cloned without LFS, `git lfs pull` replaces the pointer file with the real model. To regenerate the model from scratch instead, run `./server/install-model.sh` (creates a throwaway virtualenv, exports from `timm`, and verifies the result against PyTorch).
 
 ### Build
 
@@ -71,7 +78,7 @@ Builds the frontend, mirrors the built web assets into `server/frontend/dist`, r
 
 All configuration is provided via environment variables (see the **Run** section below). There is no config file.
 
-For ONNX-based analysis outside Docker, set `ONNXRUNTIME_LIB` if the runtime library is not on your default linker path.
+For ONNX-based analysis outside Docker, set `ONNXRUNTIME_LIB` if the runtime library is not on your default linker path; `run.sh` auto-detects the copy installed by `./server/install-onnxruntime.sh`. The runtime must be at least as new as the ORT API version requested by `yalue/onnxruntime_go` (see `server/go.mod`) or the server aborts at startup.
 
 ### Run
 

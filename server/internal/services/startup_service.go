@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/astaxie/beego/utils"
 	log "github.com/sirupsen/logrus"
 	"github.com/srad/mediasink/server/config"
 	"github.com/srad/mediasink/server/internal/analysis/detectors/onnx"
@@ -40,7 +39,7 @@ func deleteOrphanedRecordings() error {
 
 	for _, recording := range recordings {
 		filePath := recording.ChannelName.AbsoluteChannelFilePath(recording.Filename)
-		if !utils.FileExists(filePath) {
+		if !util.FileExists(filePath) {
 			recording.DestroyRecording()
 		}
 	}
@@ -128,7 +127,7 @@ func enqueueUnanalyzedRecordings() {
 		log.Infof("[StartUpJobs] ONNX not available, skipping auto-analysis: %v", err)
 		return
 	}
-	if _, err := onnx.GetModelPath("mobilenet_v3_large"); err != nil {
+	if _, err := onnx.GetModelPath(onnx.DefaultModelName); err != nil {
 		log.Infof("[StartUpJobs] ONNX model not found, skipping auto-analysis: %v", err)
 		return
 	}
@@ -169,6 +168,13 @@ func enqueueUnanalyzedRecordings() {
 		}
 	}
 	log.Infof("[StartUpJobs] Enqueued %d preview job(s) and %d analysis job(s) during startup backfill", previewJobs, analysisJobs)
+
+	// Record the model only once the backfill has been queued. If the process dies
+	// before this, the next boot sees the old value, drops frame_vectors again (it
+	// holds nothing worth keeping at that point) and re-queues the backfill.
+	if err := db.SetEmbeddingModel(onnx.DefaultModelName); err != nil {
+		log.Errorf("[StartUpJobs] Failed to record the active embedding model: %v", err)
+	}
 }
 
 // cleanupDeprecatedPreviewArtifacts removes old preview folders and files that

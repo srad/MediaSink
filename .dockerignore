@@ -21,3 +21,16 @@ LICENSE
 frontend/node_modules
 cli
 mobile
+
+# Model export tooling (./server/install-model.sh). The virtualenv alone is ~1.2 GB
+# of build context; the exported model is committed, so none of this is needed.
+/server/.venv-export
+/server/scripts
+**/__pycache__
+**/*.pyc
+
+# Locally installed ONNX runtime — the image builds its own in the onnx_builder stage
+/server/lib
+
+# ONNX external-weight sidecars; the committed model is self-contained
+**/*.onnx.data

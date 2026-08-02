@@ -305,6 +305,115 @@ func UnregisterExecutionProviderLibrary(registrationName string) error {
 	return nil
 }
 
+// EpDevice is an opaque handle to an OrtEpDevice: a single (execution
+// provider, hardware device) pair surfaced by an execution-provider plugin.
+//
+// EpDevice values returned from GetEpDevices are owned by the OrtEnv. Callers
+// must NOT call any release function on them; the underlying OrtEpDevice
+// remains valid until the originating plugin library is unregistered (via
+// UnregisterExecutionProviderLibrary) or the runtime environment is destroyed.
+type EpDevice struct {
+	p *C.OrtEpDevice
+}
+
+// EpName returns the execution provider name that owns this device, e.g.
+// "QNNExecutionProvider" or "OpenVINOExecutionProvider".
+func (d EpDevice) EpName() string {
+	if d.p == nil {
+		return ""
+	}
+	return C.GoString(C.EpDeviceEpName(d.p))
+}
+
+// EpVendor returns the execution provider's vendor string, e.g. "Microsoft"
+// or "Qualcomm".
+func (d EpDevice) EpVendor() string {
+	if d.p == nil {
+		return ""
+	}
+	return C.GoString(C.EpDeviceEpVendor(d.p))
+}
+
+// GetEpDevices returns the list of OrtEpDevice instances known to the
+// runtime, including those contributed by plugin execution providers loaded
+// via RegisterExecutionProviderLibrary. The returned EpDevices remain valid
+// until the corresponding plugin library is unregistered or the environment
+// is destroyed.
+func GetEpDevices() ([]EpDevice, error) {
+	if !IsInitialized() {
+		return nil, NotInitializedError
+	}
+	var raw **C.OrtEpDevice
+	var count C.size_t
+	status := C.GetEpDevices(ortEnv,
+		(***C.OrtEpDevice)(unsafe.Pointer(&raw)), &count)
+	if status != nil {
+		return nil, statusToError(status)
+	}
+	n := int(count)
+	if n == 0 || raw == nil {
+		return nil, nil
+	}
+	// raw points to an array of n const OrtEpDevice* owned by the env.
+	devices := make([]EpDevice, n)
+	src := unsafe.Slice(raw, n)
+	for i := 0; i < n; i++ {
+		devices[i] = EpDevice{p: src[i]}
+	}
+	return devices, nil
+}
+
+// AppendExecutionProviderV2 attaches a plugin execution provider to these
+// session options using one or more OrtEpDevice instances obtained from
+// GetEpDevices. All provided devices must belong to the same execution
+// provider (they are different hardware targets within that EP).
+//
+// This is the plugin-aware path; use it for any execution provider loaded
+// through RegisterExecutionProviderLibrary (QNN, newer OpenVINO, etc.). For
+// execution providers compiled into libonnxruntime, use the dedicated
+// wrappers (AppendExecutionProviderCUDA, AppendExecutionProviderCoreMLV2,
+// ...) or the V1 string-based AppendExecutionProvider.
+//
+// Wraps the C API SessionOptionsAppendExecutionProvider_V2.
+func (o *SessionOptions) AppendExecutionProviderV2(devices []EpDevice,
+	options map[string]string) error {
+	if len(devices) == 0 {
+		return fmt.Errorf("AppendExecutionProviderV2 requires at least one EpDevice")
+	}
+	for i, d := range devices {
+		if d.p == nil {
+			return fmt.Errorf("AppendExecutionProviderV2: devices[%d] "+
+				"is the zero EpDevice", i)
+		}
+	}
+
+	arr := make([]*C.OrtEpDevice, len(devices))
+	for i, d := range devices {
+		arr[i] = d.p
+	}
+	var arrPtr **C.OrtEpDevice
+	if len(arr) != 0 {
+		// Avoid dereferencing arr[0] if the array is empty, same as with the options map.
+		arrPtr = &(arr[0])
+	}
+
+	var keysPtr, valuesPtr **C.char
+	if len(options) != 0 {
+		keys, values := mapToCStrings(options)
+		defer freeCStrings(keys)
+		defer freeCStrings(values)
+		keysPtr = &(keys[0])
+		valuesPtr = &(values[0])
+	}
+
+	status := C.AppendExecutionProviderV2(o.o, ortEnv, arrPtr, C.size_t(len(arr)),
+		keysPtr, valuesPtr, C.size_t(len(options)))
+	if status != nil {
+		return statusToError(status)
+	}
+	return nil
+}
+
 // ArenaCfg wraps OrtArenaCfg for arena-based allocator configuration.
 type ArenaCfg struct {
 	c *C.OrtArenaCfg
@@ -1836,31 +1945,24 @@ func (o *SessionOptions) AppendExecutionProviderCoreML(flags uint32) error {
 	return nil
 }
 
-// AppendExecutionProviderCoreMLV2 is the new API for adding CoreML provider to ONNX Runtime.
-// This is the recommended way to add CoreML provider as of ONNX Runtime 1.20.0.
+// AppendExecutionProviderCoreMLV2 is the new API for adding CoreML provider to
+// ONNX Runtime. This is the recommended way to add CoreML provider as of
+// onnxruntime 1.20.0.
 //
-// For CoreML options, see:
+// For the list of supported options, see:
 // https://onnxruntime.ai/docs/execution-providers/CoreML-ExecutionProvider.html
 func (o *SessionOptions) AppendExecutionProviderCoreMLV2(options map[string]string) error {
-
-	// Handle case with no options
-	if len(options) == 0 {
-		status := C.AppendExecutionProviderCoreMLV2(o.o, nil, nil, 0)
-		if status != nil {
-			return statusToError(status)
-		}
-		return nil
+	var keysPtr, valuesPtr **C.char
+	if len(options) != 0 {
+		keys, values := mapToCStrings(options)
+		defer freeCStrings(keys)
+		defer freeCStrings(values)
+		keysPtr = &(keys[0])
+		valuesPtr = &(values[0])
 	}
 
-	// Convert map to arrays of keys and values
-	keys, values := mapToCStrings(options)
-	defer freeCStrings(keys)
-	defer freeCStrings(values)
-
-	// Call C function
-	status := C.AppendExecutionProviderCoreMLV2(o.o,
-		&keys[0], &values[0], C.size_t(len(options)))
-
+	status := C.AppendExecutionProviderCoreMLV2(o.o, keysPtr, valuesPtr,
+		C.size_t(len(options)))
 	if status != nil {
 		return statusToError(status)
 	}
@@ -1967,6 +2069,21 @@ func (o *SessionOptions) DisableProfiling() error {
 	if status != nil {
 		return statusToError(status)
 	}
+	return nil
+}
+
+// Register custom ops from a shared library.
+func (o *SessionOptions) RegisterCustomOpsLibrary(path string) error {
+	ortCharPath, e := createOrtCharString(path)
+	if e != nil {
+		return fmt.Errorf("Unable to convert path to C path: %w", e)
+	}
+	defer C.free(unsafe.Pointer(ortCharPath))
+	status := C.RegisterCustomOpsLibraryV2(o.o, ortCharPath)
+	if status != nil {
+		return statusToError(status)
+	}
+
 	return nil
 }
 
@@ -2505,7 +2622,7 @@ func (b *IoBinding) GetBoundOutputNames() ([]string, error) {
 	toReturn := make([]string, int(resultCount))
 	prevEndOffset := uint64(0)
 	for i, stringLength := range sizesSlice {
-		toReturn[i] = string(charsSlice[prevEndOffset:stringLength])
+		toReturn[i] = string(charsSlice[prevEndOffset : prevEndOffset+uint64(stringLength)])
 		prevEndOffset += uint64(stringLength)
 	}
 

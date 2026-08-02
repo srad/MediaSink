@@ -204,16 +204,19 @@ Optional / database-specific:
 - `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_PORT`: Credentials for non-SQLite relational adapters if you are working on that lower-layer support
 
 ONNX runtime:
-- `ONNXRUNTIME_LIB`: Path to `libonnxruntime.so`. Auto-detected by `run.sh` from common local paths; required version **1.24.1** (matches `yalue/onnxruntime_go v1.27.0`). Install via `./server/install-onnxruntime.sh`. The current startup path hard-requires ONNX initialization and the Mobilenet model.
+- `ONNXRUNTIME_LIB`: Path to `libonnxruntime.so`. Auto-detected by `run.sh` from common local paths. Minimum version **1.26** — `yalue/onnxruntime_go v1.31.0` requests ORT API 26 and aborts startup against anything older; the Dockerfile and `./server/install-onnxruntime.sh` both ship **1.28.0**. Install via `./server/install-onnxruntime.sh`, which replaces a stale copy when `ONNX_VERSION` changes. The current startup path hard-requires ONNX initialization and the Mobilenet model.
 
-Video analysis model path:
-- `assets/models/mobilenet_v3_large.onnx`
+Video analysis model:
+- `assets/models/mobilenetv4_conv_large.onnx` — MobileNetV4-Large feature extractor (`timm/mobilenetv4_conv_large.e500_r256_in1k`, classifier head removed), **256×256** input, **1280**-d embedding. Committed via **Git LFS** (~120 MB) — a clone without LFS leaves a pointer file and the Docker build fails fast on it; regenerate with **`./server/install-model.sh`** (builds a throwaway virtualenv, exports via `scripts/export_mobilenetv4_onnx.py`, tears it down). `assets/models/mobilenetv4_conv_large.json` records provenance and the sha256.
+- The active model name lives in one place: `onnx.DefaultModelName`.
 
 Default detector configuration:
-- Scene detector: `onnx_mobilenet_v3_large`
-- Highlight detector: `onnx_mobilenet_v3_large`
+- Scene detector: `onnx_mobilenetv4_conv_large`
+- Highlight detector: `onnx_mobilenetv4_conv_large`
 
-ONNX tensor format: **NCHW** `(1, 3, H, W)` — `ImageToTensorNCHW()` in `internal/analysis/preprocessing/conversion.go`.
+ONNX tensor format: **NCHW** `(1, 3, H, W)` — `ImageToTensorNCHW()` in `internal/analysis/preprocessing/conversion.go`. It emits pixels in `[0,1]`; ImageNet mean/std normalization is baked into the exported graph, not applied in Go.
+
+Changing the embedding model invalidates every stored vector — the dimension is unchanged, so nothing would fail loudly. `dropStaleFrameVectors()` (`internal/db/db.go`) compares the active model against the `embedding_model` setting and drops `frame_vectors` on a mismatch; the startup backfill in `enqueueUnanalyzedRecordings()` then re-queues analysis for every recording, and only afterwards is the new model name persisted.
 
 ## File System Requirements
 

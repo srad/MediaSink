@@ -134,8 +134,8 @@ func validateEnvironment() error {
 	if err := onnx.EnsureInitialized(); err != nil {
 		return fmt.Errorf("failed to initialize ONNX runtime: %w", err)
 	}
-	if _, err := onnx.GetModelPath("mobilenet_v3_large"); err != nil {
-		return fmt.Errorf("required ONNX model %q not found: %w", "mobilenet_v3_large", err)
+	if _, err := onnx.GetModelPath(onnx.DefaultModelName); err != nil {
+		return fmt.Errorf("required ONNX model %q not found: %w", onnx.DefaultModelName, err)
 	}
 	log.Infoln("OK: ONNX runtime and models verified.")
 	return nil

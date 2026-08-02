@@ -1,10 +1,12 @@
 package db
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 
 	log "github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 )
 
 type Setting struct {
@@ -15,7 +17,36 @@ type Setting struct {
 
 const (
 	ReqInterval = "req_interval"
+
+	// EmbeddingModelSetting records which model produced the vectors currently
+	// stored in frame_vectors.
+	EmbeddingModelSetting = "embedding_model"
+
+	// legacyEmbeddingModel is what every install ran before this setting existed.
+	legacyEmbeddingModel = "mobilenet_v3_large"
 )
+
+// GetEmbeddingModel returns the model that produced the stored frame vectors.
+// A missing row means the database predates the setting, so it reports the
+// legacy model rather than an error — callers use this to decide whether the
+// stored vectors are still comparable with the active model's output.
+func GetEmbeddingModel() (string, error) {
+	sett := Setting{}
+	err := DB.Table("settings").First(&sett, &Setting{SettingKey: EmbeddingModelSetting}).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return legacyEmbeddingModel, nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return sett.SettingValue, nil
+}
+
+// SetEmbeddingModel records the model that produced the stored frame vectors.
+func SetEmbeddingModel(modelName string) error {
+	setting := Setting{SettingKey: EmbeddingModelSetting, SettingValue: modelName, SettingType: "string"}
+	return setting.Save()
+}
 
 func InitSettings() error {
 	if err := DB.FirstOrCreate(

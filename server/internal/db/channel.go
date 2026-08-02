@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/astaxie/beego/utils"
 	log "github.com/sirupsen/logrus"
 	"github.com/srad/mediasink/server/config"
+	"github.com/srad/mediasink/server/internal/util"
 	"gorm.io/gorm"
 )
 
@@ -115,11 +115,11 @@ func CreateChannelDetail(channel Channel) (*Channel, error) {
 }
 
 func (channel *Channel) ExistsJSON() bool {
-	return utils.FileExists(channel.jsonPath())
+	return util.FileExists(channel.jsonPath())
 }
 
 func (channel *Channel) FolderExists() bool {
-	return utils.FileExists(channel.ChannelName.AbsoluteChannelPath())
+	return util.FileExists(channel.ChannelName.AbsoluteChannelPath())
 }
 
 func (channel *Channel) jsonPath() string {
