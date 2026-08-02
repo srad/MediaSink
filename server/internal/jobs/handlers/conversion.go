@@ -30,9 +30,18 @@ func (h *conversionHandler) Name() string {
 
 // Handle converts a video to a different format
 func (h *conversionHandler) Handle(job *db.Job, threadCount int) error {
-	mediaType, err := db.UnmarshalJobArg[string](job)
+	mediaType, err := db.UnmarshalJobArg[util.ConversionMediaType](job)
 	if err != nil {
 		return err
+	}
+
+	// Jobs queued by an older build may carry a media type that is no longer
+	// supported (e.g. "mp3"). Fail such jobs instead of handing them to ffmpeg.
+	if mediaType == nil {
+		return fmt.Errorf("conversion job %d has no media type", job.JobID)
+	}
+	if !mediaType.Validate() {
+		return fmt.Errorf("unsupported media type %q", *mediaType)
 	}
 
 	result, errConvert := util.ConvertVideo(&util.VideoConversionArgs{
@@ -57,8 +66,12 @@ func (h *conversionHandler) Handle(job *db.Job, threadCount int) error {
 		message := fmt.Errorf("error converting %s to %s: %w", job.Filename, *mediaType, errConvert)
 
 		h.deps.Logger.Error(message)
-		if errDelete := os.Remove(result.Filepath); errDelete != nil {
-			h.deps.Logger.Errorf("error deleting file %s: %v", result.Filepath, errDelete)
+		// ConvertVideo returns a nil result together with its errors, so only
+		// attempt cleanup when a partial output file was actually named.
+		if result != nil {
+			if errDelete := os.Remove(result.Filepath); errDelete != nil && !os.IsNotExist(errDelete) {
+				h.deps.Logger.Errorf("error deleting file %s: %v", result.Filepath, errDelete)
+			}
 		}
 		return message
 	}

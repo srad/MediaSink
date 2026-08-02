@@ -33,7 +33,6 @@
       <div class="btn-group">
         <button v-if="props.height !== 720" class="btn btn-light" @click="emit('convert', { recording: data, mediaType: '720' })">720p</button>
         <button v-if="props.height !== 1080" class="btn btn-light" @click="emit('convert', { recording: data, mediaType: '1080' })">1080p</button>
-        <!--<button class="btn btn-sm btn-warning" @click="emit('convert', {recording: data, mediaType: 'mp3'})">MP3</button>-->
       </div>
     </li>
     <li v-if="false" @click="expand = !expand" class="expand p-0 list-group-item d-flex justify-content-center expand-control" :class="{ expanded: expand }">

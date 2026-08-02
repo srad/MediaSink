@@ -244,9 +244,3 @@ func (channelName ChannelName) MakeRecordingFilename() (RecordingFileName, time.
 	stamp := now.Format("2006_01_02_15_04_05")
 	return RecordingFileName(fmt.Sprintf("%s_%s.mp4", channelName.String(), stamp)), now
 }
-
-func (channelName ChannelName) MakeMp3Filename() (RecordingFileName, time.Time) {
-	now := time.Now()
-	stamp := now.Format("2006_01_02_15_04_05")
-	return RecordingFileName(fmt.Sprintf("%s_%s.mp3", channelName.String(), stamp)), now
-}

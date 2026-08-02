@@ -409,8 +409,11 @@ func CreateJob[T any](recording *Recording, task JobTask, args *T) (*Job, error)
 	return job, err
 }
 
-func (recording *Recording) EnqueueConversionJob(mediaType string) (*Job, error) {
-	return enqueueJob[string](recording, TaskConvert, &mediaType)
+func (recording *Recording) EnqueueConversionJob(mediaType util.ConversionMediaType) (*Job, error) {
+	if !mediaType.Validate() {
+		return nil, fmt.Errorf("unsupported media type %q", mediaType)
+	}
+	return enqueueJob[util.ConversionMediaType](recording, TaskConvert, &mediaType)
 }
 
 func (recording *Recording) EnqueuePreviewFramesJob() (*Job, error) {

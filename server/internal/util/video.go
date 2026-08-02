@@ -88,6 +88,26 @@ func (p EncodingPreset) Validate() bool {
 	}
 }
 
+// ConversionMediaType is the target of a conversion job. These are the bare
+// scale heights passed to ffmpeg's scale filter, not the "720p"-style values
+// used by ResolutionType for the enhance feature.
+type ConversionMediaType string
+
+const (
+	Convert720p  ConversionMediaType = "720"
+	Convert1080p ConversionMediaType = "1080"
+)
+
+// Validate checks if the conversion media type is supported.
+func (m ConversionMediaType) Validate() bool {
+	switch m {
+	case Convert720p, Convert1080p:
+		return true
+	default:
+		return false
+	}
+}
+
 type EnhanceArgs struct {
 	TargetResolution ResolutionType `json:"targetResolution"`
 	DenoiseStrength  float64        `json:"denoiseStrength"`
@@ -224,60 +244,14 @@ func calcFps(output string) (float64, error) {
 	return fps, nil
 }
 
-func ConvertVideo(args *VideoConversionArgs, mediaType string) (*ConversionResult, error) {
-	input := filepath.Join(args.OutputPath, args.Filename)
-	if !FileExists(input) {
-		return nil, fmt.Errorf("file '%s' does not exit", input)
+func ConvertVideo(args *VideoConversionArgs, mediaType ConversionMediaType) (*ConversionResult, error) {
+	if !mediaType.Validate() {
+		return nil, fmt.Errorf("unsupported media type %q", mediaType)
 	}
 
-	// Might seem redundant, but since we have no dependent types...
-	if mediaType == "mp3" {
-		mp3Filename := fmt.Sprintf("%s.mp3", FileNameWithoutExtension(args.Filename))
-		outputAbsoluteMp3 := filepath.Join(args.OutputPath, mp3Filename)
-
-		result := &ConversionResult{
-			Filename:  mp3Filename,
-			CreatedAt: time.Now(),
-			Filepath:  outputAbsoluteMp3,
-		}
-
-		err := ExecSync(&ExecArgs{
-			OnPipeErr: func(info PipeMessage) {
-				if args.OnError != nil {
-					args.OnError(errors.New(info.Output))
-				}
-			},
-			OnStart: func(info CommandInfo) {
-				args.OnStart(TaskInfo{
-					Steps:   3,
-					Pid:     info.Pid,
-					Command: info.Command,
-				})
-			},
-			OnPipeOut: func(message PipeMessage) {
-				kvs := ParseFFmpegKVs(message.Output)
-
-				if frame, ok := kvs["frame"]; ok {
-					if value, err := strconv.ParseUint(frame, 10, 64); err == nil {
-						args.OnProgress(TaskProgress{Current: value})
-					}
-				}
-				if progress, ok := kvs["progress"]; ok {
-					if progress == "end" && args.OnEnd != nil {
-						args.OnEnd(TaskComplete{
-							Steps: 1,
-							Step:  1,
-						})
-					} else {
-						fmt.Println(progress)
-					}
-				}
-			},
-			Command:     "ffmpeg",
-			CommandArgs: []string{"-i", input, "-y", "-threads", fmt.Sprint(args.ThreadCount), "-hide_banner", "-loglevel", "error", "-progress", "pipe:1", "-q:a", "0", "-map", "a", outputAbsoluteMp3},
-		})
-
-		return result, err
+	input := filepath.Join(args.OutputPath, args.Filename)
+	if !FileExists(input) {
+		return nil, fmt.Errorf("file '%s' does not exist", input)
 	}
 
 	// Create new filename
@@ -553,6 +527,12 @@ func (video *Video) GetVideoInfo() (*FFProbeInfo, error) {
 		return info, err
 	}
 	info.Size = size
+
+	// ffprobe is invoked with -select_streams v:0, so an audio-only file yields
+	// an empty streams array. Without this guard the indexing below panics.
+	if len(parsed.Streams) == 0 {
+		return nil, fmt.Errorf("no video stream found in '%s'", video.FilePath)
+	}
 
 	fps, err := calcFps(parsed.Streams[0].RFrameRate)
 	if err != nil {

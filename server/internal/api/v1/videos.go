@@ -302,11 +302,11 @@ func CutVideo(c *gin.Context) {
 }
 
 // ConvertVideo godoc
-// @Summary     Cut a video and merge all defined segments
-// @Description Cut a video and merge all defined segments
+// @Summary     Convert a video to another resolution
+// @Description Convert a video to another resolution
 // @Tags        videos
 // @Param       id path uint true "video item id"
-// @Param       mediaType path string true "Media type to convert to: 720, 1080, mp3"
+// @Param       mediaType path string true "Media type to convert to: 720, 1080"
 // @Accept      json
 // @Produce     json
 // @Success     200 {object} db.Job
@@ -321,7 +321,12 @@ func ConvertVideo(c *gin.Context) {
 		appG.Error(http.StatusBadRequest, err)
 		return
 	}
-	mediaType := c.Param("mediaType")
+
+	mediaType := util.ConversionMediaType(c.Param("mediaType"))
+	if !mediaType.Validate() {
+		appG.Error(http.StatusBadRequest, fmt.Errorf("unsupported media type %q", mediaType))
+		return
+	}
 
 	if video, err := db.RecordingID(id).FindRecordingByID(); err != nil {
 		appG.Error(http.StatusInternalServerError, err)

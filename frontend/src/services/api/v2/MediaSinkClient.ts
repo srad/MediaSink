@@ -38,7 +38,7 @@ export interface ChannelsPartialUpdateParams {
 export interface ConvertCreateParams {
   /** video item id */
   id: number;
-  /** Media type to convert to: 720, 1080, mp3 */
+  /** Media type to convert to: 720, 1080 */
   mediaType: string;
 }
 
@@ -67,8 +67,10 @@ export interface DbChannel {
 }
 
 export interface DbHighlightInfo {
+  endTime?: number;
   /** 0-1, higher = more activity */
   intensity?: number;
+  startTime?: number;
   timestamp?: number;
   /** "motion", "sceneChange", "transition" */
   type?: string;
@@ -159,6 +161,7 @@ export interface DbSceneInfo {
 }
 
 export interface DbSegmentInfo {
+  /** 0-1, higher = stronger boundary evidence */
   confidence?: number;
   endTime?: number;
   kind?: string;
@@ -235,6 +238,11 @@ export interface PauseCreateParams {
 
 export interface PreviewCreateParams {
   /** videos item id */
+  id: number;
+}
+
+export interface PreviewManifestDetailParams {
+  /** video item id */
   id: number;
 }
 
@@ -471,8 +479,21 @@ export interface ResponsesPresetDescription {
   preset: string;
 }
 
+export interface ResponsesPreviewManifestResponse {
+  frameCount: number;
+  previewPath: string;
+  recordingId: number;
+  timestamps?: number[];
+}
+
 export interface ResponsesRecordingStatusResponse {
   isRecording: boolean;
+}
+
+export interface ResponsesRegenerateChaptersResponse {
+  enqueued?: number;
+  recordings?: number;
+  removedJobs?: number;
 }
 
 export interface ResponsesResolutionDescription {
@@ -648,6 +669,23 @@ export interface VideosDetailParams {
 
 export namespace Admin {
   /**
+   * @description Deletes existing analyze-frames jobs and creates a fresh chapter-analysis job for every recording
+   * @tags admin
+   * @name ChaptersRegenerateCreate
+   * @summary Remove stale chapter jobs and enqueue fresh analysis for all recordings
+   * @request POST:/admin/chapters/regenerate
+   * @response `200` `ResponsesRegenerateChaptersResponse` OK
+   * @response `500` `any` Internal Server Error
+   */
+  export namespace ChaptersRegenerateCreate {
+    export type RequestParams = {};
+    export type RequestQuery = {};
+    export type RequestBody = never;
+    export type RequestHeaders = {};
+    export type ResponseBody = ResponsesRegenerateChaptersResponse;
+  }
+
+  /**
    * @description Get the current import progress status and information
    * @tags admin
    * @name ImportList
@@ -697,7 +735,6 @@ export namespace Admin {
     export type RequestHeaders = {};
     export type ResponseBody = ResponsesServerInfoResponse;
   }
-
 }
 
 export namespace Analysis {
@@ -1607,7 +1644,7 @@ export namespace Videos {
     export type RequestQuery = {};
     export type RequestBody = never;
     export type RequestHeaders = {};
-    export type ResponseBody = File;
+    export type ResponseBody = Blob;
   }
 
   /**
@@ -1695,6 +1732,28 @@ export namespace Videos {
   }
 
   /**
+   * @description Return the sorted list of actual preview frame timestamps for a video timeline.
+   * @tags videos
+   * @name PreviewManifestDetail
+   * @summary Return actual preview frame timestamps for a video
+   * @request GET:/videos/{id}/preview/manifest
+   * @response `200` `ResponsesPreviewManifestResponse` OK
+   * @response `400` `any` Error message
+   * @response `404` `any` Error message
+   * @response `500` `any` Error message
+   */
+  export namespace PreviewManifestDetail {
+    export type RequestParams = {
+      /** video item id */
+      id: number;
+    };
+    export type RequestQuery = {};
+    export type RequestBody = never;
+    export type RequestHeaders = {};
+    export type ResponseBody = ResponsesPreviewManifestResponse;
+  }
+
+  /**
    * @description Remove/unbookmark a video from favorites
    * @tags videos
    * @name UnfavPartialUpdate
@@ -1716,10 +1775,10 @@ export namespace Videos {
   }
 
   /**
-   * @description Cut a video and merge all defined segments
+   * @description Convert a video to another resolution
    * @tags videos
    * @name ConvertCreate
-   * @summary Cut a video and merge all defined segments
+   * @summary Convert a video to another resolution
    * @request POST:/videos/{id}/{mediaType}/convert
    * @response `200` `DbJob` OK
    * @response `400` `any` Error message
@@ -1729,7 +1788,7 @@ export namespace Videos {
     export type RequestParams = {
       /** video item id */
       id: number;
-      /** Media type to convert to: 720, 1080, mp3 */
+      /** Media type to convert to: 720, 1080 */
       mediaType: string;
     };
     export type RequestQuery = {};
@@ -2007,6 +2066,25 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
 
   admin = {
     /**
+     * @description Deletes existing analyze-frames jobs and creates a fresh chapter-analysis job for every recording
+     *
+     * @tags admin
+     * @name ChaptersRegenerateCreate
+     * @summary Remove stale chapter jobs and enqueue fresh analysis for all recordings
+     * @request POST:/admin/chapters/regenerate
+     * @response `200` `ResponsesRegenerateChaptersResponse` OK
+     * @response `500` `any` Internal Server Error
+     */
+    chaptersRegenerateCreate: (params: RequestParams = {}) =>
+      this.http.request<ResponsesRegenerateChaptersResponse, any>({
+        path: `/admin/chapters/regenerate`,
+        method: "POST",
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
      * @description Get the current import progress status and information
      *
      * @tags admin
@@ -2062,7 +2140,6 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
         format: "json",
         ...params,
       }),
-
   };
   analysis = {
     /**
@@ -2144,7 +2221,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `500` `any` Error message
      */
     analysisDetail: (
-      { id, ...query }: AnalysisDetailParams,
+      { id }: AnalysisDetailParams,
       params: RequestParams = {},
     ) =>
       this.http.request<ResponsesAnalysisResponse, any>({
@@ -2167,7 +2244,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `500` `any` Error message
      */
     analysisCreate: (
-      { id, ...query }: AnalysisCreateParams,
+      { id }: AnalysisCreateParams,
       params: RequestParams = {},
     ) =>
       this.http.request<any, any>({
@@ -2302,7 +2379,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `500` `any` Internal Server Error
      */
     channelsDetail: (
-      { id, ...query }: ChannelsDetailParams,
+      { id }: ChannelsDetailParams,
       params: RequestParams = {},
     ) =>
       this.http.request<ServicesChannelInfo, any>({
@@ -2324,7 +2401,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `500` `any` Internal Server Error
      */
     channelsDelete: (
-      { id, ...query }: ChannelsDeleteParams,
+      { id }: ChannelsDeleteParams,
       params: RequestParams = {},
     ) =>
       this.http.request<any, any>({
@@ -2347,7 +2424,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `500` `any` Internal Server Error
      */
     channelsPartialUpdate: (
-      { id, ...query }: ChannelsPartialUpdateParams,
+      { id }: ChannelsPartialUpdateParams,
       ChannelRequest: RequestsChannelRequest,
       params: RequestParams = {},
     ) =>
@@ -2372,7 +2449,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `500` `any` Internal Server Error
      */
     favPartialUpdate: (
-      { id, ...query }: FavPartialUpdateParams,
+      { id }: FavPartialUpdateParams,
       params: RequestParams = {},
     ) =>
       this.http.request<any, any>({
@@ -2395,7 +2472,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `500` `any` Error message
      */
     mergeCreate: (
-      { id, ...query }: MergeCreateParams,
+      { id }: MergeCreateParams,
       MergeRequest: RequestsMergeRequest,
       params: RequestParams = {},
     ) =>
@@ -2419,10 +2496,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `400` `any` Bad Request
      * @response `500` `any` Internal Server Error
      */
-    pauseCreate: (
-      { id, ...query }: PauseCreateParams,
-      params: RequestParams = {},
-    ) =>
+    pauseCreate: ({ id }: PauseCreateParams, params: RequestParams = {}) =>
       this.http.request<any, any>({
         path: `/channels/${id}/pause`,
         method: "POST",
@@ -2442,10 +2516,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `400` `any` Bad Request
      * @response `500` `any` Internal Server Error
      */
-    resumeCreate: (
-      { id, ...query }: ResumeCreateParams,
-      params: RequestParams = {},
-    ) =>
+    resumeCreate: ({ id }: ResumeCreateParams, params: RequestParams = {}) =>
       this.http.request<any, any>({
         path: `/channels/${id}/resume`,
         method: "POST",
@@ -2466,7 +2537,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `500` `any` Internal Server Error
      */
     tagsPartialUpdate: (
-      { id, ...query }: TagsPartialUpdateParams,
+      { id }: TagsPartialUpdateParams,
       ChannelTagsUpdateRequest: RequestsChannelTagsUpdateRequest,
       params: RequestParams = {},
     ) =>
@@ -2490,7 +2561,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `500` `any` Internal Server Error
      */
     unfavPartialUpdate: (
-      { id, ...query }: UnfavPartialUpdateParams,
+      { id }: UnfavPartialUpdateParams,
       params: RequestParams = {},
     ) =>
       this.http.request<any, any>({
@@ -2513,7 +2584,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `500` `any` Internal Server Error
      */
     uploadCreate: (
-      { id, ...query }: UploadCreateParams,
+      { id }: UploadCreateParams,
       data: UploadCreatePayload,
       params: RequestParams = {},
     ) =>
@@ -2556,10 +2627,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `200` `UtilSysInfo` OK
      * @response `500` `any` Internal Server Error
      */
-    infoDetail: (
-      { seconds, ...query }: InfoDetailParams,
-      params: RequestParams = {},
-    ) =>
+    infoDetail: ({ seconds }: InfoDetailParams, params: RequestParams = {}) =>
       this.http.request<UtilSysInfo, any>({
         path: `/info/${seconds}`,
         method: "GET",
@@ -2642,10 +2710,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `400` `any` Error message
      * @response `500` `any` Error message
      */
-    stopCreate: (
-      { pid, ...query }: StopCreateParams,
-      params: RequestParams = {},
-    ) =>
+    stopCreate: ({ pid }: StopCreateParams, params: RequestParams = {}) =>
       this.http.request<any, any>({
         path: `/jobs/stop/${pid}`,
         method: "POST",
@@ -2684,10 +2749,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `400` `any` Error message
      * @response `500` `any` Error message
      */
-    jobsCreate: (
-      { id, ...query }: JobsCreateParams,
-      params: RequestParams = {},
-    ) =>
+    jobsCreate: ({ id }: JobsCreateParams, params: RequestParams = {}) =>
       this.http.request<DbJob[], any>({
         path: `/jobs/${id}`,
         method: "POST",
@@ -2707,10 +2769,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `400` `any` Error message
      * @response `500` `any` Error message
      */
-    jobsDelete: (
-      { id, ...query }: JobsDeleteParams,
-      params: RequestParams = {},
-    ) =>
+    jobsDelete: ({ id }: JobsDeleteParams, params: RequestParams = {}) =>
       this.http.request<any, any>({
         path: `/jobs/${id}`,
         method: "DELETE",
@@ -2969,10 +3028,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `400` `any` Error message
      * @response `500` `any` Error message
      */
-    randomDetail: (
-      { limit, ...query }: RandomDetailParams,
-      params: RequestParams = {},
-    ) =>
+    randomDetail: ({ limit }: RandomDetailParams, params: RequestParams = {}) =>
       this.http.request<DbRecording[], any>({
         path: `/videos/random/${limit}`,
         method: "GET",
@@ -3011,10 +3067,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `400` `any` Error message
      * @response `500` `any` Error message
      */
-    videosDetail: (
-      { id, ...query }: VideosDetailParams,
-      params: RequestParams = {},
-    ) =>
+    videosDetail: ({ id }: VideosDetailParams, params: RequestParams = {}) =>
       this.http.request<DbRecording, any>({
         path: `/videos/${id}`,
         method: "GET",
@@ -3034,10 +3087,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `400` `any` Error message
      * @response `500` `any` Error message
      */
-    videosDelete: (
-      { id, ...query }: VideosDeleteParams,
-      params: RequestParams = {},
-    ) =>
+    videosDelete: ({ id }: VideosDeleteParams, params: RequestParams = {}) =>
       this.http.request<void, any>({
         path: `/videos/${id}`,
         method: "DELETE",
@@ -3057,7 +3107,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `500` `any` Error message
      */
     cutCreate: (
-      { id, ...query }: CutCreateParams,
+      { id }: CutCreateParams,
       CutRequest: RequestsCutRequest,
       params: RequestParams = {},
     ) =>
@@ -3082,10 +3132,10 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `500` `any` Error message
      */
     downloadDetail: (
-      { id, ...query }: DownloadDetailParams,
+      { id }: DownloadDetailParams,
       params: RequestParams = {},
     ) =>
-      this.http.request<File, any>({
+      this.http.request<Blob, any>({
         path: `/videos/${id}/download`,
         method: "GET",
         type: ContentType.Json,
@@ -3104,7 +3154,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `500` `any` Error message
      */
     enhanceCreate: (
-      { id, ...query }: EnhanceCreateParams,
+      { id }: EnhanceCreateParams,
       EnhanceRequest: RequestsEnhanceRequest,
       params: RequestParams = {},
     ) =>
@@ -3129,7 +3179,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `500` `any` Error message
      */
     estimateEnhancementCreate: (
-      { id, ...query }: EstimateEnhancementCreateParams,
+      { id }: EstimateEnhancementCreateParams,
       EstimateEnhancementRequest: RequestsEstimateEnhancementRequest,
       params: RequestParams = {},
     ) =>
@@ -3154,7 +3204,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `500` `any` Error message
      */
     favPartialUpdate: (
-      { id, ...query }: FavPartialUpdateParams2,
+      { id }: FavPartialUpdateParams2,
       params: RequestParams = {},
     ) =>
       this.http.request<any, any>({
@@ -3176,13 +3226,34 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `400` `any` Error message
      * @response `500` `any` Error message
      */
-    previewCreate: (
-      { id, ...query }: PreviewCreateParams,
-      params: RequestParams = {},
-    ) =>
+    previewCreate: ({ id }: PreviewCreateParams, params: RequestParams = {}) =>
       this.http.request<DbJob[], any>({
         path: `/videos/${id}/preview`,
         method: "POST",
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * @description Return the sorted list of actual preview frame timestamps for a video timeline.
+     *
+     * @tags videos
+     * @name PreviewManifestDetail
+     * @summary Return actual preview frame timestamps for a video
+     * @request GET:/videos/{id}/preview/manifest
+     * @response `200` `ResponsesPreviewManifestResponse` OK
+     * @response `400` `any` Error message
+     * @response `404` `any` Error message
+     * @response `500` `any` Error message
+     */
+    previewManifestDetail: (
+      { id }: PreviewManifestDetailParams,
+      params: RequestParams = {},
+    ) =>
+      this.http.request<ResponsesPreviewManifestResponse, any>({
+        path: `/videos/${id}/preview/manifest`,
+        method: "GET",
         type: ContentType.Json,
         format: "json",
         ...params,
@@ -3200,7 +3271,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @response `500` `any` Error message
      */
     unfavPartialUpdate: (
-      { id, ...query }: UnfavPartialUpdateParams2,
+      { id }: UnfavPartialUpdateParams2,
       params: RequestParams = {},
     ) =>
       this.http.request<any, any>({
@@ -3212,18 +3283,18 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
       }),
 
     /**
-     * @description Cut a video and merge all defined segments
+     * @description Convert a video to another resolution
      *
      * @tags videos
      * @name ConvertCreate
-     * @summary Cut a video and merge all defined segments
+     * @summary Convert a video to another resolution
      * @request POST:/videos/{id}/{mediaType}/convert
      * @response `200` `DbJob` OK
      * @response `400` `any` Error message
      * @response `500` `any` Error message
      */
     convertCreate: (
-      { id, mediaType, ...query }: ConvertCreateParams,
+      { id, mediaType }: ConvertCreateParams,
       params: RequestParams = {},
     ) =>
       this.http.request<DbJob, any>({

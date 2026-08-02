@@ -48,13 +48,3 @@ func TestMakeRecordingFilename(t *testing.T) {
 		t.Errorf("MakeRecordingFilename() is %s but should match pattern %s", fact, filePattern.String())
 	}
 }
-
-func TestCreateMp3Filename(t *testing.T) {
-	channelName := ChannelName("my_channel")
-	filePattern, _ := regexp.Compile(`^[a-z0-9_]+_\d\d\d\d_\d\d_\d\d_\d\d_\d\d_\d\d.mp3$`)
-	fact, _ := channelName.MakeMp3Filename()
-
-	if !filePattern.MatchString(fact.String()) {
-		t.Errorf("MakeMp3Filename() is %s but should match pattern %s", fact, filePattern.String())
-	}
-}
