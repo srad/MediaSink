@@ -1,0 +1,26 @@
+{
+  "model_name": "mobilenetv4_conv_large",
+  "checkpoint": "timm/mobilenetv4_conv_large.e500_r256_in1k",
+  "input_size": 256,
+  "input_layout": "NCHW",
+  "input_range": "[0,1] \u2014 ImageNet normalization is applied inside the graph",
+  "embedding_dim": 1280,
+  "normalization": {
+    "mean": [
+      0.485,
+      0.456,
+      0.406
+    ],
+    "std": [
+      0.229,
+      0.224,
+      0.225
+    ]
+  },
+  "opset": 20,
+  "exporter": "dynamo",
+  "torch_version": "2.13.0+cpu",
+  "timm_version": "1.0.28",
+  "sha256": "321014fe2bd839f3639d3a37c60974116e1896502d008c388b810d13bc5e1d73",
+  "exported_at": "2026-08-02T19:34:27+00:00"
+}
