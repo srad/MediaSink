@@ -359,6 +359,25 @@ The application uses FFmpeg for video processing:
 - Actual errors still logged and broadcasted to client
 - Failed output files cleaned up on error
 
+### Process Cancellation (`util.ErrInterrupted`)
+
+`util.ExecSync` registers every process it starts so `util.Interrupt(pid)` can signal it by PID
+(this is what `POST /jobs/stop/{pid}` and the `job.Pid` paths use). When a process is stopped that
+way, `ExecSync` returns an error wrapping **`util.ErrInterrupted`**.
+
+Because the point above — *failed output files cleaned up on error* — is applied by most callers,
+**any caller that destroys data on error must first check `errors.Is(err, util.ErrInterrupted)`**.
+A deliberate stop says nothing about whether the input was good. `services.fixOrphanedFiles` is
+the cautionary case: it deletes a recording (file *and* database row) when `util.CheckVideo`
+fails, so it routes the decision through `isCorruptionEvidence()`, which excludes interruption.
+
+Two rules follow for anyone touching this path:
+
+- Propagate the error identity. Wrapping with `%w` is fine; `%v` silently breaks `errors.Is` and
+  turns a stopped check into a deletion.
+- A process that was signalled but still exited **0** completed its work and is reported as
+  success, not as an interruption — otherwise callers would discard a finished result.
+
 ## Performance Considerations
 
 - **Resolution**: Limiting to 4 standard resolutions (720p, 1080p, 1440p, 4K)

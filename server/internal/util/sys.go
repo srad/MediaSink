@@ -2,7 +2,6 @@ package util
 
 import (
 	"bufio"
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -17,9 +16,55 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var (
-	cmd = make(map[int]*exec.Cmd)
-)
+// ErrInterrupted reports that a process was deliberately stopped via Interrupt
+// rather than failing on its own.
+var ErrInterrupted = errors.New("process interrupted")
+
+type processEntry struct {
+	cmd         *exec.Cmd
+	interrupted bool
+}
+
+// processRegistry tracks the external processes this server started so they can
+// be signalled by PID. Every method takes the lock for its whole body.
+type processRegistry struct {
+	mu      sync.Mutex
+	entries map[int]*processEntry
+}
+
+var processes = &processRegistry{entries: make(map[int]*processEntry)}
+
+func (r *processRegistry) register(pid int, c *exec.Cmd) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.entries[pid] = &processEntry{cmd: c}
+}
+
+func (r *processRegistry) unregister(pid int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.entries, pid)
+}
+
+// markInterrupted flags the process as deliberately stopped and returns it so
+// the caller can signal it outside the lock.
+func (r *processRegistry) markInterrupted(pid int) (*exec.Cmd, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	entry, ok := r.entries[pid]
+	if !ok {
+		return nil, false
+	}
+	entry.interrupted = true
+	return entry.cmd, true
+}
+
+func (r *processRegistry) wasInterrupted(pid int) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	entry, ok := r.entries[pid]
+	return ok && entry.interrupted
+}
 
 type CommandInfo struct {
 	Command string
@@ -27,7 +72,6 @@ type CommandInfo struct {
 }
 
 type ExecArgs struct {
-	cancel      context.CancelFunc
 	OnStart     func(CommandInfo)
 	OnPipeOut   func(PipeMessage)
 	OnPipeErr   func(PipeMessage)
@@ -89,9 +133,14 @@ func ExecSync(execArgs *ExecArgs) error {
 	c := exec.Command(execArgs.Command, execArgs.CommandArgs...)
 	log.Infof("Executing: %s", execArgs.ToString())
 
-	// stdout, _ := cmd.StdoutPipe()
-	stout, _ := c.StdoutPipe()
-	sterr, _ := c.StderrPipe()
+	stout, err := c.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("stdout pipe: %w", err)
+	}
+	sterr, err := c.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("stderr pipe: %w", err)
+	}
 
 	if err := c.Start(); err != nil {
 		log.Infof("cmd.Start: %s", err)
@@ -99,8 +148,8 @@ func ExecSync(execArgs *ExecArgs) error {
 	}
 
 	pid := c.Process.Pid
-	cmd[pid] = c
-	defer delete(cmd, pid)
+	processes.register(pid, c)
+	defer processes.unregister(pid)
 
 	if execArgs.OnStart != nil {
 		execArgs.OnStart(CommandInfo{Pid: pid, Command: execArgs.ToString()})
@@ -134,33 +183,31 @@ func ExecSync(execArgs *ExecArgs) error {
 	// Wait for the goroutines to finish
 	wg.Wait()
 
-	// First check if process still exists, could have been killed in the meantime.
-	if _, ok := cmd[pid]; ok {
-		if err := cmd[pid].Wait(); err != nil {
-			var exiterr *exec.ExitError
-			if errors.As(err, &exiterr) {
-				// The program has exited with an exit code != 0
+	// Always wait: skipping it would leak the child as a zombie holding its
+	// pipe fds, and would report success for a process that was killed.
+	waitErr := c.Wait()
 
-				// This works on both Unix and Windows. Although package
-				// syscall is generally platform dependent, WaitStatus is
-				// defined for both Unix and Windows and in both cases has
-				// an ExitStatus() method with the same signature.
-				if _, ok := exiterr.Sys().(syscall.WaitStatus); ok {
-					return err
-					// return status.ExitStatus()
-				}
-			}
-			return err
-		}
+	// Checked before the deferred unregister runs, so the entry is still there.
+	// Only a non-zero exit counts as interrupted: a process that was signalled
+	// but still exited 0 finished its work, and reporting failure would make
+	// callers discard a good result.
+	if waitErr != nil && processes.wasInterrupted(pid) {
+		return fmt.Errorf("%w: %v", ErrInterrupted, waitErr)
 	}
 
-	return nil
+	return waitErr
 }
 
 func Interrupt(pid int) error {
-	if c, ok := cmd[pid]; ok {
-		err := c.Process.Signal(syscall.SIGINT)
-		delete(cmd, pid)
+	c, ok := processes.markInterrupted(pid)
+	if !ok || c.Process == nil {
+		return nil // already finished, or never ours
+	}
+
+	if err := c.Process.Signal(syscall.SIGINT); err != nil {
+		if errors.Is(err, os.ErrProcessDone) {
+			return nil // raced with normal exit; nothing to stop
+		}
 		return err
 	}
 	return nil

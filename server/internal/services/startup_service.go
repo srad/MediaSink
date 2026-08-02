@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 
@@ -94,15 +95,33 @@ func fixOrphanedFiles() error {
 	for _, recording := range recordings {
 		log.Infof("Handling channel file %s", recording.AbsoluteChannelFilepath())
 		err := util.CheckVideo(recording.AbsoluteChannelFilepath())
-		if err != nil {
-			log.Errorf("The file '%s' is corrupted, deleting from disk ... ", recording.Filename)
-			if err := recording.DestroyRecording(); err != nil {
-				log.Errorf("Deleted file '%s'", recording.Filename)
+
+		if !isCorruptionEvidence(err) {
+			if err != nil {
+				log.Warnf("Integrity check for '%s' was interrupted, leaving the file untouched", recording.Filename)
 			}
+			continue
+		}
+
+		log.Errorf("The file '%s' is corrupted, deleting from disk ... ", recording.Filename)
+		if errDestroy := recording.DestroyRecording(); errDestroy != nil {
+			log.Errorf("Error deleting file '%s': %s", recording.Filename, errDestroy)
+		} else {
+			log.Infof("Deleted file '%s'", recording.Filename)
 		}
 	}
 
 	return nil
+}
+
+// isCorruptionEvidence reports whether a CheckVideo failure is evidence that the
+// file itself is bad, and therefore safe to act on by deleting the recording.
+//
+// A deliberately interrupted check says nothing about the file: util.Interrupt
+// can reach any registered process, including this one, and treating that as
+// corruption would destroy a healthy recording along with its database row.
+func isCorruptionEvidence(err error) bool {
+	return err != nil && !errors.Is(err, util.ErrInterrupted)
 }
 
 // resetOrphanedJobs resets any jobs that were left active (active=true, status=open)

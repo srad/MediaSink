@@ -1,11 +1,13 @@
 package util
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestConversionMediaTypeValidate(t *testing.T) {
@@ -97,6 +99,55 @@ func TestGetVideoInfoAudioOnlyReturnsError(t *testing.T) {
 	}
 	if info != nil {
 		t.Errorf("GetVideoInfo returned a non-nil info %+v alongside the error", info)
+	}
+}
+
+// services.fixOrphanedFiles deletes a recording when CheckVideo fails, and
+// distinguishes a genuine failure from a deliberate stop with
+// errors.Is(err, ErrInterrupted). That only works while CheckVideo propagates
+// ExecSync's error identity, so verify the real chain end to end: a wrapper
+// using %v instead of %w here would silently start deleting healthy files.
+func TestCheckVideoInterruptedIsIdentifiable(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg not available")
+	}
+
+	src := filepath.Join("..", "..", "assets", "test.mp4")
+	if _, err := os.Stat(src); err != nil {
+		t.Skipf("test asset missing: %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- CheckVideo(src) }()
+
+	// Poll the registry for the ffmpeg process CheckVideo just started.
+	var pid int
+	for i := 0; i < 200 && pid == 0; i++ {
+		processes.mu.Lock()
+		for p := range processes.entries {
+			pid = p
+			break
+		}
+		processes.mu.Unlock()
+		if pid == 0 {
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	if pid == 0 {
+		t.Skip("CheckVideo finished before it could be interrupted")
+	}
+
+	if err := Interrupt(pid); err != nil {
+		t.Fatalf("Interrupt: %v", err)
+	}
+
+	err := <-done
+	if err == nil {
+		t.Skip("CheckVideo completed before the signal landed")
+	}
+	if !errors.Is(err, ErrInterrupted) {
+		t.Fatalf("CheckVideo returned %v, which does not satisfy errors.Is(err, ErrInterrupted); "+
+			"fixOrphanedFiles would treat this as corruption and delete the recording", err)
 	}
 }
 
