@@ -116,23 +116,6 @@ func (v *VideoAnalysisResult) SetSegments(segments []SegmentInfo) error {
 	return nil
 }
 
-func CreateOrUpdateAnalysis(recordingID RecordingID) (*VideoAnalysisResult, error) {
-	analysis := &VideoAnalysisResult{
-		RecordingID: recordingID,
-		Status:      AnalysisPending,
-	}
-
-	result := DB.Where("recording_id = ?", recordingID).
-		Assign(analysis).
-		FirstOrCreate(analysis)
-
-	if result.Error != nil {
-		return nil, result.Error
-	}
-
-	return analysis, nil
-}
-
 func GetAnalysisByRecordingID(recordingID RecordingID) (*VideoAnalysisResult, error) {
 	var analysis *VideoAnalysisResult
 	err := DB.Where("recording_id = ?", recordingID).First(&analysis).Error

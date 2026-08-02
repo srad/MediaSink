@@ -221,7 +221,6 @@ RUN MODEL=server/assets/models/mobilenetv4_conv_large.onnx; \
 # Overlay the pre-built frontend so go:embed picks it up
 COPY --from=frontend_builder /app/dist /app/server/frontend/dist
 
-RUN chmod a+x server/wait-for-it.sh
 RUN chmod a+x server/docker-entrypoint.sh
 
 RUN go install github.com/swaggo/swag/cmd/swag@latest
@@ -315,12 +314,10 @@ COPY ./server/assets/DMMono-Regular.ttf /usr/share/fonts/truetype/
 COPY ./server/assets/live.jpg ./assets/
 COPY --from=app_builder /app/server/assets/models/ ./assets/models/
 COPY ./server/docker-entrypoint.sh ./docker-entrypoint.sh
-COPY ./server/wait-for-it.sh ./wait-for-it.sh
 RUN fc-cache -fv
 
 # Ensure scripts are executable
 RUN chmod +x /app/docker-entrypoint.sh
-RUN chmod +x /app/wait-for-it.sh
 
 RUN mkdir -p /recordings
 RUN mkdir -p /disk

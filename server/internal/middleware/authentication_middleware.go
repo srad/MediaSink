@@ -98,25 +98,3 @@ func CheckAuthorizationHeader(c *gin.Context) {
 	c.Next()
 }
 
-func CheckJWTFromCookie(c *gin.Context) {
-	tokenStr, err := c.Cookie("jwt")
-	if err != nil {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Missing token"})
-		return
-	}
-
-	token, err := jwt.Parse(tokenStr, func(token *jwt.Token) (interface{}, error) {
-		return []byte(os.Getenv("SECRET")), nil
-	})
-	if err != nil || !token.Valid {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
-		return
-	}
-
-	// Optional: pass user ID into context
-	if claims, ok := token.Claims.(jwt.MapClaims); ok {
-		c.Set("user_id", claims["id"])
-	}
-
-	c.Next()
-}

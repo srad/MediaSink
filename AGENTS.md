@@ -4,6 +4,12 @@ This file provides guidance to coding agents working with code in this repositor
 
 JavaScript package-manager rule: use `npm` only in this repository. Do not introduce or recommend `pnpm`.
 
+# Agent Instructions
+
+- Never use subagents (Agent tool) or worktrees for any task in this project. Do the work directly using Read, Edit, Write, Grep, Glob, and Bash tools.
+- Never run `git add`, `git commit`, `git push`, or any other git command that changes repository state on your own initiative — only when I explicitly ask for it in that moment. An approved plan containing a "commit" step is not a request to commit: stop at the working tree and report what is ready. Read-only git commands (`status`, `diff`, `log`, `show`) are fine at any time.
+- No branching without permission by the user 
+
 ## Overview
 
 MediaSink.Go is a Go-based web server for video management, stream recording, and editing. It provides:
@@ -23,12 +29,12 @@ MediaSink.Go is a Go-based web server for video management, stream recording, an
   - **app/**: Composition root and lifecycle management for startup validation, DB/vector-store init, and graceful shutdown
   - **config/**: Configuration — reads exclusively from environment variables (`config.Read()` is cached via `sync.Once`)
   - **docs/**: Generated Swagger/OpenAPI output; `server/docs/swagger.json` is the source of truth for generated clients
-  - **docker-entrypoint.sh**, **wait-for-it.sh**: Server-container helper scripts used by the root Dockerfile
+  - **docker-entrypoint.sh**: Server-container entrypoint used by the root Dockerfile
   - **internal/api/**: Active public HTTP layer
   - **internal/api/v1/**: Legacy handler implementations still mounted under the public `/api/v2` routes
   - **internal/api/router.go**: Route setup and middleware configuration for the shipped server
   - **internal/api/frontend.go**: Serves embedded frontend — `/env.js`, `/build.js`, and SPA catch-all
-- **server/internal/http/v2/**: Refactored v2 handler slice and dependencies; currently present in the repo but not wired as the active public router
+- **server/internal/http/v2/**: Refactored v2 handler slice and dependencies; currently present in the repo but not wired as the active public router. It is one part of an **unfinished migration** that also covers `internal/http/middleware/`, `internal/service/*` and `internal/store/relational/`. The whole stack hangs off `initializeV2Dependencies()` in `app/wire_gen.go`, which nothing calls — no request reaches any of it. Treat it as work in progress, not as live code, and do not delete it during cleanup passes.
 - **server/internal/services/**: Business logic for core features
   - `recording_service.go`: Video information updates and metadata
   - `recorder_service.go`: Recording orchestration and lifecycle
@@ -44,11 +50,11 @@ MediaSink.Go is a Go-based web server for video management, stream recording, an
   - **internal/models/requests/**: Request DTOs with validation tags
   - **internal/models/responses/**: Response DTOs
 - **server/internal/analysis/**: Video analysis pipeline components
-  - **internal/analysis/detectors/**: Scene/highlight detectors (SSIM, frame-diff, ONNX)
+  - **internal/analysis/detectors/**: ONNX-based scene/highlight detectors
   - **internal/analysis/threshold/**: Adaptive threshold strategies
   - **internal/analysis/smoothing/**: Similarity smoothing methods
 - **server/internal/middleware/**: HTTP middleware (authentication, authorization)
-- **server/internal/jobs/**: Background job executor and worker pool; absorbs metrics helpers
+- **server/internal/jobs/**: Background job executor and worker pool
   - **internal/jobs/handlers/**: Per-job-type handler implementations
 - **server/internal/util/**: Utility functions (FFmpeg cmd, video probing, string/sys helpers)
 - **server/internal/ws/**: WebSocket event types and broadcasting
@@ -376,7 +382,7 @@ Source lives in `frontend/`. Built with Vite + npm; output goes to `frontend/dis
 - **Real-time**: Custom WebSocket manager (`src/utils/socket.ts`)
 - **Styling**: Bootstrap 5 + SCSS variables
 - **Internationalization**: Vue i18n
-- **Testing**: Vitest (unit), Nightwatch (E2E)
+- **Testing**: Vitest (unit)
 - **PWA**: Vite PWA plugin with Workbox
 
 ### Directory Structure
@@ -482,7 +488,6 @@ cd frontend && npm run client
 ```sh
 cd frontend
 npm run test:unit   # Vitest unit tests
-npm run test:e2e    # Nightwatch E2E tests
 ```
 
 ### Video Analysis UI

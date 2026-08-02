@@ -2,7 +2,6 @@ package vector
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"os"
 	"sync"
@@ -136,23 +135,3 @@ func (s *SQLiteVecStore) QueryRecordingSimilarityEdges(_ context.Context, minSim
 	return db.QueryRecordingSimilarityEdges(minSimilarity, recordingIDs, limit)
 }
 
-func QueryVersion(ctx context.Context) (string, error) {
-	if db.DB == nil {
-		return "", fmt.Errorf("database is not initialized")
-	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	sqlDB, err := db.DB.DB()
-	if err != nil {
-		return "", err
-	}
-	var version string
-	if err := sqlDB.QueryRowContext(ctx, `SELECT vec_version()`).Scan(&version); err != nil {
-		if err == sql.ErrNoRows {
-			return "", nil
-		}
-		return "", err
-	}
-	return version, nil
-}

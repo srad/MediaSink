@@ -4,7 +4,6 @@ import { VitePWA } from "vite-plugin-pwa";
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import vueDevTools from "vite-plugin-vue-devtools";
-import nightwatchPlugin from "vite-plugin-nightwatch";
 
 // Injects runtime config scripts into HTML without Vite trying to resolve them.
 // These scripts are served dynamically by the Go server at runtime.
@@ -61,7 +60,6 @@ export default defineConfig({
     runtimeScripts(),
     vue(),
     vueDevTools(),
-    nightwatchPlugin(),
     VitePWA({
       registerType: "autoUpdate",
       devOptions: {

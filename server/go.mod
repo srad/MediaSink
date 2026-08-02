@@ -19,8 +19,7 @@ require (
 	// server/install-onnxruntime.sh at or above it.
 	github.com/yalue/onnxruntime_go v1.31.0
 	golang.org/x/crypto v0.54.0
-	golang.org/x/sys v0.47.0
-	gonum.org/v1/gonum v0.17.0
+	golang.org/x/sys v0.47.0 // indirect
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/driver/postgres v1.6.2
 	gorm.io/driver/sqlite v1.6.0

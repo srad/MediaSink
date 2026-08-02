@@ -167,7 +167,3 @@ func GetRegenerationProgress() RegenerationProgress {
 	return previewRegenerator.GetProgress()
 }
 
-// IsRegeneratingPreviews returns whether preview regeneration is currently running
-func IsRegeneratingPreviews() bool {
-	return previewRegenerator.IsRunning()
-}

@@ -119,32 +119,3 @@ func CreateHighlightDetector(detectorType DetectorType) (HighlightDetector, erro
 
 	return highlightDetector, nil
 }
-
-// CreateDetectors creates both scene and highlight detectors based on configuration.
-func CreateDetectors(config *DetectorConfig) (SceneDetector, HighlightDetector, error) {
-	sceneDetector, err := CreateSceneDetector(config.SceneDetector)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	highlightDetector, err := CreateHighlightDetector(config.HighlightDetector)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return sceneDetector, highlightDetector, nil
-}
-
-// AvailableSceneDetectors returns the list of available scene detector names.
-func AvailableSceneDetectors() []string {
-	return []string{
-		string(DetectorTypeOnnxMobileNetV4Large),
-	}
-}
-
-// AvailableHighlightDetectors returns the list of available highlight detector names.
-func AvailableHighlightDetectors() []string {
-	return []string{
-		string(DetectorTypeOnnxMobileNetV4Large),
-	}
-}

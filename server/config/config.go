@@ -72,9 +72,3 @@ func Read() Cfg {
 	return cached
 }
 
-func GetFontPath() string {
-	if runtime.GOOS == "windows" {
-		return winFont
-	}
-	return linuxFont
-}

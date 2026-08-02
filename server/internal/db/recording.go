@@ -204,10 +204,6 @@ func BookmarkList() ([]*Recording, error) {
 	return recordings, nil
 }
 
-func GetPaths(channelName ChannelName, filename RecordingFileName) RecordingPaths {
-	return channelName.GetRecordingsPaths(filename)
-}
-
 func CreateRecording(channelId ChannelID, filename RecordingFileName, videoType string) (*Recording, error) {
 	channel, errChannel := GetChannelByID(channelId)
 	if errChannel != nil {
