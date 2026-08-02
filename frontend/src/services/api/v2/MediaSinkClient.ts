@@ -207,7 +207,7 @@ export interface FavPartialUpdateParams2 {
 }
 
 export interface InfoDetailParams {
-  /** Number of seconds to measure */
+  /** Number of seconds to measure (1-60) */
   seconds: number;
 }
 
@@ -528,6 +528,13 @@ export interface ResponsesSimilarityGroupsResponse {
   similarityThreshold?: number;
 }
 
+export interface ResponsesUserProfileResponse {
+  createdAt: string;
+  updatedAt: string;
+  userId: number;
+  username: string;
+}
+
 export interface ResponsesVideoFilterResponse {
   skip: number;
   take: number;
@@ -709,6 +716,7 @@ export namespace Admin {
    * @summary Run once the import of mp4 files in the recordings folder
    * @request POST:/admin/import
    * @response `200` `any` OK
+   * @response `409` `any` Import already running
    * @response `500` `any` Internal Server Error
    */
   export namespace ImportCreate {
@@ -1156,17 +1164,18 @@ export namespace Info {
   }
 
   /**
-   * @description Get system metrics
+   * @description Get system metrics. The measurement window is capped at 60 seconds.
    * @tags info
    * @name InfoDetail
    * @summary Get system metrics
    * @request GET:/info/{seconds}
    * @response `200` `UtilSysInfo` OK
+   * @response `400` `any` Bad Request
    * @response `500` `any` Internal Server Error
    */
   export namespace InfoDetail {
     export type RequestParams = {
-      /** Number of seconds to measure */
+      /** Number of seconds to measure (1-60) */
       seconds: number;
     };
     export type RequestQuery = {};
@@ -1426,15 +1435,16 @@ export namespace User {
    * @name ProfileList
    * @summary Get user profile
    * @request GET:/user/profile
-   * @response `200` `object` User profile
+   * @response `200` `ResponsesUserProfileResponse` User profile
    * @response `400` `any` Bad Request
+   * @response `500` `any` Internal Server Error
    */
   export namespace ProfileList {
     export type RequestParams = {};
     export type RequestQuery = {};
     export type RequestBody = never;
     export type RequestHeaders = {};
-    export type ResponseBody = object;
+    export type ResponseBody = ResponsesUserProfileResponse;
   }
 }
 
@@ -2111,6 +2121,7 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @summary Run once the import of mp4 files in the recordings folder
      * @request POST:/admin/import
      * @response `200` `any` OK
+     * @response `409` `any` Import already running
      * @response `500` `any` Internal Server Error
      */
     importCreate: (params: RequestParams = {}) =>
@@ -2618,13 +2629,14 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
       }),
 
     /**
-     * @description Get system metrics
+     * @description Get system metrics. The measurement window is capped at 60 seconds.
      *
      * @tags info
      * @name InfoDetail
      * @summary Get system metrics
      * @request GET:/info/{seconds}
      * @response `200` `UtilSysInfo` OK
+     * @response `400` `any` Bad Request
      * @response `500` `any` Internal Server Error
      */
     infoDetail: ({ seconds }: InfoDetailParams, params: RequestParams = {}) =>
@@ -2904,11 +2916,12 @@ export class MediaSinkClient<SecurityDataType extends unknown> {
      * @name ProfileList
      * @summary Get user profile
      * @request GET:/user/profile
-     * @response `200` `object` User profile
+     * @response `200` `ResponsesUserProfileResponse` User profile
      * @response `400` `any` Bad Request
+     * @response `500` `any` Internal Server Error
      */
     profileList: (params: RequestParams = {}) =>
-      this.http.request<object, any>({
+      this.http.request<ResponsesUserProfileResponse, any>({
         path: `/user/profile`,
         method: "GET",
         type: ContentType.Json,

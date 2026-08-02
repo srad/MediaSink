@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	log "github.com/sirupsen/logrus"
 	"github.com/srad/mediasink/server/config"
@@ -13,35 +14,67 @@ import (
 )
 
 var (
-	ctx, cancelImport = context.WithCancel(context.Background())
-	importing         = false
-	importSize        int
-	importProgress    int
+	importMu       sync.Mutex
+	importing      = false
+	importSize     int
+	importProgress int
 )
 
-func StartImport() {
-	go runImport()
-}
+// StartImport begins an import unless one is already running. It reports
+// whether a new import was started, so callers can surface a conflict rather
+// than silently stacking concurrent scans over the same tree.
+func StartImport() bool {
+	importMu.Lock()
+	defer importMu.Unlock()
 
-func StopImport() {
-	cancelImport()
+	if importing {
+		return false
+	}
+	importing = true
+	importSize = 0
+	importProgress = 0
+
+	go runImport()
+	return true
 }
 
 func IsImporting() bool {
+	importMu.Lock()
+	defer importMu.Unlock()
 	return importing
 }
 
 func GetImportProgress() (int, int) {
+	importMu.Lock()
+	defer importMu.Unlock()
 	return importProgress, importSize
 }
 
+// setImportTotal records how many channel folders the scan will visit.
+func setImportTotal(size int) {
+	importMu.Lock()
+	defer importMu.Unlock()
+	importSize = size
+	importProgress = 0
+}
+
+// advanceImportProgress increments the visited-folder counter and returns the
+// new value, so callers can log progress without touching shared state.
+func advanceImportProgress() int {
+	importMu.Lock()
+	defer importMu.Unlock()
+	importProgress++
+	return importProgress
+}
+
 func runImport() {
-	importing = true
 	defer func() {
+		importMu.Lock()
 		importing = false
+		importMu.Unlock()
 	}()
 
-	if err := ImportChannels(ctx); err != nil {
+	if err := ImportChannels(context.Background()); err != nil {
 		log.Errorf("Error during channel import: %v", err)
 	}
 }
@@ -52,7 +85,7 @@ func runImport() {
 // 2. If the folder contains the channel.json backup file, then reconstruct the channel information from this file.
 // 3. Then search on each folder for media files to import as recordings.
 // 4. If the recordings do not contain previews, their creation will be scheduled.
-func ImportChannels(context.Context) error {
+func ImportChannels(ctx context.Context) error {
 	cfg := config.Read()
 
 	log.Infoln("------------------------------------------------------------------------------------------")
@@ -76,10 +109,15 @@ func ImportChannels(context.Context) error {
 	if err != nil {
 		return fmt.Errorf("error reading directory entries from '%s': %w", cfg.RecordingsAbsolutePath, err)
 	}
-	importSize = len(channelFolders)
-	importProgress = 0
-	for _, name := range channelFolders {
-		importProgress++
+	total := len(channelFolders)
+	setImportTotal(total)
+	for i, name := range channelFolders {
+		if err := ctx.Err(); err != nil {
+			log.Infof("[Import] Cancelled after %d/%d channels", i, total)
+			return err
+		}
+
+		progress := advanceImportProgress()
 		channelName := db.ChannelName(name)
 		// Is no directory, skip
 		if dir, err := os.Stat(channelName.AbsoluteChannelPath()); err != nil || !dir.IsDir() {
@@ -88,7 +126,7 @@ func ImportChannels(context.Context) error {
 
 		newChannel, errCreate := db.CreateChannel(channelName, channelName.String(), "https://"+channelName.String())
 		if errCreate != nil {
-			log.Errorf("[Import/%s (%d/%d)] Error creating channel: %v", channelName, importProgress, importSize, errCreate)
+			log.Errorf("[Import/%s (%d/%d)] Error creating channel: %v", channelName, progress, total, errCreate)
 			// Skip this channel if it cannot be created.
 			continue
 		}
@@ -106,7 +144,7 @@ func ImportChannels(context.Context) error {
 		// Traverse all mp4 files and add to models if not existent
 		// ---------------------------------------------------------------------------------
 		j := 0
-		log.Infof("[Import/%s (%d/%d)] Traverse all mp4 files and add to models if not existent (files: %d) ...", channelName, importProgress, importSize, len(files))
+		log.Infof("[Import/%s (%d/%d)] Traverse all mp4 files and add to models if not existent (files: %d) ...", channelName, progress, total, len(files))
 		for _, file := range files {
 			j++
 			mp4File := !file.IsDir() && filepath.Ext(file.Name()) == ".mp4"
@@ -114,7 +152,7 @@ func ImportChannels(context.Context) error {
 				continue
 			}
 
-			log.Debugf("[Import/%s (%d/%d) (%d/%d)] Checking file: %s", channelName, importProgress, importSize, j, len(files), file.Name())
+			log.Debugf("[Import/%s (%d/%d) (%d/%d)] Checking file: %s", channelName, progress, total, j, len(files), file.Name())
 
 			filename := db.RecordingFileName(file.Name())
 			video := &util.Video{FilePath: channelName.AbsoluteChannelFilePath(filename)}

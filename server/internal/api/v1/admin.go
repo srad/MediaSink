@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/srad/mediasink/server/internal/models/responses"
@@ -18,13 +19,16 @@ import (
 // @Accept      json
 // @Produce     json
 // @Success     200 {} nil
+// @Failure     409 {} string "Import already running"
 // @Failure     500 {} http.StatusInternalServerError
 // @Router      /admin/import [post]
 func TriggerImport(c *gin.Context) {
 	appG := app.Gin{C: c}
 
-	services.StopImport()
-	services.StartImport()
+	if !services.StartImport() {
+		appG.Error(http.StatusConflict, errors.New("import already running"))
+		return
+	}
 
 	appG.Response(http.StatusOK, nil)
 }

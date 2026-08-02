@@ -11,7 +11,7 @@ func (m *movingAverageSmoothing) Name() string {
 
 func (m *movingAverageSmoothing) Smooth(data []float64, windowSize int) []float64 {
 	if windowSize <= 1 || len(data) <= windowSize {
-		return data
+		return append([]float64(nil), data...)
 	}
 
 	smoothed := make([]float64, len(data))

@@ -143,10 +143,11 @@ func (h *previewFramesHandler) Handle(job *db.Job, threadCount int) error {
 				continue
 			}
 
+			// Deliberately NOT clamped to the recording duration: clamping
+			// pushes frames off the frameInterval grid the frontend indexes by,
+			// and every clamped frame collapses onto the same filename, so
+			// os.Rename silently destroys the previous one.
 			timestamp := uint64(frameNum-1) * frameInterval
-			if maxTimestamp := uint64(job.Recording.Duration); timestamp > maxTimestamp {
-				timestamp = maxTimestamp
-			}
 			newName := fmt.Sprintf("%d.jpg", timestamp)
 			oldPath := filepath.Join(previewFramesPath, file.Name())
 			newPath := filepath.Join(previewFramesPath, newName)

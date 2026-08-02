@@ -6,9 +6,10 @@ import (
 )
 
 type User struct {
-	UserID    uint   `json:"userId" gorm:"autoIncrement;primaryKey;column:user_id" extensions:"!x-nullable"`
-	Username  string `json:"username" gorm:"unique"`
-	Password  string `json:"password"`
+	UserID   uint   `json:"userId" gorm:"autoIncrement;primaryKey;column:user_id" extensions:"!x-nullable"`
+	Username string `json:"username" gorm:"unique"`
+	// Password holds the bcrypt hash and must never be serialized to a client.
+	Password  string `json:"-"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

@@ -34,14 +34,29 @@ func NewPreviewRegenerator() *PreviewRegenerator {
 	}
 }
 
-// Start initializes a regeneration session with the total number of videos
-func (pr *PreviewRegenerator) Start(total int) {
+// TryStart marks a regeneration session as running. It reports false if one is
+// already in flight, making the check-and-set atomic so two concurrent callers
+// cannot both proceed.
+func (pr *PreviewRegenerator) TryStart() bool {
 	pr.mu.Lock()
 	defer pr.mu.Unlock()
+	if pr.running {
+		return false
+	}
 	pr.running = true
-	pr.total = total
+	pr.total = 0
 	pr.current = 0
 	pr.video = ""
+	return true
+}
+
+// SetTotal records the number of videos once it is known. The total is only
+// available after the recordings have been listed, which happens inside the
+// worker goroutine.
+func (pr *PreviewRegenerator) SetTotal(total int) {
+	pr.mu.Lock()
+	defer pr.mu.Unlock()
+	pr.total = total
 }
 
 // Update updates the current progress
@@ -85,11 +100,18 @@ var previewRegenerator = NewPreviewRegenerator()
 
 // RegenerateAllPreviews deletes and regenerates preview frames for all recordings
 func RegenerateAllPreviews() error {
-	if previewRegenerator.IsRunning() {
+	// Atomic check-and-set: a plain IsRunning() test here would let two
+	// concurrent requests both pass before either marked itself running.
+	if !previewRegenerator.TryStart() {
 		return fmt.Errorf("preview regeneration is already running")
 	}
 
 	go func() {
+		// Must be deferred: the recordings lookup below returns early on error,
+		// and without this the session would stay marked running forever,
+		// permanently blocking further regeneration.
+		defer previewRegenerator.Stop()
+
 		log.Infoln("[RegenerateAllPreviews] Starting preview regeneration for all recordings")
 
 		recordings, err := db.RecordingsList()
@@ -100,7 +122,7 @@ func RegenerateAllPreviews() error {
 		}
 
 		total := len(recordings)
-		previewRegenerator.Start(total)
+		previewRegenerator.SetTotal(total)
 
 		ws.BroadCastClients(ws.JobStartEvent, map[string]interface{}{
 			"type":    "preview_regeneration",
@@ -145,8 +167,6 @@ func RegenerateAllPreviews() error {
 			successCount++
 			log.Infof("[RegenerateAllPreviews] Created preview job for %s (%d/%d)", videoName, current, total)
 		}
-
-		previewRegenerator.Stop()
 
 		log.Infof("[RegenerateAllPreviews] Completed: %d successful, %d errors out of %d total", successCount, errorCount, total)
 

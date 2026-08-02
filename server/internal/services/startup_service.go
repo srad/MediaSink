@@ -26,7 +26,9 @@ func StartUpJobs() {
 		log.Errorln(err)
 	}
 	cleanupDeprecatedPreviewArtifacts() // Clean up old preview artifacts
-	StartImport()
+	if !StartImport() {
+		log.Infoln("[StartUpJobs] Import already running, skipping startup import")
+	}
 	go fixOrphanedFiles()
 	go enqueueUnanalyzedRecordings()
 }
