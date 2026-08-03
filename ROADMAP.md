@@ -8,8 +8,7 @@ works or how to run it:
 - Architecture, build/run/test commands, and conventions: `AGENTS.md`
 - Installation and user-facing setup: `README.md`
 
-Last verified: 2026-08-03, at commit `fd95907` plus the uncommitted Phase 2a change.
-Re-stamp with the real SHA when Phase 2a is committed.
+Last verified: 2026-08-03, at commit `f2929a2`.
 
 ## Status symbols
 
@@ -31,7 +30,7 @@ Converts the Go server from package-level mutable state and free functions to in
 dependencies. Runs in phases; every phase must build, pass tests and lint, and leave
 the golden HTTP tests byte-identical unless an API change is intended.
 
-Measured after Phase 2a: coverage 40.2%, lint 0 issues, 106 golden route cases.
+Measured at commit `f2929a2`: coverage 40.2%, lint 0 issues, 106 golden route cases.
 (At `fd95907`, before Phase 2a: coverage 39.8%.)
 
 ## Phase 0 - Safety net and tooling (`712c7eb`)
@@ -82,7 +81,7 @@ Measured after Phase 2a: coverage 40.2%, lint 0 issues, 106 golden route cases.
     preserved. 20 test cases added; parseToken at 90.9%.
 ```
 
-## Phase 2a - Config becomes a value, not a global (partial)
+## Phase 2a - Config becomes a value, not a global (`f2929a2`, partial)
 
 Objective: read `Cfg` once at the composition root and pass it down, so services and
 middleware stop reaching for global state.
