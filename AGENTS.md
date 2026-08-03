@@ -79,8 +79,7 @@ MediaSink.Go is a Go-based web server for video management, stream recording, an
 ```sh
 ./build.sh
 ```
-Builds frontend first (`npm install && npm run build` in `frontend/`), then generates Swagger docs and builds the Go binary as `./main`. The frontend dist is embedded into the binary via `go:embed`, so the binary is fully self-contained.
-Builds frontend first (`npm install && npm run build` in `frontend/`), mirrors the build output into `server/frontend/dist`, then generates Swagger docs in `server/docs/` and builds the Go binary as `./main`.
+Builds frontend first (`npm install && npm run build` in `frontend/`), mirrors the build output into `server/frontend/dist`, then generates Swagger docs in `server/docs/` and builds the Go binary as `./main`. The frontend dist is embedded into the binary via `go:embed`, so the binary is fully self-contained.
 
 Key build flags:
 - Sets version and commit hash via `-ldflags`
@@ -242,7 +241,7 @@ The `Dockerfile` uses a multi-stage build:
 - All services gracefully shut down on SIGTERM/SIGINT
 
 ### Database
-- Initialized inside `app.InitializeApp()` via `db.Init()`
+- Initialized inside `app.InitializeApp()` via `db.Init(cfg)`, which takes the `config.Cfg` built at the composition root
 - The shipped runtime currently initializes `internal/store/vector.SQLiteVecStore` and should be treated as SQLite/sqlite-vec-first
 - The lower `internal/db` layer still contains MySQL/PostgreSQL adapter support, but that is not the primary v2 runtime path
 - SQLite mode auto-registers `sqlite-vec` for vec0 virtual table support
