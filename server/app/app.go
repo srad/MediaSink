@@ -30,6 +30,7 @@ type App struct {
 	frontendFS embed.FS
 	metadata   Metadata
 	cfg        config.Cfg
+	store      *db.Store
 	server     *http.Server
 }
 
@@ -42,7 +43,10 @@ func InitializeApp(frontendFS embed.FS, metadata Metadata, cfg config.Cfg) (*App
 		return nil, err
 	}
 
-	db.Init(cfg)
+	store, err := db.Open(cfg)
+	if err != nil {
+		return nil, err
+	}
 
 	vectorStore := vector.NewSQLiteVecStore(cfg.DBAdapter)
 	vector.SetDefault(vectorStore)
@@ -58,6 +62,7 @@ func InitializeApp(frontendFS embed.FS, metadata Metadata, cfg config.Cfg) (*App
 		frontendFS: frontendFS,
 		metadata:   metadata,
 		cfg:        cfg,
+		store:      store,
 	}, nil
 }
 

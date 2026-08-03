@@ -102,7 +102,10 @@ func TestMain(m *testing.M) {
 	defer streamSrv.Close()
 	testStreamURL = streamSrv.URL + "/live"
 
-	db.Init(cfg)
+	if _, err := db.Open(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "open database: %v\n", err)
+		os.Exit(1)
+	}
 
 	var frontendFS embed.FS // zero value: no embedded frontend needed for API routes
 	testRouter = Setup(cfg, testVersion, testCommit, testAPIVersion, frontendFS)

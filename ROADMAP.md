@@ -8,7 +8,7 @@ works or how to run it:
 - Architecture, build/run/test commands, and conventions: `AGENTS.md`
 - Installation and user-facing setup: `README.md`
 
-Last verified: 2026-08-03, at commit `f2929a2`.
+Last verified: 2026-08-03, at commit `ca8a758`.
 
 ## Status symbols
 
@@ -30,8 +30,8 @@ Converts the Go server from package-level mutable state and free functions to in
 dependencies. Runs in phases; every phase must build, pass tests and lint, and leave
 the golden HTTP tests byte-identical unless an API change is intended.
 
-Measured at commit `f2929a2`: coverage 40.2%, lint 0 issues, 106 golden route cases.
-(At `fd95907`, before Phase 2a: coverage 39.8%.)
+Measured after slice 2b.1: coverage 40.5%, lint 0 issues, 106 golden route cases.
+(At `f2929a2`, end of Phase 2a: 40.2%. At `fd95907`, before Phase 2a: 39.8%.)
 
 ## Phase 0 - Safety net and tooling (`712c7eb`)
 
@@ -138,31 +138,117 @@ swagger.json byte-identical, lint 0 issues,
 without mutating process environment. `grep -rn 'os.Getenv' server --include='*.go'`
 outside `config/` and tests returns only a comment.
 
-## Phase 2b - Kill the global DB handle
+## Phase 2b - Kill the global DB handle (in progress)
 
 Objective: replace `var DB *gorm.DB` with a concrete store passed to its consumers.
 This is the keystone and the largest phase.
 
+Re-measured at `ca8a758`. The earlier counts were the seed, not the work: methods like
+Job.Cancel and Recording.DestroyRecording never name DB, they persist through
+something that does, so they move too.
+
 ```
-[ ] Replace db.Init() with db.Open(cfg) (*db.Store, error), returning errors
-    instead of panicking.
-
-[ ] Migrate active record to repository. 74 functions inside internal/db read the
-    global; 23 of those are methods on domain types (Recording.Save(),
-    Job.CreateJob(), ChannelID.FavChannel()). This is a design migration, not a
-    mechanical rename.
-
-[ ] Repoint roughly 81 call sites outside internal/db. The 272 db.Type references
-    stay put; only behaviour moves.
-
-[ ] Remove the 6 direct db.DB reach-throughs in non-test code, plus 11 in
-    services/chapter_regeneration_test.go.
+141   functions/methods in internal/db (non-test)
+ 74   name DB directly - the previously recorded figure, correct but only the seed
+ 95   in the transitive closure - the actual unit of work
+ 32   methods on domain types - previously recorded as 23, which undercounts by 9
 ```
 
-Gate: `grep -rn 'db\.DB\b' server/internal --include='*.go' | grep -v '/internal/db/'`
-returns nothing; the 23 active-record methods are gone rather than wrapped.
-Recommended: split per aggregate (recordings, channels, jobs, users) with green goldens
-between each.
+The 9 that were missed: Job.Cancel, Job.Error, Recording.DestroyRecording,
+Recording.DestroyPreviews, Recording.DestroyPreview, and the four
+Recording.Enqueue{Analysis,Conversion,Cutting,PreviewFrames}Job.
+
+Closure per file, which sets the slice sizes:
+
+```
+job.go 26   recording.go 19   channel_id.go 11   frame_vectors.go 9   channel.go 7
+setting.go 5   video_analysis.go 5   user.go 4   db.go 4   video_previews.go 4
+```
+
+Outside internal/db there are 70 free-function call sites in non-test code. Method
+call sites are not grep-countable - `.Save(`, `.Update(`, `.Error(` collide with gorm
+and with `error`; a first attempt returned 283 with false positives in files that
+touch no database. Deleting the method makes the compiler enumerate them exactly.
+
+Handlers must become closures. Nothing in the chain router -> handler -> service -> db
+carries a value, and the gate forbids wrapping, so `func GetChannels(c *gin.Context)`
+becomes `func GetChannels(s *db.Store) gin.HandlerFunc`. Precedent already in the tree:
+`v1.GetVersion(version, commit)` at api/v1/admin.go:92. Verified this does not move
+swagger - GetVersion carries a full annotation block and /admin/version is present in
+docs/swagger.json.
+
+Lint constrains the sequencing: revive's default rule set is active with only
+`exported` and `package-comments` excluded, so `unused-parameter` fires. Never add a
+store parameter in a commit whose body does not yet use it.
+
+Slices, each landing separately with green goldens:
+
+```
+[x] 2b.1 Foundation (db.go, 4). db.Open(cfg) (*db.Store, error) replaces db.Init;
+    the seven AutoMigrate panics and InitSettings' log.Panicf now return. Migrate
+    stops at the first failure naming the table rather than joining, because the
+    targets are ordered parent-first and a cascade would bury the real error.
+    app.App holds the store. Also converted three db.Init callers, not the two
+    planned: app/app.go:45, api/golden_test.go:105, and
+    middleware/authentication_middleware_test.go:143.
+    Fixed while here: Migrate reached InitSettings and GetEmbeddingModel through
+    the package global, so NewStoreFrom(h).Migrate() seeded settings into whatever
+    DB pointed at rather than h. Invisible while Open was the only caller. Both are
+    now store-scoped; regression test proven against the reverted fix via
+    go test -overlay.
+    13 tests in internal/db/store_test.go.
+
+[ ] 2b.2 Users and settings (user.go 4, setting.go 5). The pilot: smallest
+    aggregate, and docker-test.sh already smoke-tests signup, login and a secret
+    rotation end to end. api.Setup gains the store here and the handler-closure
+    conversion starts. Also lands db.ExistsUsername -> (bool, error); the status
+    code stays 500, Phase 6 moves it to 409. Add a golden for the case first.
+
+[ ] 2b.3 Jobs (job.go 26). Plus jobs/lifecycle.go:47 and jobs/executor.go:25.
+    Reuse the existing seam: handlers.NewHandlerDependencies takes a raw *gorm.DB
+    at jobs/handlers/dependencies.go:15; change it to *db.Store and the six job
+    handlers follow. Four generic functions in job.go stay free functions - Go has
+    no generic methods. CreateJob[T] at :372 collides with (job *Job) CreateJob()
+    at :75 once the receiver is gone; rename the method to JobRepo.Create.
+
+[ ] 2b.4 Recordings (recording.go 19, video_analysis.go 5, video_previews.go 4).
+    Plus services/video_analysis.go:194. Delete the init() at
+    services/video_analysis.go:22 - it registers AnalyzeVideoFramesWithJob into a
+    func(*db.Job) error field at package-init time, when no store exists; register
+    from app.InitializeApp instead. Collapse the duplicate FindRecordingByID
+    (function form at videos.go:440, method form at :94, :124, :195, :332, :468).
+
+[ ] 2b.5 Channels (channel.go 7, channel_id.go 11). Plus
+    services/startup_service.go:141 and recorder_service.go. 12 routes in the
+    /channels group. api/v1/channels.go reaches db only for types; those
+    db.ChannelID(id) conversions stay. channel.go:147 is the 8th deferred
+    config.Read() and lands here.
+
+[ ] 2b.6 Frame vectors (frame_vectors.go 9). store/vector/store.go is a pure
+    adapter: 8 one-to-one delegations plus the reach-through at :72 and :76.
+    NewSQLiteVecStore gains the store. Then delete var DB and convert the 11 lines
+    in services/chapter_regeneration_test.go. vector.SetDefault stays - Phase 3.
+
+[ ] 2b.7 Path methods and the 7 remaining deferred config.Read() calls. 49
+    external callers; extract a Paths value from cfg rather than hanging it off
+    Store, since these are filesystem concerns. No overlap with 2b.1-2b.6, so it
+    can ship as its own commit or as Phase 2c without blocking the gate.
+```
+
+Gate, arithmetic rather than judgement. All three commands run today:
+
+```
+grep -rn 'db\.DB\b' server/internal --include='*.go' | grep -v '/internal/db/' | wc -l
+    17 at ca8a758 (6 non-test + 11 in chapter_regeneration_test.go)  ->  0
+
+grep -rn 'func (\w* \*\?\(Recording\|Channel\|Job\|Setting\|VideoPreview\|VideoAnalysisResult\|ChannelID\|RecordingID\)) ' \
+     server/internal/db --include='*.go' | wc -l
+    47 at ca8a758  ->  15 after 2b.6  ->  11 after 2b.7
+```
+
+47 - 32 = 15 cross-checks the 32: the survivors are exactly the methods that do no
+persistence. Scope the first grep to server/internal as written; widening it to
+server picks up two hits inside vendored gorm.
 
 ## Phase 3 - Services become injected structs
 
@@ -177,9 +263,15 @@ package state into fields.
     item: streaming_service.go holds live recording state in three package maps
     plus two mutexes. Move it alone, with -race.
 
-[ ] Fix a known bug: detectors.CreateSceneDetector(t) caches on first call and
-    thereafter ignores its detectorType argument. Harmless today only because one
-    detector type exists. Add the test that would have caught it.
+[ ] Fix a known bug: a detector factory caches on first call and thereafter
+    ignores its detectorType argument. Corrected 2026-08-03 - this was filed
+    against the wrong function. CreateSceneDetector (factory.go:42) has zero
+    callers and should just be deleted. The live instances are
+    CreateEmbeddingExtractor (factory.go:67), called from
+    services/visual_similarity.go:51 and services/video_analysis.go:64, and
+    CreateHighlightDetector (factory.go:98). Harmless today only because one
+    detector type exists. The package has no test file at all; add the test that
+    would have caught it.
 
 [ ] Remove four pass-through wrappers in services/job_service.go that exist only
     for "backward compatibility" with an earlier half-finished extraction.
@@ -219,8 +311,11 @@ Objective: replace grab-bag packages with named ones.
 [ ] Split util: video.go (771 lines) to internal/media, sys.go (408) to
     internal/procs, nettop.go to internal/netstat.
 
-[ ] Delete util.ParseNumbers and util.FileNameWithoutExtension, which have no
-    consumers.
+[-] Delete util.ParseNumbers and util.FileNameWithoutExtension. Rejected
+    2026-08-03: the "no consumers" claim was wrong. ParseNumbers has 4 callers at
+    util/sys.go:314-317 and FileNameWithoutExtension has 2 at util/video.go:258
+    and :300. Both deletions would break the build. They move with their packages
+    in the split above instead.
 
 [ ] Fold internal/models/sort.go into its consumer and drop the 20-line models
     package. models/requests and models/responses stay.

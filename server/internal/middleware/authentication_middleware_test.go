@@ -135,12 +135,14 @@ func TestRequireAuthIgnoresTheSecretEnvironmentVariable(t *testing.T) {
 }
 
 // seedUser initialises a throwaway database and returns the ID of one user. A temp
-// file rather than :memory: because that is what db.Init's migrations are proven
+// file rather than :memory: because that is what db.Open's migrations are proven
 // against in the API golden suite.
 func seedUser(t *testing.T) uint {
 	t.Helper()
 
-	db.Init(config.Cfg{DbFileName: filepath.Join(t.TempDir(), "middleware.db")})
+	if _, err := db.Open(config.Cfg{DbFileName: filepath.Join(t.TempDir(), "middleware.db")}); err != nil {
+		t.Fatalf("open database: %v", err)
+	}
 
 	user := &db.User{Username: "gate@example.com", Password: "irrelevant-for-this-test"}
 	if err := db.CreateUser(user); err != nil {

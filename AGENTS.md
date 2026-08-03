@@ -231,7 +231,6 @@ The `Dockerfile` uses a multi-stage build:
 - JWT-based authentication
 - `SECRET` environment variable required; startup fails without it (checked in `validateEnvironment` in `server/app/app.go`, not in `main.go`)
 - Middleware: `middleware.RequireAuth(secret)` returns the gate and handles transport (bearer extraction, user lookup, error rendering); `middleware.parseToken` in `token.go` does the JWT validation and is unit-tested. The secret is captured once at router construction, never read per request
-- `SECRET` is currently read via `os.Getenv` on every authenticated request; moving it into `Cfg` is tracked in `ROADMAP.md` (Phase 2a)
 
 ### Services & Background Processing
 - Lifecycle is coordinated by `app.App`; `server/main.go` no longer assembles the server directly.
@@ -241,7 +240,9 @@ The `Dockerfile` uses a multi-stage build:
 - All services gracefully shut down on SIGTERM/SIGINT
 
 ### Database
-- Initialized inside `app.InitializeApp()` via `db.Init(cfg)`, which takes the `config.Cfg` built at the composition root
+- Opened inside `app.InitializeApp()` via `db.Open(cfg) (*db.Store, error)`, which takes the `config.Cfg` built at the composition root and returns errors rather than panicking. `app.App` holds the `*db.Store`
+- `db.Store` is being threaded to its consumers a slice at a time; the package-level `db.DB` still exists for the functions that have not moved yet, and `Open` assigns it. Do not add callers to it — see `ROADMAP.md` (Phase 2b)
+- Test fixtures that build their own handle use `db.NewStoreFrom(handle)`; production code goes through `Open` so pool configuration and migration are not skipped
 - The shipped runtime currently initializes `internal/store/vector.SQLiteVecStore` and should be treated as SQLite/sqlite-vec-first
 - The lower `internal/db` layer still contains MySQL/PostgreSQL adapter support, but that is not the primary v2 runtime path
 - SQLite mode auto-registers `sqlite-vec` for vec0 virtual table support

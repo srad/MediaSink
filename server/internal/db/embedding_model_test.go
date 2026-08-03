@@ -60,7 +60,7 @@ func TestDropStaleFrameVectors_ModelChanged(t *testing.T) {
 		t.Fatalf("SetEmbeddingModel: %v", err)
 	}
 
-	dropStaleFrameVectors()
+	NewStoreFrom(DB).dropStaleFrameVectors()
 
 	if frameVectorsExists(t) {
 		t.Error("frame_vectors survived an embedding model change")
@@ -75,7 +75,7 @@ func TestDropStaleFrameVectors_MissingSetting(t *testing.T) {
 	}
 	setupEmbeddingModelDB(t)
 
-	dropStaleFrameVectors()
+	NewStoreFrom(DB).dropStaleFrameVectors()
 
 	if frameVectorsExists(t) {
 		t.Error("frame_vectors survived with no recorded embedding model")
@@ -94,7 +94,7 @@ func TestDropStaleFrameVectors_ModelUnchanged(t *testing.T) {
 		t.Fatalf("SetEmbeddingModel: %v", err)
 	}
 
-	dropStaleFrameVectors()
+	NewStoreFrom(DB).dropStaleFrameVectors()
 
 	if !frameVectorsExists(t) {
 		t.Error("frame_vectors was dropped even though the model is unchanged")

@@ -31,8 +31,15 @@ const (
 // legacy model rather than an error — callers use this to decide whether the
 // stored vectors are still comparable with the active model's output.
 func GetEmbeddingModel() (string, error) {
+	return NewStoreFrom(DB).EmbeddingModel()
+}
+
+// EmbeddingModel is the store-scoped form of GetEmbeddingModel. Migrate has to use
+// this one: reading the setting through the package global would consult a different
+// database from the one being migrated.
+func (s *Store) EmbeddingModel() (string, error) {
 	sett := Setting{}
-	err := DB.Table("settings").First(&sett, &Setting{SettingKey: EmbeddingModelSetting}).Error
+	err := s.gorm.Table("settings").First(&sett, &Setting{SettingKey: EmbeddingModelSetting}).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return legacyEmbeddingModel, nil
 	}
@@ -48,13 +55,12 @@ func SetEmbeddingModel(modelName string) error {
 	return setting.Save()
 }
 
-func InitSettings() error {
-	if err := DB.FirstOrCreate(
-		&Setting{SettingKey: ReqInterval, SettingValue: "15", SettingType: "int"}).Error; err != nil {
-		return err
-	}
-
-	return nil
+// initSettings seeds the rows every install needs. Scoped to the store rather than to
+// the package global, because Migrate may be running against a database that is not
+// the one DB points at.
+func (s *Store) initSettings() error {
+	return s.gorm.FirstOrCreate(
+		&Setting{SettingKey: ReqInterval, SettingValue: "15", SettingType: "int"}).Error
 }
 
 func GetValue(settingKey string) (interface{}, error) {
