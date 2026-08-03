@@ -67,13 +67,13 @@ func InitializeApp(frontendFS embed.FS, metadata Metadata, cfg config.Cfg) (*App
 }
 
 func (a *App) Run(ctx context.Context) error {
-	services.StartUpJobs()
+	services.StartUpJobs(a.store)
 	services.StartRecorder()
 	services.StartJobProcessing()
 
 	gin.SetMode(gin.ReleaseMode)
 
-	handler := legacyapi.Setup(a.cfg, a.metadata.Version, a.metadata.Commit, a.metadata.APIVersion, a.frontendFS)
+	handler := legacyapi.Setup(a.store, a.cfg, a.metadata.Version, a.metadata.Commit, a.metadata.APIVersion, a.frontendFS)
 	engine, ok := handler.(*gin.Engine)
 	if !ok {
 		return fmt.Errorf("unexpected router type %T", handler)

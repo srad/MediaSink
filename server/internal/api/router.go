@@ -10,6 +10,7 @@ import (
 	"github.com/srad/mediasink/server/config"
 	"github.com/srad/mediasink/server/docs"
 	"github.com/srad/mediasink/server/internal/app"
+	"github.com/srad/mediasink/server/internal/db"
 	"github.com/srad/mediasink/server/internal/middleware"
 	"github.com/srad/mediasink/server/internal/ws"
 
@@ -33,13 +34,14 @@ import (
 // @BasePath  /api/v2
 
 // Setup InitRouter initialize routing information
-func Setup(cfg config.Cfg, version, commit, apiVersion string, frontendFS embed.FS) http.Handler {
+func Setup(store *db.Store, cfg config.Cfg, version, commit, apiVersion string, frontendFS embed.FS) http.Handler {
 	router := gin.New()
 	// r.Use(gin.Logger())
 	router.Use(gin.Recovery())
 
-	// Built once here, not per request: the gate closes over the JWT secret.
-	authRequired := middleware.RequireAuth(cfg.JWTSecret)
+	// Built once here, not per request: the gate closes over the store and the JWT
+	// secret.
+	authRequired := middleware.RequireAuth(store, cfg.JWTSecret)
 
 	// Add CORS headers specifically for static files to allow canvas usage
 	router.Use(func(c *gin.Context) {
@@ -83,8 +85,8 @@ func Setup(cfg config.Cfg, version, commit, apiVersion string, frontendFS embed.
 		// Auth Group
 		// ------------------------------------------------------
 		auth := apiV2.Group("/auth")
-		auth.POST("/signup", v1.CreateUser)
-		auth.POST("/login", v1.Login(cfg.JWTSecret))
+		auth.POST("/signup", v1.CreateUser(store))
+		auth.POST("/login", v1.Login(store, cfg.JWTSecret))
 		auth.POST("/logout", authRequired, v1.Logout)
 
 		// User

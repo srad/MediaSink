@@ -11,9 +11,22 @@ import (
 	"gorm.io/gorm"
 )
 
-func CreateUser(auth requests.AuthenticationRequest) error {
-	if err := db.ExistsUsername(auth.Username); err != nil {
+// ErrUsernameTaken is the wire-visible duplicate-signup error. It used to live in the
+// store's username-existence check, which returned it in place of a boolean; that check
+// now answers (bool, error), and this is where the message it produced is preserved.
+//
+// The text is the response body verbatim — app.Gin.Error JSON-encodes err.Error() —
+// and internal/api/testdata/public_auth.golden pins it together with the 500 status.
+// Phase 6 changes that status to 409.
+var ErrUsernameTaken = errors.New("username already exists")
+
+func CreateUser(store *db.Store, auth requests.AuthenticationRequest) error {
+	taken, err := store.Users().Exists(auth.Username)
+	if err != nil {
 		return err
+	}
+	if taken {
+		return ErrUsernameTaken
 	}
 
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(auth.Password), bcrypt.DefaultCost)
@@ -26,14 +39,14 @@ func CreateUser(auth requests.AuthenticationRequest) error {
 		Password: string(passwordHash),
 	}
 
-	return db.CreateUser(user)
+	return store.Users().Create(user)
 }
 
 // AuthenticateUser Returns a JWT string if the authentication was successful.
 // The signing secret is a parameter rather than an environment read so the caller
 // controls it; see config.Cfg.JWTSecret.
-func AuthenticateUser(auth requests.AuthenticationRequest, secret string) (string, error) {
-	user, errUser := db.FindUserByUsername(auth.Username)
+func AuthenticateUser(store *db.Store, auth requests.AuthenticationRequest, secret string) (string, error) {
+	user, errUser := store.Users().ByUsername(auth.Username)
 
 	if errors.Is(errUser, gorm.ErrRecordNotFound) {
 		return "", errors.New("user not found")
@@ -55,6 +68,6 @@ func AuthenticateUser(auth requests.AuthenticationRequest, secret string) (strin
 	return generateToken.SignedString([]byte(secret))
 }
 
-func GetUserByID(userID uint) (*db.User, error) {
-	return db.FindUserByID(userID)
+func GetUserByID(store *db.Store, userID uint) (*db.User, error) {
+	return store.Users().ByID(userID)
 }

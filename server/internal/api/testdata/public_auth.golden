@@ -1,0 +1,20 @@
+=== POST /auth/signup (username already taken)
+--- status: 500
+--- body:
+"username already exists"
+
+=== POST /auth/signup (body is not valid JSON)
+--- status: 400
+--- body:
+"unexpected EOF"
+
+=== POST /auth/login (wrong password)
+--- status: 401
+--- body:
+"crypto/bcrypt: hashedPassword is not the hash of the given password"
+
+=== POST /auth/login (no such user)
+--- status: 401
+--- body:
+"user not found"
+

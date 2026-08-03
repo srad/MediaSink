@@ -8,7 +8,9 @@ works or how to run it:
 - Architecture, build/run/test commands, and conventions: `AGENTS.md`
 - Installation and user-facing setup: `README.md`
 
-Last verified: 2026-08-03, at commit `ca8a758`.
+Last verified: 2026-08-04, at commit `152ac5a` plus the uncommitted 2b.2 working tree.
+Re-stamp the SHA once 2b.2 is committed; `UNCOMMITTED` below marks the one place that
+needs it.
 
 ## Status symbols
 
@@ -30,20 +32,22 @@ Converts the Go server from package-level mutable state and free functions to in
 dependencies. Runs in phases; every phase must build, pass tests and lint, and leave
 the golden HTTP tests byte-identical unless an API change is intended.
 
-Measured after slice 2b.1: coverage 40.5%, lint 0 issues, 106 golden route cases.
-(At `f2929a2`, end of Phase 2a: 40.2%. At `fd95907`, before Phase 2a: 39.8%.)
+Measured after slice 2b.2: coverage 40.8%, lint 0 issues, 110 golden route cases.
+(After 2b.1: 40.5%, 106 cases. At `f2929a2`, end of Phase 2a: 40.2%. At `fd95907`,
+before Phase 2a: 39.8%.)
 
 ## Phase 0 - Safety net and tooling (`712c7eb`)
 
 ```
 [x] Golden HTTP tests: boot the real router, snapshot status and body per route.
 
-[~] Route coverage. 106 cases across 3 golden files, but not everything:
+[~] Route coverage. 110 cases across 4 golden files (public_auth.golden and its 4
+    signup/login cases were added in 2b.2), but not everything:
     [ ] /api/v2/ws has no golden coverage at all. A websocket upgrade cannot be
         driven through httptest's recorder. Needs a different harness.
     59 routes are registered in router.go against 56 auth-gate cases. The
-    difference is /ws plus the two public auth routes, which the test seed
-    exercises instead.
+    difference is /ws plus the two public auth routes, which public_auth.golden
+    now covers directly.
     9 routes appear only in the auth-gate golden, not the authenticated one: six
     that would start background work inside the test process (import, recorder
     resume, analyze all, previews regenerate, jobs resume, channel upload) and
@@ -184,7 +188,7 @@ store parameter in a commit whose body does not yet use it.
 Slices, each landing separately with green goldens:
 
 ```
-[x] 2b.1 Foundation (db.go, 4). db.Open(cfg) (*db.Store, error) replaces db.Init;
+[x] 2b.1 Foundation (`152ac5a`) (db.go, 4). db.Open(cfg) (*db.Store, error) replaces db.Init;
     the seven AutoMigrate panics and InitSettings' log.Panicf now return. Migrate
     stops at the first failure naming the table rather than joining, because the
     targets are ordered parent-first and a cascade would bury the real error.
@@ -198,11 +202,22 @@ Slices, each landing separately with green goldens:
     go test -overlay.
     13 tests in internal/db/store_test.go.
 
-[ ] 2b.2 Users and settings (user.go 4, setting.go 5). The pilot: smallest
-    aggregate, and docker-test.sh already smoke-tests signup, login and a secret
-    rotation end to end. api.Setup gains the store here and the handler-closure
-    conversion starts. Also lands db.ExistsUsername -> (bool, error); the status
-    code stays 500, Phase 6 moves it to 409. Add a golden for the case first.
+[x] 2b.2 Users and settings (`UNCOMMITTED`) (user.go 4, setting.go 6). The pilot.
+    Sets the two patterns the rest of 2b reuses: per-aggregate repositories off
+    Store (store.Users(), store.Settings()) rather than ~95 flat methods, and
+    handler closures - func CreateUser(*db.Store) gin.HandlerFunc.
+    setting.go held 6 functions, not the 5 counted at ca8a758: 2b.1 had since
+    split InitSettings into a Store method and added Store.EmbeddingModel.
+    ExistsUsername -> UserRepo.Exists (bool, error). The "username already
+    exists" sentinel moved up to services.ErrUsernameTaken, so the 500 and the
+    body are unchanged; Phase 6 still owns the 409.
+    Deleted db.GetValue - zero callers. It was the only reader of
+    Setting.SettingType, which is now written but never read; the column stays
+    because dropping a persisted one is a migration, not a refactor.
+    Verified: AutoMigrate really does emit the UNIQUE constraint on
+    User.Username, so the schema backstops Exists. Nothing had asserted that.
+    Reached one hop further than planned: enqueueUnanalyzedRecordings also takes
+    the store, since it is where the SetEmbeddingModel call actually lives.
 
 [ ] 2b.3 Jobs (job.go 26). Plus jobs/lifecycle.go:47 and jobs/executor.go:25.
     Reuse the existing seam: handlers.NewHandlerDependencies takes a raw *gorm.DB
@@ -240,10 +255,14 @@ Gate, arithmetic rather than judgement. All three commands run today:
 ```
 grep -rn 'db\.DB\b' server/internal --include='*.go' | grep -v '/internal/db/' | wc -l
     17 at ca8a758 (6 non-test + 11 in chapter_regeneration_test.go)  ->  0
+    Still 17 after 2b.2, which touches none of those sites.
 
 grep -rn 'func (\w* \*\?\(Recording\|Channel\|Job\|Setting\|VideoPreview\|VideoAnalysisResult\|ChannelID\|RecordingID\)) ' \
      server/internal/db --include='*.go' | wc -l
-    47 at ca8a758  ->  15 after 2b.6  ->  11 after 2b.7
+    47 at ca8a758  ->  46 after 2b.2  ->  15 after 2b.6  ->  11 after 2b.7
+
+Both greps are textual, so keep the deleted names out of prose too: a comment
+naming db.DB or a converted function inflates the count and reads as a leftover.
 ```
 
 47 - 32 = 15 cross-checks the 32: the survivors are exactly the methods that do no
@@ -401,11 +420,12 @@ than fixed piecemeal.
     three should be 404. The golden files record the current behaviour, so the
     fix will show as a reviewable diff.
 
-[ ] A duplicate signup returns 500 where 409 is correct. db.ExistsUsername
-    returns an error to mean "true", so a caller cannot distinguish "name taken"
-    from "database unavailable". Fixing the signature to (bool, error) belongs to
-    Phase 2b; the status code change belongs to Phase 6. No golden currently pins
-    this case, so add one before changing it.
+[~] A duplicate signup returns 500 where 409 is correct. The signature half is
+    done in 2b.2: UserRepo.Exists answers (bool, error), so "name taken" and
+    "database unavailable" are now distinguishable, and the sentinel lives in
+    services.ErrUsernameTaken. The status code is unchanged and still wrong.
+    Now pinned by internal/api/testdata/public_auth.golden, so the Phase 6
+    change to 409 will show as a reviewable diff. Owner: Phase 6.
 
 [ ] The websocket auth workaround passes the bearer token as a URL query
     parameter, which leaks it into access logs and browser history. It is a

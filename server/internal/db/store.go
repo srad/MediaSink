@@ -20,13 +20,21 @@ import (
 // Store owns the database handle. It replaces the package-level `DB` global: every
 // consumer is handed a *Store rather than reaching for package state.
 //
-// The per-aggregate repositories (Channels, Recordings, Jobs, Users, Settings,
-// Vectors) are added as each aggregate migrates off the global; see ROADMAP.md,
-// phase 2b. Until then `Open` still assigns `DB` so the not-yet-converted functions
-// in this package keep working.
+// Consumers reach an aggregate through a per-aggregate repository rather than through
+// methods hung directly off Store, which would otherwise grow to roughly 95 of them.
+// Users and Settings landed in phase 2b.2; Channels, Recordings, Jobs and Vectors
+// follow as each aggregate migrates off the global (see ROADMAP.md, phase 2b). Until
+// the last of them, `Open` still assigns `DB` so the unconverted functions in this
+// package keep working.
 type Store struct {
 	gorm *gorm.DB
 }
+
+// Users is the user aggregate. See UserRepo.
+func (s *Store) Users() UserRepo { return UserRepo{gorm: s.gorm} }
+
+// Settings is the settings aggregate. See SettingRepo.
+func (s *Store) Settings() SettingRepo { return SettingRepo{gorm: s.gorm} }
 
 // Open connects, configures the pool and migrates. It replaces Init, which panicked
 // on every failure path and so could not be exercised by a test.
@@ -184,7 +192,7 @@ func (s *Store) Migrate() error {
 		}
 	}
 
-	if err := s.initSettings(); err != nil {
+	if err := s.Settings().init(); err != nil {
 		return fmt.Errorf("initialise settings: %w", err)
 	}
 
@@ -243,7 +251,7 @@ func (s *Store) dropStaleFrameVectors() {
 	// be silently compared against each other and rank as noise.
 	reason := "schema update"
 	if !needsRebuild {
-		storedModel, modelErr := s.EmbeddingModel()
+		storedModel, modelErr := s.Settings().EmbeddingModel()
 		if modelErr != nil {
 			log.Warnf("[Migrate] Could not read the stored embedding model: %v", modelErr)
 		} else if storedModel != onnx.DefaultModelName {

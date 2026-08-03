@@ -56,7 +56,7 @@ func TestDropStaleFrameVectors_ModelChanged(t *testing.T) {
 	}
 	setupEmbeddingModelDB(t)
 
-	if err := SetEmbeddingModel("some_other_model"); err != nil {
+	if err := NewStoreFrom(DB).Settings().SetEmbeddingModel("some_other_model"); err != nil {
 		t.Fatalf("SetEmbeddingModel: %v", err)
 	}
 
@@ -90,7 +90,7 @@ func TestDropStaleFrameVectors_ModelUnchanged(t *testing.T) {
 	}
 	setupEmbeddingModelDB(t)
 
-	if err := SetEmbeddingModel(onnx.DefaultModelName); err != nil {
+	if err := NewStoreFrom(DB).Settings().SetEmbeddingModel(onnx.DefaultModelName); err != nil {
 		t.Fatalf("SetEmbeddingModel: %v", err)
 	}
 
@@ -101,7 +101,7 @@ func TestDropStaleFrameVectors_ModelUnchanged(t *testing.T) {
 	}
 }
 
-func TestGetEmbeddingModel_RoundTrip(t *testing.T) {
+func TestEmbeddingModel_RoundTrip(t *testing.T) {
 	if os.Getenv("DB_ADAPTER") != "" && os.Getenv("DB_ADAPTER") != "sqlite" {
 		t.Skip("Skipping: sqlite-vec requires SQLite")
 	}
@@ -109,20 +109,21 @@ func TestGetEmbeddingModel_RoundTrip(t *testing.T) {
 	if err := DB.AutoMigrate(&Setting{}); err != nil {
 		t.Fatalf("AutoMigrate(Setting): %v", err)
 	}
+	settings := NewStoreFrom(DB).Settings()
 
-	got, err := GetEmbeddingModel()
+	got, err := settings.EmbeddingModel()
 	if err != nil {
-		t.Fatalf("GetEmbeddingModel on empty settings: %v", err)
+		t.Fatalf("EmbeddingModel on empty settings: %v", err)
 	}
 	if got != legacyEmbeddingModel {
 		t.Errorf("missing setting: got %q, want %q", got, legacyEmbeddingModel)
 	}
 
-	if err := SetEmbeddingModel(onnx.DefaultModelName); err != nil {
+	if err := settings.SetEmbeddingModel(onnx.DefaultModelName); err != nil {
 		t.Fatalf("SetEmbeddingModel: %v", err)
 	}
-	if got, err = GetEmbeddingModel(); err != nil {
-		t.Fatalf("GetEmbeddingModel: %v", err)
+	if got, err = settings.EmbeddingModel(); err != nil {
+		t.Fatalf("EmbeddingModel: %v", err)
 	}
 	if got != onnx.DefaultModelName {
 		t.Errorf("after write: got %q, want %q", got, onnx.DefaultModelName)

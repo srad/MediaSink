@@ -40,6 +40,11 @@ const (
 	testAPIVersion = "1.0"
 	testVersion    = "v-test"
 	testCommit     = "c-test"
+
+	// The account seeded by TestMain. Named rather than inline because
+	// TestGoldenPublicAuth builds its cases from the same credentials.
+	seedUsername = "golden@example.com"
+	seedPassword = "golden-pass-123"
 )
 
 // Shared across the whole suite. api.Setup starts `go ws.WsListen()` internally,
@@ -102,13 +107,14 @@ func TestMain(m *testing.M) {
 	defer streamSrv.Close()
 	testStreamURL = streamSrv.URL + "/live"
 
-	if _, err := db.Open(cfg); err != nil {
+	store, err := db.Open(cfg)
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "open database: %v\n", err)
 		os.Exit(1)
 	}
 
 	var frontendFS embed.FS // zero value: no embedded frontend needed for API routes
-	testRouter = Setup(cfg, testVersion, testCommit, testAPIVersion, frontendFS)
+	testRouter = Setup(store, cfg, testVersion, testCommit, testAPIVersion, frontendFS)
 
 	testToken = seedUserAndLogin()
 
@@ -119,7 +125,7 @@ func TestMain(m *testing.M) {
 
 // seedUserAndLogin creates the account the authenticated cases run as.
 func seedUserAndLogin() string {
-	creds := `{"username":"golden@example.com","password":"golden-pass-123"}`
+	creds := fmt.Sprintf(`{"username":%q,"password":%q}`, seedUsername, seedPassword)
 
 	res := call(http.MethodPost, "/api/v2/auth/signup", creds, "")
 	if res.status != http.StatusOK {
@@ -561,4 +567,50 @@ func TestGoldenAuthenticated(t *testing.T) {
 
 	sort.Slice(cases, func(i, j int) bool { return cases[i].label() < cases[j].label() })
 	runGolden(t, "authenticated.golden", cases, testToken)
+}
+
+// TestGoldenPublicAuth pins the two routes that are reachable without a token.
+// allRoutes() mirrors the authenticated table only, so until now nothing pinned
+// signup or login at all — including the duplicate-signup case, whose 500 is a known
+// defect that phase 6 will change to 409. Pinning it first makes that change show up
+// as a reviewable diff.
+//
+// Every case here is read-only: none of them creates a row, so they cannot perturb the
+// other golden suites, which share the database seeded once in TestMain.
+//
+// Cases carry explicit names because two of them are POST /auth/signup and two are
+// POST /auth/login; the default label is method+path, which would collide.
+func TestGoldenPublicAuth(t *testing.T) {
+	cases := []routeCase{
+		{
+			name:   "POST /auth/signup (username already taken)",
+			method: http.MethodPost,
+			path:   "/api/v2/auth/signup",
+			body:   fmt.Sprintf(`{"username":%q,"password":%q}`, seedUsername, seedPassword),
+		},
+		{
+			// Deliberately malformed rather than `{}`: AuthenticationRequest has no
+			// binding:"required" tags, so an empty object binds cleanly and would
+			// exercise the empty-username path instead of the bind failure.
+			name:   "POST /auth/signup (body is not valid JSON)",
+			method: http.MethodPost,
+			path:   "/api/v2/auth/signup",
+			body:   `{`,
+		},
+		{
+			name:   "POST /auth/login (wrong password)",
+			method: http.MethodPost,
+			path:   "/api/v2/auth/login",
+			body:   fmt.Sprintf(`{"username":%q,"password":"not-the-password"}`, seedUsername),
+		},
+		{
+			name:   "POST /auth/login (no such user)",
+			method: http.MethodPost,
+			path:   "/api/v2/auth/login",
+			body:   `{"username":"nobody@example.com","password":"irrelevant"}`,
+		},
+	}
+
+	// Declaration order, not sorted: these four are a narrative, not a route table.
+	runGolden(t, "public_auth.golden", cases, "")
 }

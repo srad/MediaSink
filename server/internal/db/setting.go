@@ -2,15 +2,17 @@ package db
 
 import (
 	"errors"
-	"fmt"
-	"strconv"
 
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
 type Setting struct {
-	SettingKey   string `json:"settingKey" gorm:"primaryKey;" extensions:"!x-nullable"`
+	SettingKey string `json:"settingKey" gorm:"primaryKey;" extensions:"!x-nullable"`
+	// SettingValue is the only field read back today. SettingType is still written on
+	// every save but has had no reader since the generic type-switching getter was
+	// deleted in phase 2b.2 (it had no callers); the column is kept because dropping a
+	// persisted one is a migration, not a refactor.
 	SettingValue string `json:"settingValue" gorm:"not null;" extensions:"!x-nullable"`
 	SettingType  string `json:"-" gorm:"not null;" extensions:"!x-nullable"`
 }
@@ -26,20 +28,21 @@ const (
 	legacyEmbeddingModel = "mobilenet_v3_large"
 )
 
-// GetEmbeddingModel returns the model that produced the stored frame vectors.
+// SettingRepo is the settings aggregate. Obtained from Store.Settings(), so it always
+// carries the handle its store was built with. That matters more here than elsewhere:
+// Migrate reads and seeds settings while running against a database that is not
+// necessarily the one the package global points at.
+type SettingRepo struct {
+	gorm *gorm.DB
+}
+
+// EmbeddingModel returns the model that produced the stored frame vectors.
 // A missing row means the database predates the setting, so it reports the
 // legacy model rather than an error — callers use this to decide whether the
 // stored vectors are still comparable with the active model's output.
-func GetEmbeddingModel() (string, error) {
-	return NewStoreFrom(DB).EmbeddingModel()
-}
-
-// EmbeddingModel is the store-scoped form of GetEmbeddingModel. Migrate has to use
-// this one: reading the setting through the package global would consult a different
-// database from the one being migrated.
-func (s *Store) EmbeddingModel() (string, error) {
+func (r SettingRepo) EmbeddingModel() (string, error) {
 	sett := Setting{}
-	err := s.gorm.Table("settings").First(&sett, &Setting{SettingKey: EmbeddingModelSetting}).Error
+	err := r.gorm.Table("settings").First(&sett, &Setting{SettingKey: EmbeddingModelSetting}).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return legacyEmbeddingModel, nil
 	}
@@ -50,49 +53,29 @@ func (s *Store) EmbeddingModel() (string, error) {
 }
 
 // SetEmbeddingModel records the model that produced the stored frame vectors.
-func SetEmbeddingModel(modelName string) error {
-	setting := Setting{SettingKey: EmbeddingModelSetting, SettingValue: modelName, SettingType: "string"}
-	return setting.Save()
+func (r SettingRepo) SetEmbeddingModel(modelName string) error {
+	return r.save(&Setting{
+		SettingKey:   EmbeddingModelSetting,
+		SettingValue: modelName,
+		SettingType:  "string",
+	})
 }
 
-// initSettings seeds the rows every install needs. Scoped to the store rather than to
-// the package global, because Migrate may be running against a database that is not
-// the one DB points at.
-func (s *Store) initSettings() error {
-	return s.gorm.FirstOrCreate(
+// init seeds the rows every install needs.
+func (r SettingRepo) init() error {
+	return r.gorm.FirstOrCreate(
 		&Setting{SettingKey: ReqInterval, SettingValue: "15", SettingType: "int"}).Error
 }
 
-func GetValue(settingKey string) (interface{}, error) {
-	sett := Setting{}
-
-	if err := DB.Table("settings").First(&sett, &Setting{SettingKey: settingKey}).Error; err != nil {
-		log.Errorf("[GetValue] Error retreiving setting: %s", err)
-		return nil, err
-	}
-
-	switch sett.SettingType {
-	case "int":
-		i, err := strconv.Atoi(sett.SettingValue)
-		return i, err
-	case "string":
-		return sett.SettingValue, nil
-	case "bool":
-		return sett.SettingValue == "true", nil
-	}
-
-	return nil, fmt.Errorf("unknown settings type '%s'", sett.SettingType)
-}
-
-func (setting *Setting) Save() error {
-	// Use SaveOrCreate to either update existing setting or create new one
-	result := DB.Save(setting)
+// save upserts: SettingKey is the primary key, so an existing row is updated rather
+// than duplicated.
+func (r SettingRepo) save(setting *Setting) error {
+	result := r.gorm.Save(setting)
 	if result.Error != nil {
 		log.Errorf("[Save] Error saving setting: %s", result.Error)
 		return result.Error
 	}
 
-	// Check if a new record was created
 	if result.RowsAffected > 0 {
 		log.Infof("[Save] Setting saved: %s = %s", setting.SettingKey, setting.SettingValue)
 	}

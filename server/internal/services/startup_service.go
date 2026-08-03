@@ -14,7 +14,7 @@ import (
 	"github.com/srad/mediasink/server/internal/util"
 )
 
-func StartUpJobs() {
+func StartUpJobs(store *db.Store) {
 	log.Infoln("[StartUpJobs] Running startup job ...")
 
 	if err := resetOrphanedJobs(); err != nil { // Blocking — must run before job processor starts
@@ -35,7 +35,7 @@ func StartUpJobs() {
 			log.Errorf("[StartUpJobs] fixOrphanedFiles failed: %s", err)
 		}
 	}()
-	go enqueueUnanalyzedRecordings()
+	go enqueueUnanalyzedRecordings(store)
 }
 
 func deleteOrphanedRecordings() error {
@@ -153,7 +153,7 @@ func resetOrphanedJobs() error {
 // enqueueUnanalyzedRecordings decides the next deterministic step for each recording.
 // Missing/invalid previews enqueue preview generation. Valid previews without stored
 // vectors enqueue analysis. Fully analyzed recordings enqueue nothing.
-func enqueueUnanalyzedRecordings() {
+func enqueueUnanalyzedRecordings(store *db.Store) {
 	if err := onnx.EnsureInitialized(); err != nil {
 		log.Infof("[StartUpJobs] ONNX not available, skipping auto-analysis: %v", err)
 		return
@@ -203,7 +203,7 @@ func enqueueUnanalyzedRecordings() {
 	// Record the model only once the backfill has been queued. If the process dies
 	// before this, the next boot sees the old value, drops frame_vectors again (it
 	// holds nothing worth keeping at that point) and re-queues the backfill.
-	if err := db.SetEmbeddingModel(onnx.DefaultModelName); err != nil {
+	if err := store.Settings().SetEmbeddingModel(onnx.DefaultModelName); err != nil {
 		log.Errorf("[StartUpJobs] Failed to record the active embedding model: %v", err)
 	}
 }

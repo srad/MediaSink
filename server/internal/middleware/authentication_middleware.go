@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/srad/mediasink/server/internal/app"
+	"github.com/srad/mediasink/server/internal/db"
 	"github.com/srad/mediasink/server/internal/services"
 )
 
@@ -18,11 +19,12 @@ var (
 	errUserNotFound      = errors.New("user not found or invalid")
 )
 
-// RequireAuth returns the bearer-token gate, closing over the JWT secret. The secret
-// is captured once at router construction; it used to be read from the process
-// environment on every single authenticated request, which also made this package
-// impossible to test without mutating that environment.
-func RequireAuth(secret string) gin.HandlerFunc {
+// RequireAuth returns the bearer-token gate, closing over the store and the JWT secret.
+// Both are captured once at router construction. The secret used to be read from the
+// process environment on every single authenticated request, and the user lookup used
+// to reach a package-level database handle; neither is true now, which is what makes
+// this package testable without mutating global state.
+func RequireAuth(store *db.Store, secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		appG := app.Gin{C: c}
 
@@ -42,7 +44,7 @@ func RequireAuth(secret string) gin.HandlerFunc {
 			return
 		}
 
-		user, err := services.GetUserByID(userID)
+		user, err := services.GetUserByID(store, userID)
 		if err != nil {
 			appG.Error(http.StatusUnauthorized, errUserNotFound)
 			return

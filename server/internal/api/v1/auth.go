@@ -5,6 +5,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/srad/mediasink/server/internal/app"
+	"github.com/srad/mediasink/server/internal/db"
 	"github.com/srad/mediasink/server/internal/models/requests"
 	"github.com/srad/mediasink/server/internal/services"
 )
@@ -20,20 +21,25 @@ import (
 // @Failure     400 {string} string "Error message"
 // @Failure     500 {string} string "Error message"
 // @Router      /auth/signup [post]
-func CreateUser(c *gin.Context) {
-	appG := app.Gin{C: c}
-	var auth requests.AuthenticationRequest
+func CreateUser(store *db.Store) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		appG := app.Gin{C: c}
+		var auth requests.AuthenticationRequest
 
-	if err := c.BindJSON(&auth); err != nil {
-		appG.Error(http.StatusBadRequest, err)
-		return
-	}
+		if err := c.BindJSON(&auth); err != nil {
+			appG.Error(http.StatusBadRequest, err)
+			return
+		}
 
-	if err := services.CreateUser(auth); err != nil {
-		appG.Error(http.StatusInternalServerError, err)
-		return
+		// 500 is wrong for a name that is merely taken — 409 is. Changing it is a
+		// wire change and belongs to phase 6; public_auth.golden pins today's answer
+		// so that change shows up as a diff.
+		if err := services.CreateUser(store, auth); err != nil {
+			appG.Error(http.StatusInternalServerError, err)
+			return
+		}
+		appG.Response(http.StatusOK, nil)
 	}
-	appG.Response(http.StatusOK, nil)
 }
 
 // Login godoc
@@ -47,7 +53,7 @@ func CreateUser(c *gin.Context) {
 // @Failure     401 {string} string "Error message"
 // @Failure     400 {string} string "Error message"
 // @Router      /auth/login [post]
-func Login(secret string) gin.HandlerFunc {
+func Login(store *db.Store, secret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		appG := app.Gin{C: c}
 
@@ -57,7 +63,7 @@ func Login(secret string) gin.HandlerFunc {
 			return
 		}
 
-		jwt, err := services.AuthenticateUser(auth, secret)
+		jwt, err := services.AuthenticateUser(store, auth, secret)
 		if err != nil {
 			appG.Error(http.StatusUnauthorized, err)
 			return
