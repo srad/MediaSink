@@ -8,9 +8,7 @@ works or how to run it:
 - Architecture, build/run/test commands, and conventions: `AGENTS.md`
 - Installation and user-facing setup: `README.md`
 
-Last verified: 2026-08-04, at commit `152ac5a` plus the uncommitted 2b.2 working tree.
-Re-stamp the SHA once 2b.2 is committed; `UNCOMMITTED` below marks the one place that
-needs it.
+Last verified: 2026-08-04, at commit `dbd019c`.
 
 ## Status symbols
 
@@ -202,7 +200,7 @@ Slices, each landing separately with green goldens:
     go test -overlay.
     13 tests in internal/db/store_test.go.
 
-[x] 2b.2 Users and settings (`UNCOMMITTED`) (user.go 4, setting.go 6). The pilot.
+[x] 2b.2 Users and settings (`dbd019c`) (user.go 4, setting.go 6). The pilot.
     Sets the two patterns the rest of 2b reuses: per-aggregate repositories off
     Store (store.Users(), store.Settings()) rather than ~95 flat methods, and
     handler closures - func CreateUser(*db.Store) gin.HandlerFunc.
