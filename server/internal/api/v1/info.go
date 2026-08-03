@@ -28,32 +28,33 @@ const maxInfoSeconds = 60
 // @Failure     400 {}  http.StatusBadRequest
 // @Failure     500 {}  http.StatusInternalServerError
 // @Router      /info/{seconds} [get]
-func GetInfo(c *gin.Context) {
-	appG := app.Gin{C: c}
+func GetInfo(cfg config.Cfg) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		appG := app.Gin{C: c}
 
-	// Validate before reading config or measuring anything: util.Info sleeps
-	// for the requested duration, so a rejected request must cost nothing.
-	secs := c.Param("seconds")
-	val, err := strconv.ParseUint(secs, 10, 64)
-	if err != nil {
-		appG.Error(http.StatusBadRequest, err)
-		return
+		// Validate before measuring anything: util.Info sleeps for the requested
+		// duration, so a rejected request must cost nothing.
+		secs := c.Param("seconds")
+		val, err := strconv.ParseUint(secs, 10, 64)
+		if err != nil {
+			appG.Error(http.StatusBadRequest, err)
+			return
+		}
+
+		if val == 0 || val > maxInfoSeconds {
+			appG.Error(http.StatusBadRequest, fmt.Errorf("seconds must be between 1 and %d", maxInfoSeconds))
+			return
+		}
+
+		data, err := util.Info(cfg.DataDisk, cfg.NetworkDev, val)
+
+		if err != nil {
+			appG.Error(http.StatusInternalServerError, err)
+			return
+		}
+
+		appG.Response(http.StatusOK, data)
 	}
-
-	if val == 0 || val > maxInfoSeconds {
-		appG.Error(http.StatusBadRequest, fmt.Errorf("seconds must be between 1 and %d", maxInfoSeconds))
-		return
-	}
-
-	cfg := config.Read()
-	data, err := util.Info(cfg.DataDisk, cfg.NetworkDev, val)
-
-	if err != nil {
-		appG.Error(http.StatusInternalServerError, err)
-		return
-	}
-
-	appG.Response(http.StatusOK, data)
 }
 
 // GetDiskInfo godoc
@@ -65,17 +66,17 @@ func GetInfo(c *gin.Context) {
 // @Success     200 {object} util.DiskInfo
 // @Failure     500 {}  http.StatusInternalServerError
 // @Router      /info/disk [get]
-func GetDiskInfo(c *gin.Context) {
-	appG := app.Gin{C: c}
+func GetDiskInfo(cfg config.Cfg) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		appG := app.Gin{C: c}
 
-	cfg := config.Read()
+		info, err := util.DiskUsage(cfg.DataDisk)
 
-	info, err := util.DiskUsage(cfg.DataDisk)
+		if err != nil {
+			appG.Error(http.StatusInternalServerError, err)
+			return
+		}
 
-	if err != nil {
-		appG.Error(http.StatusInternalServerError, err)
-		return
+		appG.Response(http.StatusOK, info)
 	}
-
-	appG.Response(http.StatusOK, info)
 }

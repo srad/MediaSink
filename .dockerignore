@@ -3,10 +3,10 @@ main
 main.exe
 mediasink.sqlite3
 *.md
-test.sh
 ffmpeg
 bin
 Dockerfile*
+*.Dockerfile
 docker-compose*
 .dockerignore
 .git

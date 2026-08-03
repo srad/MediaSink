@@ -3,7 +3,6 @@ package db
 import (
 	"database/sql"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -20,9 +19,15 @@ import (
 
 var DB *gorm.DB
 
-func Init() {
-	cfg := config.Read()
+// sqlDSN builds the connection string for the server-based drivers. MySQL and
+// Postgres share it verbatim, which is why it lives here rather than being spelled
+// out twice inside Init.
+func sqlDSN(cfg config.Cfg) string {
+	return fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Europe/Berlin",
+		cfg.DBHost, cfg.DBUser, cfg.DBPassword, cfg.DBName, cfg.DBPort)
+}
 
+func Init(cfg config.Cfg) {
 	newLogger := logger.New(
 		log.New(),
 		logger.Config{
@@ -36,13 +41,11 @@ func Init() {
 
 	// Choose driver.
 	var dialector gorm.Dialector
-	switch os.Getenv("DB_ADAPTER") {
+	switch cfg.DBAdapter {
 	case "mysql":
-		dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Europe/Berlin", os.Getenv("DB_HOST"), os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME"), os.Getenv("DB_PORT"))
-		dialector = mysql.New(mysql.Config{DSN: dsn})
+		dialector = mysql.New(mysql.Config{DSN: sqlDSN(cfg)})
 	case "postgres":
-		dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Europe/Berlin", os.Getenv("DB_HOST"), os.Getenv("DB_USER"), os.Getenv("DB_PASSWORD"), os.Getenv("DB_NAME"), os.Getenv("DB_PORT"))
-		dialector = postgres.New(postgres.Config{DSN: dsn})
+		dialector = postgres.New(postgres.Config{DSN: sqlDSN(cfg)})
 	default:
 		// SQLite3 is a single-writer database. For production multi-user
 		// workloads use PostgreSQL (set DB_ADAPTER=postgres).
@@ -57,11 +60,13 @@ func Init() {
 	}
 
 	/// Open and assign database.
-	config := &gorm.Config{
+	// Named gormCfg, not config: a local named `config` would shadow the imported
+	// config package for the rest of this function.
+	gormCfg := &gorm.Config{
 		Logger:                                   newLogger,
 		DisableForeignKeyConstraintWhenMigrating: false, // Enable foreign key constraints for data integrity
 	}
-	db, err := gorm.Open(dialector, config)
+	db, err := gorm.Open(dialector, gormCfg)
 	if err != nil {
 		panic("failed to connect models")
 	}
@@ -72,7 +77,7 @@ func Init() {
 	if err != nil {
 		panic("failed to get database instance")
 	}
-	switch os.Getenv("DB_ADAPTER") {
+	switch cfg.DBAdapter {
 	case "mysql", "postgres":
 		sqlDB.SetMaxIdleConns(10)
 		sqlDB.SetMaxOpenConns(100)

@@ -18,6 +18,7 @@ func TestMain(m *testing.M) {
 	setIfEmpty("DATA_DIR", ".previews")
 	setIfEmpty("DATA_DISK", "/")
 	setIfEmpty("NET_ADAPTER", "eth0")
+	setIfEmpty("SECRET", "db-test-secret")
 
 	os.Exit(m.Run())
 }

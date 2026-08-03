@@ -29,7 +29,7 @@ MediaSink.Go is a Go-based web server for video management, stream recording, an
   - **main.go**: Thin bootstrap that delegates process setup and shutdown to `app.InitializeApp(...)` and `App.Run()`
   - **frontend_embed.go**: Embeds `server/frontend/dist` into the Go binary at compile time via `go:embed`
   - **app/**: Composition root and lifecycle management for startup validation, DB/vector-store init, and graceful shutdown
-  - **config/**: Configuration — reads exclusively from environment variables (`config.Read()` is cached via `sync.Once`)
+  - **config/**: Configuration — reads exclusively from environment variables. `config.Parse(getenv)` is pure and testable; `config.Load()` reads the process environment once and caches it
   - **docs/**: Generated Swagger/OpenAPI output; `server/docs/swagger.json` is the source of truth for generated clients
   - **docker-entrypoint.sh**: Server-container entrypoint used by the root Dockerfile
   - **internal/api/**: Active public HTTP layer
@@ -124,9 +124,24 @@ CLI notes:
 
 ### Tests
 ```sh
-./test.sh
+./docker-test.sh              # build the image if needed, then run everything
+./docker-test.sh --rebuild    # force a fresh image build first
 ```
-Runs all Go tests in the `server/` module. Sets test environment variables for database and file paths. Coverage is measured with `-coverpkg=./...`, so an integration-style test is credited to the packages it actually exercises, not only to the package that owns it.
+Runs all Go tests in the `server/` module **and** a real boot smoke test, inside the container defined by `test.Dockerfile`.
+
+The container is not optional convenience. `app.validateEnvironment` requires `ffmpeg`, `ffprobe`, `yt-dlp` and a loadable ONNX runtime, so on a machine without them the server exits before it ever listens and `go test` alone can never prove the binary boots. The smoke phase starts the real server, signs up, logs in, exercises an authenticated route, restarts under a *different* `SECRET` to prove the JWT is bound to configuration rather than to the environment, and checks that missing configuration aborts startup naming every missing variable.
+
+To iterate on the script without rebuilding the image:
+```sh
+docker run --rm -v "$PWD/docker-test.sh:/usr/local/bin/docker-test.sh:ro" mediasink-test
+```
+
+For a fast inner loop you can still run the Go suite directly, but note it proves less — it cannot boot the server:
+```sh
+cd server && GOWORK=off go test ./...
+```
+
+There is no longer a host-side `./test.sh`. It was removed because it passed for the wrong reason: the golden suite pinned an error string that only occurs on a machine *missing* `yt-dlp`, so a correctly provisioned host went red. That case is now environment-independent (see below).
 
 CLI-specific tests:
 ```sh
@@ -151,6 +166,19 @@ cd server && go test ./internal/api/ -run TestGolden -update
 
 Endpoints returning live host telemetry (`/info/:seconds`, `/info/disk`, `/processes`)
 snapshot only the response *shape*, since their values vary per machine and per second.
+
+**Nothing in a golden may depend on what the host has installed.** The suite once
+pinned `exec: "yt-dlp": executable file not found in $PATH` for
+`POST /channels/:id/resume`, which held only on a machine *without* yt-dlp; anywhere it
+was installed the binary really ran, reached the network, and the golden failed. Two
+guards now:
+
+- the seeded channel's stream URL points at a test-local `httptest.Server`
+  (`testStreamURL`), so that route makes no outbound request. It is a test server on
+  purpose — a test-only endpoint added to `router.go` would ship to production.
+- `redactSubprocessError` normalises the tail of a subprocess failure, the same way
+  `testTmpDir` and the volatile JSON keys are redacted. The case still pins the 500
+  status and that the message names the URL; it no longer pins yt-dlp's wording.
 
 ### Linting
 ```sh
@@ -203,7 +231,7 @@ The `Dockerfile` uses a multi-stage build:
 ### Authentication
 - JWT-based authentication
 - `SECRET` environment variable required; startup fails without it (checked in `validateEnvironment` in `server/app/app.go`, not in `main.go`)
-- Middleware: `middleware.CheckAuthorizationHeader` handles transport (bearer extraction, user lookup, error rendering); `middleware.parseToken` in `token.go` does the JWT validation and is unit-tested
+- Middleware: `middleware.RequireAuth(secret)` returns the gate and handles transport (bearer extraction, user lookup, error rendering); `middleware.parseToken` in `token.go` does the JWT validation and is unit-tested. The secret is captured once at router construction, never read per request
 - `SECRET` is currently read via `os.Getenv` on every authenticated request; moving it into `Cfg` is tracked in `ROADMAP.md` (Phase 2a)
 
 ### Services & Background Processing
@@ -225,7 +253,7 @@ The `Dockerfile` uses a multi-stage build:
 
 ## Configuration
 
-All configuration is read from environment variables — there is no config file. `config.Read()` in `server/config/config.go` reads the variables once and caches the result.
+All configuration is read from environment variables — there is no config file. `main.go` calls `config.Load()` once at startup and passes the resulting `config.Cfg` down; missing required variables are reported together and abort startup. A panicking `config.Read()` shim remains for the call sites in `internal/db` and `internal/services` that Phases 2b and 3 still have to convert — do not add callers to it.
 
 Required environment variables:
 - `SECRET`: JWT secret (required, checked at startup)

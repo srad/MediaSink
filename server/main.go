@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"os"
 	"os/signal"
 	"syscall"
 
@@ -22,10 +21,16 @@ func main() {
 		FullTimestamp: false,
 	})
 
-	level, err := config.ParseLogLevel(os.Getenv("LOG_LEVEL"))
-	log.SetLevel(level)
+	// Read the environment exactly once, here, and pass the result down. The order
+	// matters: the level has to be set before the warnings are emitted, or a
+	// LOG_LEVEL of "fatal" would still print them.
+	cfg, warnings, err := config.Load()
 	if err != nil {
-		log.Warnf("invalid LOG_LEVEL %q, defaulting to %q: %v", os.Getenv("LOG_LEVEL"), level, err)
+		log.Fatalf("configuration error: %v", err)
+	}
+	log.SetLevel(cfg.LogLevel)
+	for _, warning := range warnings {
+		log.Warn(warning)
 	}
 
 	log.Infof("Version: %s, Commit: %s, Api Version %s", Version, Commit, ApiVersion)
@@ -37,7 +42,7 @@ func main() {
 		Version:    Version,
 		Commit:     Commit,
 		APIVersion: ApiVersion,
-	})
+	}, cfg)
 	if err != nil {
 		log.Fatalf("failed to initialize application: %v", err)
 	}

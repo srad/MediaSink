@@ -33,12 +33,13 @@ import (
 // @BasePath  /api/v2
 
 // Setup InitRouter initialize routing information
-func Setup(version, commit, apiVersion string, frontendFS embed.FS) http.Handler {
+func Setup(cfg config.Cfg, version, commit, apiVersion string, frontendFS embed.FS) http.Handler {
 	router := gin.New()
 	// r.Use(gin.Logger())
 	router.Use(gin.Recovery())
 
-	cfg := config.Read()
+	// Built once here, not per request: the gate closes over the JWT secret.
+	authRequired := middleware.RequireAuth(cfg.JWTSecret)
 
 	// Add CORS headers specifically for static files to allow canvas usage
 	router.Use(func(c *gin.Context) {
@@ -83,19 +84,19 @@ func Setup(version, commit, apiVersion string, frontendFS embed.FS) http.Handler
 		// ------------------------------------------------------
 		auth := apiV2.Group("/auth")
 		auth.POST("/signup", v1.CreateUser)
-		auth.POST("/login", v1.Login)
-		auth.POST("/logout", middleware.CheckAuthorizationHeader, v1.Logout)
+		auth.POST("/login", v1.Login(cfg.JWTSecret))
+		auth.POST("/logout", authRequired, v1.Logout)
 
 		// User
 		// ------------------------------------------------------
 		user := apiV2.Group("/user")
-		user.Use(middleware.CheckAuthorizationHeader)
+		user.Use(authRequired)
 		user.GET("/profile", v1.GetUserProfile)
 
 		// Admin Group
 		// ------------------------------------------------------
 		admin := apiV2.Group("/admin")
-		admin.Use(middleware.CheckAuthorizationHeader)
+		admin.Use(authRequired)
 		admin.GET("/version", v1.GetVersion(version, commit))
 		admin.POST("/import", v1.TriggerImport)
 		admin.GET("/import", v1.GetImportInfo)
@@ -104,7 +105,7 @@ func Setup(version, commit, apiVersion string, frontendFS embed.FS) http.Handler
 		// Channels Group
 		// ------------------------------------------------------
 		channels := apiV2.Group("/channels")
-		channels.Use(middleware.CheckAuthorizationHeader)
+		channels.Use(authRequired)
 
 		channels.GET("", v1.GetChannels)
 		channels.POST("", v1.CreateChannel)
@@ -127,7 +128,7 @@ func Setup(version, commit, apiVersion string, frontendFS embed.FS) http.Handler
 		// Jobs Group
 		// ------------------------------------------------------
 		jobs := apiV2.Group("/jobs")
-		jobs.Use(middleware.CheckAuthorizationHeader)
+		jobs.Use(authRequired)
 
 		jobs.POST("/:id", v1.AddPreviewJobs)
 		jobs.POST("/stop/:pid", v1.StopJob)
@@ -140,7 +141,7 @@ func Setup(version, commit, apiVersion string, frontendFS embed.FS) http.Handler
 		// Recorder Group
 		// ------------------------------------------------------
 		recorder := apiV2.Group("/recorder")
-		recorder.Use(middleware.CheckAuthorizationHeader)
+		recorder.Use(authRequired)
 
 		recorder.POST("/resume", v1.StartRecorder)
 		recorder.POST("/pause", v1.StopRecorder)
@@ -149,7 +150,7 @@ func Setup(version, commit, apiVersion string, frontendFS embed.FS) http.Handler
 		// Videos Group
 		// ------------------------------------------------------
 		videos := apiV2.Group("/videos")
-		videos.Use(middleware.CheckAuthorizationHeader)
+		videos.Use(authRequired)
 
 		videos.POST("/updateinfo", v1.UpdateVideoInfo)
 		videos.POST("/isupdating", v1.IsUpdatingVideoInfo)
@@ -177,7 +178,7 @@ func Setup(version, commit, apiVersion string, frontendFS embed.FS) http.Handler
 		// Previews Group
 		// ------------------------------------------------------
 		previews := apiV2.Group("/previews")
-		previews.Use(middleware.CheckAuthorizationHeader)
+		previews.Use(authRequired)
 
 		previews.POST("/regenerate", v1.RegenerateAllPreviews)
 		previews.GET("/regenerate", v1.GetRegenerationProgress)
@@ -185,7 +186,7 @@ func Setup(version, commit, apiVersion string, frontendFS embed.FS) http.Handler
 		// Analysis Group
 		// ------------------------------------------------------
 		analysis := apiV2.Group("/analysis")
-		analysis.Use(middleware.CheckAuthorizationHeader)
+		analysis.Use(authRequired)
 
 		analysis.POST("/search/image", v1.SearchSimilarVideosByImage)
 		analysis.POST("/group", v1.GroupSimilarVideos)
@@ -196,19 +197,19 @@ func Setup(version, commit, apiVersion string, frontendFS embed.FS) http.Handler
 		// Info Group
 		// ------------------------------------------------------
 		info := apiV2.Group("/info")
-		info.Use(middleware.CheckAuthorizationHeader)
+		info.Use(authRequired)
 
-		info.GET("/:seconds", v1.GetInfo)
-		info.GET("/disk", v1.GetDiskInfo)
+		info.GET("/:seconds", v1.GetInfo(cfg))
+		info.GET("/disk", v1.GetDiskInfo(cfg))
 
 		// Processes
 		// ------------------------------------------------------
-		apiV2.GET("/processes", middleware.CheckAuthorizationHeader, v1.GetProcesses)
+		apiV2.GET("/processes", authRequired, v1.GetProcesses)
 
 		// WebSocket
 		// ------------------------------------------------------
 		go ws.WsListen()
-		apiV2.GET("/ws", middleware.CheckAuthorizationHeader, ws.WsHandler)
+		apiV2.GET("/ws", authRequired, ws.WsHandler)
 	}
 
 	serveFrontend(router, frontendFS, version, commit, apiVersion)

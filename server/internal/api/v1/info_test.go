@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/srad/mediasink/server/config"
 )
 
 // util.Info sleeps twice for the requested number of seconds, so an unbounded
@@ -14,13 +15,17 @@ import (
 func TestGetInfoRejectsOutOfRangeSeconds(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
+	// The handler now closes over its configuration; a zero Cfg is enough, because
+	// every case here is rejected before the config is ever consulted.
+	handler := GetInfo(config.Cfg{})
+
 	for _, seconds := range []string{"0", "61", "99999999999", "18446744073709551616", "abc", "-1"} {
 		recorder := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(recorder)
 		c.Request = httptest.NewRequest(http.MethodGet, "/info/"+seconds, nil)
 		c.Params = gin.Params{{Key: "seconds", Value: seconds}}
 
-		GetInfo(c)
+		handler(c)
 
 		if recorder.Code != http.StatusBadRequest {
 			t.Errorf("seconds=%q returned %d, want %d", seconds, recorder.Code, http.StatusBadRequest)

@@ -3,7 +3,6 @@ package vector
 import (
 	"context"
 	"fmt"
-	"os"
 	"sync"
 
 	"github.com/srad/mediasink/server/internal/db"
@@ -26,15 +25,19 @@ type Store interface {
 	QueryRecordingSimilarityEdges(context.Context, float64, []db.RecordingID, int) ([]db.RecordingSimilarityEdge, error)
 }
 
-type SQLiteVecStore struct{}
+type SQLiteVecStore struct {
+	// adapter is the configured database driver. A plain string rather than a
+	// config.Cfg so this package keeps no dependency on config.
+	adapter string
+}
 
 var (
 	defaultStore Store
 	defaultMu    sync.RWMutex
 )
 
-func NewSQLiteVecStore() *SQLiteVecStore {
-	return &SQLiteVecStore{}
+func NewSQLiteVecStore(adapter string) *SQLiteVecStore {
+	return &SQLiteVecStore{adapter: adapter}
 }
 
 func SetDefault(store Store) {
@@ -54,15 +57,17 @@ func Default() Store {
 	defaultMu.Lock()
 	defer defaultMu.Unlock()
 	if defaultStore == nil {
-		defaultStore = NewSQLiteVecStore()
+		// Empty adapter means sqlite, the only backend this store supports. The
+		// fallback is unreachable in the shipped binary — app.InitializeApp always
+		// calls SetDefault first — and disappears with Default() itself in Phase 3.
+		defaultStore = NewSQLiteVecStore("")
 	}
 	return defaultStore
 }
 
 func (s *SQLiteVecStore) Initialize(ctx context.Context) error {
-	adapter := os.Getenv("DB_ADAPTER")
-	if adapter != "" && adapter != "sqlite" && adapter != "sqlite3" {
-		return fmt.Errorf("sqlite-vec backend requires sqlite, current adapter is %q", adapter)
+	if s.adapter != "" && s.adapter != "sqlite" && s.adapter != "sqlite3" {
+		return fmt.Errorf("sqlite-vec backend requires sqlite, current adapter is %q", s.adapter)
 	}
 	if db.DB == nil {
 		return fmt.Errorf("database is not initialized")

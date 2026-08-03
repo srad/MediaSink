@@ -23,12 +23,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
+	"github.com/srad/mediasink/server/config"
 	"github.com/srad/mediasink/server/internal/db"
 )
 
@@ -47,6 +49,14 @@ var (
 	testRouter http.Handler
 	testToken  string
 	testTmpDir string
+
+	// The seeded channel's stream URL. It points at a local test server rather than
+	// a public host, so the one route that shells out to yt-dlp
+	// (POST /channels/:id/resume) makes no network call.
+	//
+	// A test-local httptest.Server, deliberately not a route on the real router:
+	// a test-only endpoint mounted in router.go would ship to production.
+	testStreamURL string
 )
 
 func TestMain(m *testing.M) {
@@ -76,10 +86,26 @@ func TestMain(m *testing.M) {
 	log.SetLevel(log.FatalLevel)
 	gin.SetMode(gin.TestMode)
 
-	db.Init()
+	cfg, _, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "config: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Serves the seeded channel's stream URL. Its content does not matter: yt-dlp
+	// has no extractor for it either way. What matters is that the request stays on
+	// loopback, so the outcome does not depend on reaching a public host.
+	streamSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html")
+		fmt.Fprint(w, "<html><body>golden test stream page</body></html>")
+	}))
+	defer streamSrv.Close()
+	testStreamURL = streamSrv.URL + "/live"
+
+	db.Init(cfg)
 
 	var frontendFS embed.FS // zero value: no embedded frontend needed for API routes
-	testRouter = Setup(testVersion, testCommit, testAPIVersion, frontendFS)
+	testRouter = Setup(cfg, testVersion, testCommit, testAPIVersion, frontendFS)
 
 	testToken = seedUserAndLogin()
 
@@ -161,9 +187,31 @@ var volatileKeys = map[string]bool{
 	"received":    true,
 }
 
+// ytDLPFailure matches the error QueryStreamURLs builds when the yt-dlp subprocess
+// fails, up to and including the URL. Everything after it is the exec error plus
+// yt-dlp's own stderr.
+var ytDLPFailure = regexp.MustCompile(`^(yt-dlp failed for URL \S+): [\s\S]*$`)
+
+// redactSubprocessError normalises the tail of a subprocess failure message.
+//
+// This case previously pinned the literal text `exec: "yt-dlp": executable file not
+// found in $PATH`, which only holds on a machine that does not have yt-dlp. Anywhere
+// it IS installed the binary really ran and the golden failed — so the suite passed
+// by accident of a missing dependency, and could never run in a provisioned
+// container or CI. The detail is a property of the environment and of yt-dlp's
+// version, never of this code, so it is redacted like any other volatile value.
+// What the case still pins: the route returns 500, and the message names the URL.
+func redactSubprocessError(s string) string {
+	if m := ytDLPFailure.FindStringSubmatch(s); m != nil {
+		return m[1] + ": <subprocess-error>"
+	}
+	return s
+}
+
 // redact walks decoded JSON replacing volatile values with a placeholder, and
 // rewrites the temp directory so paths are stable across runs. Deliberately
-// structural rather than textual — no regex over response bodies.
+// structural rather than textual — no regex over response bodies, with the single
+// exception of redactSubprocessError above.
 func redact(v any) any {
 	switch t := v.(type) {
 	case map[string]any:
@@ -183,10 +231,15 @@ func redact(v any) any {
 		}
 		return out
 	case string:
-		if testTmpDir != "" && strings.Contains(t, testTmpDir) {
-			return strings.ReplaceAll(t, testTmpDir, "<tmp>")
+		s := t
+		if testTmpDir != "" && strings.Contains(s, testTmpDir) {
+			s = strings.ReplaceAll(s, testTmpDir, "<tmp>")
 		}
-		return t
+		// The test server's port is assigned by the kernel, so it differs per run.
+		if testStreamURL != "" && strings.Contains(s, testStreamURL) {
+			s = strings.ReplaceAll(s, testStreamURL, "<teststream>")
+		}
+		return redactSubprocessError(s)
 	default:
 		return v
 	}
@@ -493,7 +546,7 @@ func TestGoldenAuthenticated(t *testing.T) {
 	// Bodies for the routes that parse one, so they exercise handler logic rather
 	// than stopping at the bind error.
 	bodies := map[string]string{
-		"POST /api/v2/channels":      `{"channelName":"golden_channel","displayName":"Golden","skipStart":0,"minDuration":10,"url":"https://example.com/live","isPaused":true,"fav":false}`,
+		"POST /api/v2/channels":      `{"channelName":"golden_channel","displayName":"Golden","skipStart":0,"minDuration":10,"url":"` + testStreamURL + `","isPaused":true,"fav":false}`,
 		"POST /api/v2/jobs/list":     `{"skip":0,"take":10,"states":[],"sortOrder":"asc"}`,
 		"POST /api/v2/videos/filter": `{"column":"created_at","order":"desc","skip":0,"take":5}`,
 	}

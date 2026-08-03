@@ -21,6 +21,7 @@ func setupChapterRegenerationDB(t *testing.T) {
 	t.Setenv("DATA_DIR", ".previews")
 	t.Setenv("DATA_DISK", tempRoot)
 	t.Setenv("NET_ADAPTER", "lo")
+	t.Setenv("SECRET", "chapter-regeneration-test-secret")
 
 	database, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),

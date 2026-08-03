@@ -3,7 +3,6 @@ package onnx
 import (
 	"fmt"
 	"image"
-	"os"
 	"sync"
 
 	ort "github.com/yalue/onnxruntime_go"
@@ -14,17 +13,40 @@ import (
 var (
 	initOnce sync.Once
 	initErr  error
+
+	// libPath optionally overrides the ONNX shared library location. It is written
+	// once by the composition root and read inside initOnce; the mutex keeps that
+	// pair synchronised so -race stays clean. Package state on purpose, for now:
+	// EnsureInitialized has four callers, three of them detectors with no route to
+	// configuration. Phase 3 removes it when those become injected structs.
+	libPathMu sync.Mutex
+	libPath   string
 )
 
+// SetLibraryPath overrides the ONNX shared library location. Call it from the
+// composition root before the first EnsureInitialized; an empty path means "use the
+// system default".
+func SetLibraryPath(path string) {
+	libPathMu.Lock()
+	defer libPathMu.Unlock()
+	libPath = path
+}
+
+func sharedLibraryPath() string {
+	libPathMu.Lock()
+	defer libPathMu.Unlock()
+	return libPath
+}
+
 // EnsureInitialized initializes the ONNX runtime environment once.
-// The shared library path can be overridden with the ONNXRUNTIME_LIB env var.
+// The shared library path can be overridden with SetLibraryPath.
 func EnsureInitialized() error {
 	initOnce.Do(func() {
 		if ort.IsInitialized() {
 			return
 		}
-		if libPath := os.Getenv("ONNXRUNTIME_LIB"); libPath != "" {
-			ort.SetSharedLibraryPath(libPath)
+		if path := sharedLibraryPath(); path != "" {
+			ort.SetSharedLibraryPath(path)
 		}
 		initErr = ort.InitializeEnvironment()
 	})

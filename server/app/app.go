@@ -29,17 +29,22 @@ type Metadata struct {
 type App struct {
 	frontendFS embed.FS
 	metadata   Metadata
+	cfg        config.Cfg
 	server     *http.Server
 }
 
-func InitializeApp(frontendFS embed.FS, metadata Metadata) (*App, error) {
-	if err := validateEnvironment(); err != nil {
+func InitializeApp(frontendFS embed.FS, metadata Metadata, cfg config.Cfg) (*App, error) {
+	// Before validateEnvironment, which is the first thing to reach
+	// onnx.EnsureInitialized.
+	onnx.SetLibraryPath(cfg.ONNXRuntimeLib)
+
+	if err := validateEnvironment(cfg); err != nil {
 		return nil, err
 	}
 
-	db.Init()
+	db.Init(cfg)
 
-	vectorStore := vector.NewSQLiteVecStore()
+	vectorStore := vector.NewSQLiteVecStore(cfg.DBAdapter)
 	vector.SetDefault(vectorStore)
 	if err := vectorStore.Initialize(context.Background()); err != nil {
 		return nil, fmt.Errorf("initialize vector store: %w", err)
@@ -52,6 +57,7 @@ func InitializeApp(frontendFS embed.FS, metadata Metadata) (*App, error) {
 	return &App{
 		frontendFS: frontendFS,
 		metadata:   metadata,
+		cfg:        cfg,
 	}, nil
 }
 
@@ -62,7 +68,7 @@ func (a *App) Run(ctx context.Context) error {
 
 	gin.SetMode(gin.ReleaseMode)
 
-	handler := legacyapi.Setup(a.metadata.Version, a.metadata.Commit, a.metadata.APIVersion, a.frontendFS)
+	handler := legacyapi.Setup(a.cfg, a.metadata.Version, a.metadata.Commit, a.metadata.APIVersion, a.frontendFS)
 	engine, ok := handler.(*gin.Engine)
 	if !ok {
 		return fmt.Errorf("unexpected router type %T", handler)
@@ -109,13 +115,9 @@ func (a *App) Shutdown(ctx context.Context) error {
 	return shutdownErr
 }
 
-func validateEnvironment() error {
-	if os.Getenv("SECRET") == "" {
-		return fmt.Errorf("jwt SECRET environment variable is not set")
-	}
-	log.Infoln("OK: JWT SECRET environment variable is set.")
-
-	cfg := config.Read()
+// validateEnvironment checks what configuration cannot: that the paths exist and the
+// external tooling is present. Required variables are enforced by config.Parse.
+func validateEnvironment(cfg config.Cfg) error {
 	for _, path := range []string{cfg.DataDisk, cfg.RecordingsAbsolutePath} {
 		if _, err := os.Stat(path); os.IsNotExist(err) {
 			return fmt.Errorf("path %s does not exist", path)

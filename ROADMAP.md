@@ -8,7 +8,8 @@ works or how to run it:
 - Architecture, build/run/test commands, and conventions: `AGENTS.md`
 - Installation and user-facing setup: `README.md`
 
-Last verified: 2026-08-03, at commit `fd95907`.
+Last verified: 2026-08-03, at commit `fd95907` plus the uncommitted Phase 2a change.
+Re-stamp with the real SHA when Phase 2a is committed.
 
 ## Status symbols
 
@@ -30,7 +31,8 @@ Converts the Go server from package-level mutable state and free functions to in
 dependencies. Runs in phases; every phase must build, pass tests and lint, and leave
 the golden HTTP tests byte-identical unless an API change is intended.
 
-Measured at commit `fd95907`: coverage 39.8%, lint 0 issues, 106 golden route cases.
+Measured after Phase 2a: coverage 40.2%, lint 0 issues, 106 golden route cases.
+(At `fd95907`, before Phase 2a: coverage 39.8%.)
 
 ## Phase 0 - Safety net and tooling (`712c7eb`)
 
@@ -60,7 +62,8 @@ Measured at commit `fd95907`: coverage 39.8%, lint 0 issues, 106 golden route ca
 
 [x] test.sh fixes: the no-test counter reported 1 package instead of 23, and
     coverage now uses -coverpkg so integration-style tests credit the packages
-    they actually drive.
+    they actually drive. Superseded in Phase 2a: test.sh was deleted in favour of
+    docker-test.sh, which can boot the server.
 ```
 
 ## Phase 1 - Delete the abandoned v2 stack (`638ae62`, `fd95907`)
@@ -79,24 +82,62 @@ Measured at commit `fd95907`: coverage 39.8%, lint 0 issues, 106 golden route ca
     preserved. 20 test cases added; parseToken at 90.9%.
 ```
 
-## Phase 2a - Config becomes a value, not a global
+## Phase 2a - Config becomes a value, not a global (partial)
 
 Objective: read `Cfg` once at the composition root and pass it down, so services and
 middleware stop reaching for global state.
 
+The earlier count of "18 config.Read() call sites" was wrong: two of those grep hits
+are comments, so there were 16.
+
 ```
-[ ] Thread Cfg from the composition root. 18 config.Read() call sites.
+[~] Thread Cfg from the composition root. 5 of the 16 config.Read() calls are gone
+    (main/app, router, info x2, db.Init). The other 11 are deferred, because
+    converting them is the same work later phases already own:
+    [ ] 8 sites in internal/db hang off seven path methods on ChannelName and
+        RecordingID - GORM column types with about 49 external callers. Re-signing
+        them is the active-record migration itself. Owner: Phase 2b.
+    [ ] 3 sites are free functions in internal/services, each atop a call chain
+        reaching back to handlers and startup. Owner: Phase 3.
 
-[ ] Fold in the 9 genuine os.Getenv calls that bypass config entirely: SECRET in
-    three places, DB_ADAPTER re-derived in three, ONNXRUNTIME_LIB, and the DSN
-    parts in db/db.go. The JWT secret is currently read from the environment on
-    every authenticated request.
+[x] Folded in all 9 os.Getenv calls that bypassed config: SECRET x3, DB_ADAPTER x3,
+    ONNXRUNTIME_LIB, and the two duplicated DSN lines in db/db.go. Also the two
+    LOG_LEVEL reads in main.go, which the count of 9 had excluded as bootstrap.
+    The JWT secret is now captured once at router construction rather than read
+    from the environment on every authenticated request.
 
-[ ] Make mustEnv return an error instead of calling log.Panicf.
+[x] mustEnv is deleted. config.Parse(getenv) is pure and returns an error naming
+    every missing variable at once; config.Load() caches it. Note the remaining
+    panic: the config.Read() shim that serves the 11 deferred call sites still
+    calls log.Panicf, and goes away with the last of them in Phase 3.
 ```
 
-Gate: goldens byte-identical; `internal/middleware` becomes testable without mutating
-process environment.
+Also landed in this phase, found by running the suite in a provisioned container
+for the first time:
+
+```
+[x] Fixed an environment-dependent golden. authenticated.golden pinned the string
+    `exec: "yt-dlp": executable file not found in $PATH` for
+    POST /channels/:id/resume, which is only true on a host WITHOUT yt-dlp.
+    Anywhere it was installed the binary really ran against example.com over the
+    network and the golden failed - so the suite passed by accident of a missing
+    dependency and could never have run in CI. The seeded channel now points at a
+    test-local httptest.Server, and redactSubprocessError normalises the failure
+    tail the same way testTmpDir is redacted. Still pinned: the 500 status and
+    that the message names the URL. Not a Phase 2a regression; it predates the
+    phase and is unchanged in git history.
+
+[x] Added test.Dockerfile and docker-test.sh: the Go suite plus a real boot smoke
+    test (signup, login, authenticated route, restart under a different SECRET to
+    prove the JWT is bound to config, and the missing-config abort). Deleted
+    test.sh, which could not do any of that.
+```
+
+Gate: met. Goldens byte-identical apart from the two deliberate lines above,
+swagger.json byte-identical, lint 0 issues,
+`internal/middleware` now has a test suite that supplies its own secret and database
+without mutating process environment. `grep -rn 'os.Getenv' server --include='*.go'`
+outside `config/` and tests returns only a comment.
 
 ## Phase 2b - Kill the global DB handle
 
@@ -328,10 +369,17 @@ config present at `mobile/analysis_options.yaml`.
 
 ```
 [ ] There is no CI. No workflow configuration exists anywhere in the repository,
-    so every gate is run manually.
+    so every gate is run manually. docker-test.sh is now the piece that was
+    missing: it is self-contained and environment-independent, so it can be
+    invoked from a workflow as-is.
 
-[ ] test.sh and lint.sh cover the Go module only. The frontend, CLI and mobile
-    test and lint targets exist but are not wired into a single entry point.
+[ ] docker-test.sh and lint.sh cover the Go module only. The frontend, CLI and
+    mobile test and lint targets exist but are not wired into a single entry
+    point.
+
+[ ] docker-test.sh needs the Docker daemon and a first build of roughly five
+    minutes. There is no host-only fast path any more; `cd server && GOWORK=off
+    go test ./...` is the fallback, but it cannot boot the server.
 ```
 
 ---

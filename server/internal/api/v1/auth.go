@@ -47,36 +47,38 @@ func CreateUser(c *gin.Context) {
 // @Failure     401 {string} string "Error message"
 // @Failure     400 {string} string "Error message"
 // @Router      /auth/login [post]
-func Login(c *gin.Context) {
-	appG := app.Gin{C: c}
+func Login(secret string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		appG := app.Gin{C: c}
 
-	var auth requests.AuthenticationRequest
-	if err := c.BindJSON(&auth); err != nil {
-		appG.Error(http.StatusBadRequest, err)
-		return
+		var auth requests.AuthenticationRequest
+		if err := c.BindJSON(&auth); err != nil {
+			appG.Error(http.StatusBadRequest, err)
+			return
+		}
+
+		jwt, err := services.AuthenticateUser(auth, secret)
+		if err != nil {
+			appG.Error(http.StatusUnauthorized, err)
+			return
+		}
+
+		/*
+			http.SetCookie(c.Writer, &http.Cookie{
+				Name:     "jwt",
+				Value:    jwt,
+				Path:     "/",
+				Domain:   "",                    //".example.com", // Or leave blank for same-origin; use if client is on subdomain
+				HttpOnly: true,                  // Prevent access from JS (safer)
+				Secure:   false,                 // Must be true for HTTPS
+				SameSite: http.SameSiteNoneMode, // Required for cross-domain cookie sharing
+				MaxAge:   86400,                 // 1 day
+			})
+		*/
+
+		//appG.Response(http.StatusOK, gin.H{"message": "Login successful"})
+		appG.Response(http.StatusOK, gin.H{"token": jwt})
 	}
-
-	jwt, err := services.AuthenticateUser(auth)
-	if err != nil {
-		appG.Error(http.StatusUnauthorized, err)
-		return
-	}
-
-	/*
-		http.SetCookie(c.Writer, &http.Cookie{
-			Name:     "jwt",
-			Value:    jwt,
-			Path:     "/",
-			Domain:   "",                    //".example.com", // Or leave blank for same-origin; use if client is on subdomain
-			HttpOnly: true,                  // Prevent access from JS (safer)
-			Secure:   false,                 // Must be true for HTTPS
-			SameSite: http.SameSiteNoneMode, // Required for cross-domain cookie sharing
-			MaxAge:   86400,                 // 1 day
-		})
-	*/
-
-	//appG.Response(http.StatusOK, gin.H{"message": "Login successful"})
-	appG.Response(http.StatusOK, gin.H{"token": jwt})
 }
 
 // Logout godoc

@@ -2,7 +2,6 @@ package services
 
 import (
 	"errors"
-	"os"
 	"time"
 
 	"github.com/golang-jwt/jwt/v4"
@@ -31,7 +30,9 @@ func CreateUser(auth requests.AuthenticationRequest) error {
 }
 
 // AuthenticateUser Returns a JWT string if the authentication was successful.
-func AuthenticateUser(auth requests.AuthenticationRequest) (string, error) {
+// The signing secret is a parameter rather than an environment read so the caller
+// controls it; see config.Cfg.JWTSecret.
+func AuthenticateUser(auth requests.AuthenticationRequest, secret string) (string, error) {
 	user, errUser := db.FindUserByUsername(auth.Username)
 
 	if errors.Is(errUser, gorm.ErrRecordNotFound) {
@@ -51,7 +52,7 @@ func AuthenticateUser(auth requests.AuthenticationRequest) (string, error) {
 		"exp": time.Now().Add(time.Hour * 24).Unix(),
 	})
 
-	return generateToken.SignedString([]byte(os.Getenv("SECRET")))
+	return generateToken.SignedString([]byte(secret))
 }
 
 func GetUserByID(userID uint) (*db.User, error) {

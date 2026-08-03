@@ -380,7 +380,7 @@ null
   "recordingsSize": 0,
   "skipStart": 0,
   "tags": null,
-  "url": "https://example.com/live"
+  "url": "\u003cteststream\u003e"
 }
 
 === POST /api/v2/channels/1/merge
@@ -396,7 +396,7 @@ null
 === POST /api/v2/channels/1/resume
 --- status: 500
 --- body:
-"yt-dlp failed for URL https://example.com/live: exec: \"yt-dlp\": executable file not found in $PATH\nOutput: "
+"yt-dlp failed for URL \u003cteststream\u003e: \u003csubprocess-error\u003e"
 
 === POST /api/v2/jobs/1
 --- status: 500

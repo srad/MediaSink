@@ -3,7 +3,6 @@ package middleware
 import (
 	"errors"
 	"net/http"
-	"os"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
@@ -19,33 +18,39 @@ var (
 	errUserNotFound      = errors.New("user not found or invalid")
 )
 
-func CheckAuthorizationHeader(c *gin.Context) {
-	appG := app.Gin{C: c}
+// RequireAuth returns the bearer-token gate, closing over the JWT secret. The secret
+// is captured once at router construction; it used to be read from the process
+// environment on every single authenticated request, which also made this package
+// impossible to test without mutating that environment.
+func RequireAuth(secret string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		appG := app.Gin{C: c}
 
-	tokenString, err := extractBearerToken(c)
-	if err != nil {
-		log.Errorln(err)
-		appG.Error(http.StatusUnauthorized, err)
-		return
+		tokenString, err := extractBearerToken(c)
+		if err != nil {
+			log.Errorln(err)
+			appG.Error(http.StatusUnauthorized, err)
+			return
+		}
+
+		userID, err := parseToken(tokenString, secret)
+		if err != nil {
+			// Render the bare sentinel, never the wrapped error: app.Gin.Error writes
+			// err.Error() as the response body, so wrapping would change the wire format.
+			// The wrapped detail goes to the log instead.
+			appG.Error(http.StatusUnauthorized, tokenErrorSentinel(err))
+			return
+		}
+
+		user, err := services.GetUserByID(userID)
+		if err != nil {
+			appG.Error(http.StatusUnauthorized, errUserNotFound)
+			return
+		}
+
+		c.Set("currentUser", user)
+		c.Next()
 	}
-
-	userID, err := parseToken(tokenString, os.Getenv("SECRET"))
-	if err != nil {
-		// Render the bare sentinel, never the wrapped error: app.Gin.Error writes
-		// err.Error() as the response body, so wrapping would change the wire format.
-		// The wrapped detail goes to the log instead.
-		appG.Error(http.StatusUnauthorized, tokenErrorSentinel(err))
-		return
-	}
-
-	user, err := services.GetUserByID(userID)
-	if err != nil {
-		appG.Error(http.StatusUnauthorized, errUserNotFound)
-		return
-	}
-
-	c.Set("currentUser", user)
-	c.Next()
 }
 
 // tokenErrorSentinel logs err at the level this path has always used and returns the
