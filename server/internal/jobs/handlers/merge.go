@@ -32,7 +32,7 @@ func (h *mergeHandler) Name() string {
 }
 
 // Handle merges multiple video recordings into a single file
-func (h *mergeHandler) Handle(job *db.Job, threadCount int) error {
+func (h *mergeHandler) Handle(job *db.Job, _ int) error {
 	mergeArgs, err := db.UnmarshalJobArg[util.MergeJobArgs](job)
 	if err != nil {
 		return err

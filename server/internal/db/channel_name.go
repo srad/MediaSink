@@ -92,44 +92,27 @@ func (channelName ChannelName) AbsoluteChannelPath() string {
 	return filepath.Join(cfg.RecordingsAbsolutePath, channelName.String())
 }
 
-// safeJoinPath safely joins a base path with a relative path, preventing path traversal attacks
-func safeJoinPath(basePath, relativePath string) (string, error) {
-	if strings.Contains(relativePath, "..") {
-		return "", fmt.Errorf("path traversal detected: relative path contains '..'")
-	}
-
-	fullPath := filepath.Join(basePath, relativePath)
-	absBasePath, err := filepath.Abs(basePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to get absolute base path: %w", err)
-	}
-
-	absFullPath, err := filepath.Abs(fullPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to get absolute full path: %w", err)
-	}
-
-	// Ensure the full path is within the base path
-	if !strings.HasPrefix(absFullPath, absBasePath) {
-		return "", fmt.Errorf("path traversal detected: resolved path is outside base directory")
-	}
-
-	return fullPath, nil
-}
-
+// NOTE: a safeJoinPath() traversal guard used to live here, written but never wired
+// into any call site. It was removed deliberately, not to satisfy a linter: every
+// path built from a ChannelName is constrained by validChannelName (`^[a-z_0-9]+$`),
+// which admits neither "." nor "/", so ".." cannot reach filepath.Join at all.
+// The one soft spot is Scan() (DB -> Go), which does not re-validate the way Value()
+// (Go -> DB) does; that is acceptable while channel names only ever enter the database
+// through Value(). If a future code path writes channel names by another route,
+// restore a guard here rather than relying on the regex alone.
 func (channelName ChannelName) MkDir() error {
 	dir := channelName.AbsoluteChannelPath()
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		log.Infoln("Creating folder: " + dir)
 		if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-			return fmt.Errorf("error creating folder: '%s': %s", dir, err)
+			return fmt.Errorf("error creating folder: '%s': %w", dir, err)
 		}
 	}
 	dataPath := channelName.AbsoluteChannelDataPath()
 	if _, err := os.Stat(dataPath); os.IsNotExist(err) {
 		log.Infoln("Creating folder: " + dataPath)
 		if err := os.MkdirAll(dataPath, os.ModePerm); err != nil {
-			return fmt.Errorf("error creating data path '%s': %s", dataPath, err)
+			return fmt.Errorf("error creating data path '%s': %w", dataPath, err)
 		}
 		if err := copyDefaultSnapshotTo(dataPath); err != nil {
 			log.Errorln(err)

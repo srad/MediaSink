@@ -38,10 +38,10 @@ func (m *percentileThresholdMethod) Calculate(scores []float64) (float64, error)
 	copy(sorted, scores)
 	sort.Float64s(sorted)
 
-	return m.percentile_value(sorted, m.percentile), nil
+	return m.percentileValue(sorted, m.percentile), nil
 }
 
-func (m *percentileThresholdMethod) percentile_value(sortedScores []float64, p float64) float64 {
+func (m *percentileThresholdMethod) percentileValue(sortedScores []float64, p float64) float64 {
 	if len(sortedScores) == 0 {
 		return 0
 	}

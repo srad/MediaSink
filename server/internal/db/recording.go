@@ -92,7 +92,7 @@ func FavRecording(id uint, fav bool) error {
 }
 
 func SortBy(column string, order string, skip, take int) ([]*Recording, int64, error) {
-	var count int64 = 0
+	var count int64
 
 	// Create a base query - helps if you add filters later
 	query := DB.Model(&Recording{})
@@ -204,8 +204,8 @@ func BookmarkList() ([]*Recording, error) {
 	return recordings, nil
 }
 
-func CreateRecording(channelId ChannelID, filename RecordingFileName, videoType string) (*Recording, error) {
-	channel, errChannel := GetChannelByID(channelId)
+func CreateRecording(channelID ChannelID, filename RecordingFileName, videoType string) (*Recording, error) {
+	channel, errChannel := GetChannelByID(channelID)
 	if errChannel != nil {
 		return nil, errChannel
 	}
@@ -218,7 +218,7 @@ func CreateRecording(channelId ChannelID, filename RecordingFileName, videoType 
 	recording := &Recording{
 		RecordingID:  0,
 		Channel:      Channel{},
-		ChannelID:    channelId,
+		ChannelID:    channelID,
 		ChannelName:  channel.ChannelName,
 		Filename:     filename,
 		Bookmark:     false,
@@ -235,7 +235,7 @@ func CreateRecording(channelId ChannelID, filename RecordingFileName, videoType 
 
 	// Check for existing recording first, then create if not found
 	existing := &Recording{}
-	existsResult := DB.Where("channel_id = ? AND filename = ?", channelId, filename).First(existing)
+	existsResult := DB.Where("channel_id = ? AND filename = ?", channelID, filename).First(existing)
 
 	if existsResult.Error == nil {
 		// Recording already exists, return it
@@ -355,7 +355,7 @@ func DeleteFile(channelName ChannelName, filename RecordingFileName) error {
 	paths := channelName.GetRecordingsPaths(filename)
 
 	if err := os.Remove(paths.Filepath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("error deleting recording: %s", err)
+		return fmt.Errorf("error deleting recording: %w", err)
 	}
 
 	return nil
@@ -386,7 +386,7 @@ func (channelId ChannelID) FindJobs() (*[]Job, error) {
 	return jobs, nil
 }
 
-func AddIfNotExists(channelId ChannelID, channelName ChannelName, filename RecordingFileName) (*Recording, error) {
+func AddIfNotExists(channelID ChannelID, channelName ChannelName, filename RecordingFileName) (*Recording, error) {
 	var recording *Recording
 
 	err := DB.Model(Recording{}).
@@ -396,9 +396,9 @@ func AddIfNotExists(channelId ChannelID, channelName ChannelName, filename Recor
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		log.Infof("No recording found, creating: Recording(channel-name: %s, filename: '%s')", channelName, filename)
 
-		created, errCreate := CreateRecording(channelId, filename, "recording")
+		created, errCreate := CreateRecording(channelID, filename, "recording")
 		if errCreate != nil {
-			return nil, fmt.Errorf("error creating recording '%s'", errCreate)
+			return nil, fmt.Errorf("error creating recording '%w'", errCreate)
 		}
 		log.Infof("Created recording %s/%s", channelName, filename)
 		return created, nil

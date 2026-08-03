@@ -1,0 +1,70 @@
+version: "2"
+
+# golangci-lint defaults to max-issues-per-linter=50 and max-same-issues=3, which
+# SILENTLY truncates the report — fixing one finding makes a previously-hidden one
+# appear, so the total never tells the truth and the count drifts as you work.
+# Report everything; a gate that hides findings is not a gate.
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+# Linter policy for the server module.
+#
+# The default v2 set (errcheck, govet, ineffassign, staticcheck, unused) is kept and
+# extended with four more. Measured on the tree at the time this was added: 117 findings
+# with revive's "exported" rule on, 73 with it off. It is off here so the signal is
+# actionable; turn it on once the 73 are gone and doc comments are worth chasing.
+linters:
+  enable:
+    - bodyclose   # HTTP response bodies must be closed
+    - errorlint   # use %w / errors.Is / errors.As instead of == and %v on errors
+    - revive
+    - unconvert   # redundant type conversions
+
+  exclusions:
+    rules:
+      # ~44 of revive's findings are "exported X should have comment or be unexported".
+      # Deferred deliberately: churn, not correctness, and it would drown the findings
+      # that matter. Drop this exclusion once the rest are fixed.
+      #
+      # NOTE: this is done as an exclusion rather than settings.revive.rules on purpose.
+      # Supplying a `rules:` list to revive REPLACES its default rule set instead of
+      # subtracting from it, which silently disables every other revive check.
+      # Anchored on revive's rule-name prefix, NOT on the prose: the `exported` rule
+      # emits several different messages ("should have comment", "should be of the
+      # form", "...stutters"), so matching the wording misses most of them.
+      # `package-comments` (34 findings) is deferred for the same reason as `exported`
+      # (22): both are missing-documentation churn, not correctness. Drop both
+      # exclusions together once the substantive findings are gone.
+      - linters:
+          - revive
+        text: "^(exported|package-comments):"
+
+      # Tests may ignore errors from setup/teardown helpers; production code may not.
+      - path: _test\.go
+        linters:
+          - errcheck
+
+      # ---- Two deliberately deferred findings ---------------------------------
+      # Narrowly scoped so that any NEW finding still fails the build. Each has a
+      # named owner phase in the refactor plan; delete the exclusion when done.
+      # (A third, for app/wire_gen.go's unused initializeV2Dependencies, was removed
+      # in Phase 1 along with the file itself.)
+
+      # main.ApiVersion -> APIVersion is NOT a safe standalone rename: the symbol is
+      # injected via -X 'main.ApiVersion=...' in build.sh:27 and run.sh:87, and the Go
+      # linker silently ignores -X flags that match no symbol. Renaming without
+      # updating both scripts leaves the API version empty, and CheckClientVersion
+      # then rejects every client request with 412. Rename in lockstep or not at all.
+      - path: ^main\.go$
+        linters:
+          - revive
+        text: "var-naming: var ApiVersion"
+
+      # ChannelRequest.Url -> URL keeps the JSON wire name (tag is `url`) but moves
+      # every Go usage. Deferred to the Phase 6 API pass so it lands with the other
+      # request/response changes rather than on its own.
+      - path: internal/models/requests/channel_request\.go
+        linters:
+          - revive
+        text: "var-naming: struct field Url"

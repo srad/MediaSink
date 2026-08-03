@@ -11,10 +11,10 @@ const SortColumnSize VideoSortColumn = "size"
 const SortColumnDuration VideoSortColumn = "duration"
 
 type VideoFilterRequest struct {
-	Skip       int               `json:"skip"`
-	Take       int               `json:"take"`
+	Skip       int              `json:"skip"`
+	Take       int              `json:"take"`
 	SortOrder  models.SortOrder `json:"sortOrder" extensions:"!x-nullable"`
-	SortColumn VideoSortColumn   `json:"sortColumn" extensions:"!x-nullable"`
+	SortColumn VideoSortColumn  `json:"sortColumn" extensions:"!x-nullable"`
 }
 
 func (so VideoSortColumn) String() string {

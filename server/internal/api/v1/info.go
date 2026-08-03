@@ -8,8 +8,8 @@ import (
 	"github.com/srad/mediasink/server/internal/util"
 
 	"github.com/gin-gonic/gin"
-	"github.com/srad/mediasink/server/internal/app"
 	"github.com/srad/mediasink/server/config"
+	"github.com/srad/mediasink/server/internal/app"
 )
 
 // maxInfoSeconds caps the measurement window. util.Info sleeps once in

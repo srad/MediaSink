@@ -35,7 +35,7 @@ func (h *cuttingHandler) Name() string {
 }
 
 // Handle processes a video cutting job
-func (h *cuttingHandler) Handle(job *db.Job, threadCount int) error {
+func (h *cuttingHandler) Handle(job *db.Job, _ int) error {
 	cutArgs, err := db.UnmarshalJobArg[util.CutArgs](job)
 	if err != nil {
 		return err
@@ -132,7 +132,7 @@ func (h *cuttingHandler) Handle(job *db.Job, threadCount int) error {
 				},
 			})
 		},
-		OnProgress: func(info util.PipeMessage) {
+		OnProgress: func(_ util.PipeMessage) {
 			// TODO: For cutting and merging ffmpeg doesnt seem to provide obvious progress information, check again.
 			//ws.BroadCastClients("job:progress", JobMessage{Job: job, Data: info})
 		},

@@ -5,10 +5,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/srad/mediasink/server/internal/util"
+	"github.com/srad/mediasink/server/internal/models"
 	"github.com/srad/mediasink/server/internal/models/requests"
 	"github.com/srad/mediasink/server/internal/models/responses"
-	"github.com/srad/mediasink/server/internal/models"
+	"github.com/srad/mediasink/server/internal/util"
 
 	"github.com/gin-gonic/gin"
 	"github.com/srad/mediasink/server/internal/app"
@@ -192,17 +192,18 @@ func GenerateVideoPreviews(c *gin.Context) {
 		return
 	}
 
-	if videos, err := db.RecordingID(id).FindRecordingByID(); err != nil {
+	videos, err := db.RecordingID(id).FindRecordingByID()
+	if err != nil {
 		appG.Error(http.StatusInternalServerError, err)
 		return
-	} else {
-		if job, err := videos.EnqueuePreviewFramesJob(); err != nil {
-			appG.Error(http.StatusInternalServerError, err)
-			return
-		} else {
-			appG.Response(http.StatusOK, job)
-		}
 	}
+
+	job, err := videos.EnqueuePreviewFramesJob()
+	if err != nil {
+		appG.Error(http.StatusInternalServerError, err)
+		return
+	}
+	appG.Response(http.StatusOK, job)
 }
 
 // FavVideo godoc
@@ -293,12 +294,12 @@ func CutVideo(c *gin.Context) {
 		Ends:                  cutRequest.Ends,
 		DeleteAfterCompletion: cutRequest.DeleteAfterCompletion,
 	}
-	if job, err := db.EnqueueCuttingJob(uint(id), args); err != nil {
+	job, err := db.EnqueueCuttingJob(uint(id), args)
+	if err != nil {
 		appG.Error(http.StatusBadRequest, err)
 		return
-	} else {
-		appG.Response(http.StatusOK, job)
 	}
+	appG.Response(http.StatusOK, job)
 }
 
 // ConvertVideo godoc
@@ -328,17 +329,18 @@ func ConvertVideo(c *gin.Context) {
 		return
 	}
 
-	if video, err := db.RecordingID(id).FindRecordingByID(); err != nil {
+	video, err := db.RecordingID(id).FindRecordingByID()
+	if err != nil {
 		appG.Error(http.StatusInternalServerError, err)
 		return
-	} else {
-		if job, err := video.EnqueueConversionJob(mediaType); err != nil {
-			appG.Error(http.StatusInternalServerError, err)
-			return
-		} else {
-			appG.Response(http.StatusOK, job)
-		}
 	}
+
+	job, err := video.EnqueueConversionJob(mediaType)
+	if err != nil {
+		appG.Error(http.StatusInternalServerError, err)
+		return
+	}
+	appG.Response(http.StatusOK, job)
 }
 
 // FilterVideos godoc
@@ -435,12 +437,12 @@ func DownloadVideo(c *gin.Context) {
 		return
 	}
 
-	if video, err := db.FindRecordingByID(db.RecordingID(id)); err != nil {
+	video, err := db.FindRecordingByID(db.RecordingID(id))
+	if err != nil {
 		appG.Error(http.StatusInternalServerError, err)
 		return
-	} else {
-		c.FileAttachment(video.AbsoluteChannelFilepath(), video.Filename.String())
 	}
+	c.FileAttachment(video.AbsoluteChannelFilepath(), video.Filename.String())
 }
 
 // DeleteVideo godoc
@@ -651,10 +653,10 @@ func EstimateEnhancement(c *gin.Context) {
 	}
 
 	response := &responses.EstimateEnhancementResponse{
-		InputFileSize:     int64(recording.Size),
-		EstimatedFileSize: estimatedSize,
+		InputFileSize:      int64(recording.Size),
+		EstimatedFileSize:  estimatedSize,
 		EstimatedFileSizeM: float64(estimatedSize) / (1024 * 1024),
-		CompressionRatio:  compressionRatio,
+		CompressionRatio:   compressionRatio,
 	}
 
 	appG.Response(http.StatusOK, response)

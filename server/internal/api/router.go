@@ -61,7 +61,7 @@ func Setup(version, commit, apiVersion string, frontendFS embed.FS) http.Handler
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	router.Use(cors.New(cors.Config{
-		AllowOriginFunc: func(origin string) bool {
+		AllowOriginFunc: func(_ string) bool {
 			return true
 		},
 		AllowHeaders:     []string{"*", "Authorization", "Content-Type"},

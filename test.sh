@@ -25,12 +25,20 @@ echo "[test.sh] REC_PATH=${REC_PATH}"
 echo "[test.sh] DATA_DISK=${DATA_DISK}"
 
 set +e
-(cd "${SERVER_DIR}" && GOWORK=off go test -count=1 -coverprofile="${COVERPROFILE}" ./...) >"${RAW_LOG}" 2>&1
+# -coverpkg=./... credits coverage to the package that is actually exercised, not
+# only to the package owning the test. Without it, integration-style suites (the
+# API golden tests drive internal/api/v1, internal/middleware, internal/db and
+# internal/services) appear to cover nothing, badly understating real protection.
+(cd "${SERVER_DIR}" && GOWORK=off go test -count=1 -coverpkg=./... -coverprofile="${COVERPROFILE}" ./...) >"${RAW_LOG}" 2>&1
 status=$?
 set -e
 
 ok_count="$(awk '/^ok[[:space:]]+github.com\/srad\/mediasink\/server/ {c++} END{print c+0}' "${RAW_LOG}")"
-no_test_count="$(awk '/^\?[[:space:]]+github.com\/srad\/mediasink\/server/ {c++} END{print c+0}' "${RAW_LOG}")"
+# A package with no test files is reported in one of two shapes, and counting only the
+# first (as this did originally) under-reports it as 1 instead of 23:
+#   "?   <pkg>  [no test files]"          when the package is outside the coverage set
+#   "\t<pkg>\t\tcoverage: 0.0% of ..."    when -coverprofile instruments it anyway
+no_test_count="$(awk '/^\?[[:space:]]+github\.com\/srad\/mediasink\/server/ || /^\t+github\.com\/srad\/mediasink\/server/ {c++} END{print c+0}' "${RAW_LOG}")"
 fail_count="$(awk '/^FAIL[[:space:]]+github.com\/srad\/mediasink\/server/ {c++} END{print c+0}' "${RAW_LOG}")"
 
 echo "[test.sh] Summary:"

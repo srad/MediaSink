@@ -7,16 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 )
-
-type NetTop struct {
-	delta     *NetStat
-	last      *NetStat
-	t0        time.Time
-	dt        time.Duration
-	Interface string
-}
 
 type NetStat struct {
 	Dev  []string
@@ -74,7 +65,8 @@ func ReadLines(filename string) ([]string, error) {
 	if err != nil {
 		return []string{""}, err
 	}
-	defer f.Close()
+	// Read-only file; a Close error carries no data-loss risk.
+	defer func() { _ = f.Close() }()
 
 	var ret []string
 

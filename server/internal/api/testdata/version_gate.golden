@@ -1,0 +1,15 @@
+=== GET /api/v2/videos (no X-API-Version)
+--- status: 412
+--- body:
+"client API version  incompatible with server API version 1.0"
+
+=== GET /api/v2/channels (no X-API-Version)
+--- status: 412
+--- body:
+"client API version  incompatible with server API version 1.0"
+
+=== GET /api/v2/auth/login (no X-API-Version)
+--- status: 503
+--- body:
+Frontend not built. Run: cd frontend && npm install && npm run build
+

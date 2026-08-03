@@ -57,7 +57,6 @@ func handleJob(job *db.Job, err error) error {
 		errErrStore := job.Error(err)
 		ws.BroadCastClients(ws.JobErrorEvent, JobMessage[string]{Data: err.Error(), Job: job})
 		return errErrStore
-	} else {
-		return job.Completed()
 	}
+	return job.Completed()
 }

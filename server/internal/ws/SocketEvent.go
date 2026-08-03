@@ -34,7 +34,7 @@ const (
 var (
 	// Queue size.
 	broadCastChannel = make(chan SocketEvent, 1000)
-	upGrader         = websocket.Upgrader{CheckOrigin: func(r *http.Request) bool {
+	upGrader         = websocket.Upgrader{CheckOrigin: func(_ *http.Request) bool {
 		return true
 	}}
 	dispatcher = wsDispatcher{}
@@ -93,7 +93,10 @@ func (p *wsConnection) send(v interface{}) error {
 func (p *wsConnection) ping(writeWait time.Duration) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.ws.SetWriteDeadline(time.Now().Add(writeWait))
+	// Must not be ignored: without a deadline the WriteMessage below can block forever.
+	if err := p.ws.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
+		return err
+	}
 	return p.ws.WriteMessage(websocket.PingMessage, nil)
 }
 
@@ -134,7 +137,9 @@ func WsHandler(c *gin.Context) {
 	defer func() {
 		log.Debugln("[WsHandler] Cleaning up connection: Removing from dispatcher and closing.")
 		dispatcher.rmWs(ws) // 1. Remove from our list
-		ws.Close()          // 2. Ensure connection is closed
+		// Close error is intentionally discarded: this runs on a connection that has
+		// already failed, and there is no recovery beyond dropping it.
+		_ = ws.Close() // 2. Ensure connection is closed
 	}()
 
 	// Create the connection object
@@ -146,7 +151,7 @@ func WsHandler(c *gin.Context) {
 	// --- Configure Handlers ---
 
 	// Set Pong Handler: Handles pong messages from the client to keep alive.
-	ws.SetPongHandler(func(appData string) error {
+	ws.SetPongHandler(func(_ string) error {
 		log.Debug("pong received")
 		// Optional: If using SetReadDeadline, it'd reset it here.
 		// ws.SetReadDeadline(time.Now().Add(pongWait)) // Example
@@ -171,26 +176,24 @@ func WsHandler(c *gin.Context) {
 		ticker := time.NewTicker(pingPeriod)
 		defer ticker.Stop()
 
-		for {
-			select {
-			case <-ticker.C:
-				err := connection.ping(writeWait)
+		for range ticker.C {
+			err := connection.ping(writeWait)
 
-				if err != nil {
-					log.Debugf("[WsHandler-Ping] Ping failed: %v. Closing connection.", err)
-					// IMPORTANT: Only call ws.Close(). Do NOT call rmWs.
-					// Closing here will cause ws.ReadJSON() in the main loop to fail,
-					// which then triggers the defer block for cleanup.
-					ws.Close()
-					return // Exit the ping goroutine as the connection is now considered dead.
-				}
-				log.Debug("[WsHandler-Ping] Ping sent.")
-				// How to know if the main loop has already closed?
-				// The WriteMessage call will eventually fail if ws.Close() was called
-				// elsewhere. There isn't a direct channel here, but this approach
-				// is generally sufficient. If the main loop exits, this goroutine
-				// will fail its next write and then exit.
+			if err != nil {
+				log.Debugf("[WsHandler-Ping] Ping failed: %v. Closing connection.", err)
+				// IMPORTANT: Only call ws.Close(). Do NOT call rmWs.
+				// Closing here will cause ws.ReadJSON() in the main loop to fail,
+				// which then triggers the defer block for cleanup.
+				// Close error is intentionally discarded: the connection is already dead.
+				_ = ws.Close()
+				return // Exit the ping goroutine as the connection is now considered dead.
 			}
+			log.Debug("[WsHandler-Ping] Ping sent.")
+			// How to know if the main loop has already closed?
+			// The WriteMessage call will eventually fail if ws.Close() was called
+			// elsewhere. There isn't a direct channel here, but this approach
+			// is generally sufficient. If the main loop exits, this goroutine
+			// will fail its next write and then exit.
 		}
 	}()
 

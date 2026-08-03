@@ -37,7 +37,8 @@ func SearchSimilarVideosByImage(c *gin.Context) {
 		appG.Error(http.StatusBadRequest, err)
 		return
 	}
-	defer file.Close()
+	// Uploaded multipart file is read-only here; Close error is not actionable.
+	defer func() { _ = file.Close() }()
 
 	similarity := 0.8
 	if raw := c.PostForm("similarity"); raw != "" {

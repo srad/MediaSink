@@ -2,7 +2,6 @@ package threshold
 
 import (
 	"fmt"
-	"math"
 	"sort"
 )
 
@@ -73,7 +72,7 @@ func (m *otsusThresholdMethod) Calculate(scores []float64) (float64, error) {
 		// Calculate between-class variance
 		w0 := float64(len(below)) / float64(len(sorted))
 		w1 := float64(len(above)) / float64(len(sorted))
-		variance := w0 * w1 * math.Pow(belowMean-aboveMean, 2)
+		variance := w0 * w1 * ((belowMean - aboveMean) * (belowMean - aboveMean))
 
 		if variance > maxVariance {
 			maxVariance = variance

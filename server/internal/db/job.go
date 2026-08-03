@@ -77,7 +77,7 @@ func (job *Job) CreateJob() error {
 }
 
 func JobList(skip, take int, status []JobStatus, order JobOrder) ([]*Job, int64, error) {
-	var count int64 = 0
+	var count int64
 	if err := DB.Model(&Job{}).
 		Where("status IN (?)", status).
 		Count(&count).Error; err != nil {
@@ -443,24 +443,20 @@ func (recording *Recording) EnqueueAnalysisJob() (*Job, error) {
 }
 
 func enqueueJob[T any](recording *Recording, task JobTask, args *T) (*Job, error) {
-	if job, err := CreateJob(recording, task, args); err != nil {
+	job, err := CreateJob(recording, task, args)
+	if err != nil {
 		return nil, err
-	} else {
-		ws.BroadCastClients(ws.JobCreateEvent, job)
-		return job, nil
 	}
+	ws.BroadCastClients(ws.JobCreateEvent, job)
+	return job, nil
 }
 
 func EnqueueCuttingJob(id uint, args *util.CutArgs) (*Job, error) {
-	if rec, err := RecordingID(id).FindRecordingByID(); err != nil {
+	rec, err := RecordingID(id).FindRecordingByID()
+	if err != nil {
 		return nil, err
-	} else {
-		if job, err := rec.EnqueueCuttingJob(args); err != nil {
-			return nil, err
-		} else {
-			return job, nil
-		}
 	}
+	return rec.EnqueueCuttingJob(args)
 }
 
 func EnqueueMergeJob(channelID ChannelID, recordingIDs []uint, reEncode bool) (*Job, error) {
@@ -485,12 +481,12 @@ func EnqueueMergeJob(channelID ChannelID, recordingIDs []uint, reEncode bool) (*
 	}
 
 	// Create the merge job attached to the first recording
-	if job, err := CreateJob(firstRec, TaskMerge, mergeArgs); err != nil {
+	job, err := CreateJob(firstRec, TaskMerge, mergeArgs)
+	if err != nil {
 		return nil, err
-	} else {
-		ws.BroadCastClients(ws.JobCreateEvent, job)
-		return job, nil
 	}
+	ws.BroadCastClients(ws.JobCreateEvent, job)
+	return job, nil
 }
 
 func EnqueueEnhanceVideoJob(recordingID uint, args *util.EnhanceArgs) (*Job, error) {
@@ -499,10 +495,10 @@ func EnqueueEnhanceVideoJob(recordingID uint, args *util.EnhanceArgs) (*Job, err
 		return nil, fmt.Errorf("failed to find recording %d: %w", recordingID, err)
 	}
 
-	if job, err := CreateJob(rec, TaskEnhanceVideo, args); err != nil {
+	job, err := CreateJob(rec, TaskEnhanceVideo, args)
+	if err != nil {
 		return nil, err
-	} else {
-		ws.BroadCastClients(ws.JobCreateEvent, job)
-		return job, nil
 	}
+	ws.BroadCastClients(ws.JobCreateEvent, job)
+	return job, nil
 }

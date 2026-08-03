@@ -81,13 +81,23 @@ func (d *onnxSceneDetector) ExtractFeatures(frame image.Image) ([]float32, error
 	if err != nil {
 		return nil, fmt.Errorf("failed to create input tensor: %w", err)
 	}
-	defer inputTensor.Destroy()
+	// A failed Destroy leaks native ONNX memory; nothing can be done about it here,
+	// but it must not be silent — this runs once per analysed frame.
+	defer func() {
+		if err := inputTensor.Destroy(); err != nil {
+			log.Warnf("[onnxSceneDetector] Failed to destroy input tensor: %s", err)
+		}
+	}()
 
 	outputs := []ort.Value{nil}
 	if err := d.session.Run([]ort.Value{inputTensor}, outputs); err != nil {
 		return nil, fmt.Errorf("inference failed: %w", err)
 	}
-	defer outputs[0].Destroy()
+	defer func() {
+		if err := outputs[0].Destroy(); err != nil {
+			log.Warnf("[onnxSceneDetector] Failed to destroy output tensor: %s", err)
+		}
+	}()
 
 	outputTensor, ok := outputs[0].(*ort.Tensor[float32])
 	if !ok {

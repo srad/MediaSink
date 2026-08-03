@@ -123,17 +123,43 @@ CLI notes:
 ```sh
 ./test.sh
 ```
-Runs all Go tests in the `server/` module. Sets test environment variables for database and file paths.
+Runs all Go tests in the `server/` module. Sets test environment variables for database and file paths. Coverage is measured with `-coverpkg=./...`, so an integration-style test is credited to the packages it actually exercises, not only to the package that owns it.
 
 CLI-specific tests:
 ```sh
 cd cli && cargo test --locked
 ```
 
+#### Golden HTTP tests — read before changing a handler
+
+`server/internal/api/golden_test.go` boots the real router against a temporary SQLite
+database and snapshots the status code and response body of **every route** in
+`router.go` into `server/internal/api/testdata/*.golden` (106 cases: auth-gate,
+version-gate, and authenticated responses).
+
+**These files are the API contract.** A diff in them means client-visible behaviour
+changed. During a refactor that is a bug, not an expected result. Only change them when
+you *intend* to change the API, and review the diff.
+
+```sh
+# regenerate deliberately — note the package path comes before the flags
+cd server && go test ./internal/api/ -run TestGolden -update
+```
+
+Endpoints returning live host telemetry (`/info/:seconds`, `/info/disk`, `/processes`)
+snapshot only the response *shape*, since their values vary per machine and per second.
+
 ### Linting
 ```sh
 ./lint.sh
 ```
+Runs `gofmt` (fails on any unformatted non-vendor file), `go vet`, then `golangci-lint`
+using `server/.golangci.yml`. Installs a pinned `golangci-lint` if missing.
+
+The config sets `max-issues-per-linter: 0` and `max-same-issues: 0`, because the
+defaults (50 / 3) silently truncate the report — fixing one finding then reveals a
+hidden one and the total never settles. Deferred findings are excluded **individually**
+with a comment naming the reason, so any new finding still fails the build.
 
 ## Key Technologies & Dependencies
 

@@ -165,7 +165,7 @@ func (channel *Channel) QueryStreamURLs() ([]string, error) {
 	if err != nil {
 		// err from exec.CommandContext will be non-nil if youtube-dl exits with a non-zero status
 		// output will contain stderr from youtube-dl, which is useful context
-		return nil, fmt.Errorf("yt-dlp failed for URL %s: %v\nOutput: %s", channel.URL, err, output)
+		return nil, fmt.Errorf("yt-dlp failed for URL %s: %w\nOutput: %s", channel.URL, err, output)
 	}
 
 	urls := extractStreamURLs(output)

@@ -43,7 +43,7 @@ type ScoreAnalysis struct {
 
 	// Threshold results
 	Thresholds map[string]float64 // method name -> threshold value
-	Detections map[string]int      // method name -> detection count
+	Detections map[string]int     // method name -> detection count
 }
 
 // AnalyzeAllScores returns detailed statistics about the scores

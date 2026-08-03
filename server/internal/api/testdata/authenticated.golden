@@ -1,0 +1,475 @@
+=== GET /api/v2/admin/import
+--- status: 200
+--- body:
+{
+  "progress": 0,
+  "size": "\u003credacted\u003e"
+}
+
+=== GET /api/v2/admin/version
+--- status: 200
+--- body:
+{
+  "commit": "c-test",
+  "version": "v-test"
+}
+
+=== GET /api/v2/analysis/1
+--- status: 200
+--- body:
+{
+  "analysisId": null,
+  "highlights": [],
+  "recordingId": 1,
+  "scenes": [],
+  "segments": [],
+  "status": null
+}
+
+=== GET /api/v2/channels
+--- status: 200
+--- body:
+[]
+
+=== GET /api/v2/channels/1
+--- status: 500
+--- body:
+"channel not found: record not found"
+
+=== GET /api/v2/info/1
+--- status: 200
+--- body shape:
+{
+  "cpuInfo": {
+    "loadCpu": [
+      {
+        "cpu": "\u003cstring\u003e",
+        "createdAt": "\u003cstring\u003e",
+        "load": "\u003cnumber\u003e"
+      }
+    ]
+  },
+  "diskInfo": {
+    "availFormattedGb": "\u003cnumber\u003e",
+    "pcent": "\u003cnumber\u003e",
+    "sizeFormattedGb": "\u003cnumber\u003e",
+    "usedFormattedGb": "\u003cnumber\u003e"
+  },
+  "netInfo": {
+    "createdAt": "\u003cstring\u003e",
+    "dev": "\u003cstring\u003e",
+    "receiveBytes": "\u003cnumber\u003e",
+    "transmitBytes": "\u003cnumber\u003e"
+  }
+}
+
+=== GET /api/v2/info/disk
+--- status: 200
+--- body shape:
+{
+  "availFormattedGb": "\u003cnumber\u003e",
+  "pcent": "\u003cnumber\u003e",
+  "sizeFormattedGb": "\u003cnumber\u003e",
+  "usedFormattedGb": "\u003cnumber\u003e"
+}
+
+=== GET /api/v2/jobs/worker
+--- status: 200
+--- body:
+{
+  "isProcessing": false
+}
+
+=== GET /api/v2/previews/regenerate
+--- status: 200
+--- body:
+{
+  "current": 0,
+  "currentVideo": "",
+  "isRunning": false,
+  "total": "\u003credacted\u003e"
+}
+
+=== GET /api/v2/processes
+--- status: 200
+--- body shape:
+[]
+
+=== GET /api/v2/recorder
+--- status: 200
+--- body:
+{
+  "isRecording": false
+}
+
+=== GET /api/v2/user/profile
+--- status: 200
+--- body:
+{
+  "createdAt": "\u003credacted\u003e",
+  "updatedAt": "\u003credacted\u003e",
+  "userId": 1,
+  "username": "golden@example.com"
+}
+
+=== GET /api/v2/videos
+--- status: 200
+--- body:
+[]
+
+=== GET /api/v2/videos/1
+--- status: 200
+--- body:
+{
+  "bitRate": 0,
+  "bookmark": false,
+  "channelId": 0,
+  "channelName": "",
+  "createdAt": "\u003credacted\u003e",
+  "duration": "\u003credacted\u003e",
+  "filename": "",
+  "height": 0,
+  "packets": 0,
+  "pathRelative": "",
+  "recordingId": 0,
+  "size": "\u003credacted\u003e",
+  "videoPreview": null,
+  "videoType": "",
+  "width": 0
+}
+
+=== GET /api/v2/videos/1/download
+--- status: 500
+--- body:
+"record not found"
+
+=== GET /api/v2/videos/1/preview/manifest
+--- status: 404
+--- body:
+"preview not found for recording 1"
+
+=== GET /api/v2/videos/bookmarks
+--- status: 200
+--- body:
+[]
+
+=== GET /api/v2/videos/enhance/descriptions
+--- status: 200
+--- body:
+{
+  "crfValues": [
+    {
+      "approxRatio": 0.38,
+      "description": "Near-lossless quality, largest file size, excellent for archival and professional use",
+      "label": "CRF 15 - Highest Quality",
+      "quality": "Visually lossless",
+      "value": 15
+    },
+    {
+      "approxRatio": 0.42,
+      "description": "High quality with good compression, ~42% of original file size, recommended default",
+      "label": "CRF 18 - High Quality (Recommended)",
+      "quality": "Very high quality",
+      "value": 18
+    },
+    {
+      "approxRatio": 0.55,
+      "description": "Good balance between quality and file size, ~55% of original, suitable for most uses",
+      "label": "CRF 22 - Balanced",
+      "quality": "Good quality",
+      "value": 22
+    },
+    {
+      "approxRatio": 0.68,
+      "description": "Noticeable quality reduction, ~68% of original file size, for storage-constrained scenarios",
+      "label": "CRF 25 - Smaller Files",
+      "quality": "Acceptable quality",
+      "value": 25
+    },
+    {
+      "approxRatio": 0.8,
+      "description": "Significant quality loss, smallest file size (~80%), only for previews or when space is critical",
+      "label": "CRF 28 - Lowest Quality",
+      "quality": "Low quality",
+      "value": 28
+    }
+  ],
+  "filters": {
+    "applyNormalize": {
+      "description": "Automatically adjusts brightness and color levels to improve overall appearance",
+      "maxValue": true,
+      "minValue": false,
+      "name": "Auto Color/Brightness Correction",
+      "range": "true/false",
+      "recommended": true
+    },
+    "denoiseStrength": {
+      "description": "Reduces video noise/grain. Higher values remove more noise but may blur fine details",
+      "maxValue": 10,
+      "minValue": 1,
+      "name": "Denoise Strength",
+      "range": "1.0 - 10.0",
+      "recommended": 4
+    },
+    "sharpenStrength": {
+      "description": "Enhances edges and details. Higher values create more defined edges but may introduce artifacts",
+      "maxValue": 2,
+      "minValue": 0,
+      "name": "Sharpen Strength",
+      "range": "0.0 - 2.0",
+      "recommended": 1.25
+    }
+  },
+  "presets": [
+    {
+      "description": "Encodes very quickly, larger file size, minimal optimization",
+      "encodeSpeed": "~30-50 min per hour of video",
+      "label": "Very Fast",
+      "preset": "veryfast"
+    },
+    {
+      "description": "Fast encoding with good compression balance",
+      "encodeSpeed": "~20-30 min per hour of video",
+      "label": "Faster",
+      "preset": "faster"
+    },
+    {
+      "description": "Balanced speed and compression",
+      "encodeSpeed": "~15-20 min per hour of video",
+      "label": "Fast",
+      "preset": "fast"
+    },
+    {
+      "description": "Default preset, very good compression efficiency",
+      "encodeSpeed": "~8-12 min per hour of video",
+      "label": "Medium",
+      "preset": "medium"
+    },
+    {
+      "description": "Slower encoding, excellent compression",
+      "encodeSpeed": "~4-6 min per hour of video",
+      "label": "Slow",
+      "preset": "slow"
+    },
+    {
+      "description": "Very slow encoding, best compression efficiency",
+      "encodeSpeed": "~2-3 min per hour of video",
+      "label": "Slower",
+      "preset": "slower"
+    },
+    {
+      "description": "Extremely slow, maximum compression, best quality/size ratio",
+      "encodeSpeed": "~1-2 min per hour of video",
+      "label": "Very Slow",
+      "preset": "veryslow"
+    }
+  ],
+  "resolutions": [
+    {
+      "description": "HD quality, suitable for small screens and streaming",
+      "dimensions": "1280x720",
+      "resolution": "720p",
+      "useCase": "Mobile devices, tablets, web streaming"
+    },
+    {
+      "description": "Full HD quality, standard for most modern displays",
+      "dimensions": "1920x1080",
+      "resolution": "1080p",
+      "useCase": "Desktop monitors, laptops, streaming (Recommended)"
+    },
+    {
+      "description": "QHD quality, sharper than 1080p, good for high-end displays",
+      "dimensions": "2560x1440",
+      "resolution": "1440p",
+      "useCase": "High-resolution monitors, premium viewing"
+    },
+    {
+      "description": "Ultra HD quality, 4 times the pixels of 1080p, largest file size",
+      "dimensions": "3840x2160",
+      "resolution": "4k",
+      "useCase": "4K monitors, professional use, archival"
+    }
+  ]
+}
+
+=== GET /api/v2/videos/random/5
+--- status: 200
+--- body:
+[]
+
+=== PATCH /api/v2/channels/1
+--- status: 400
+--- body:
+"EOF"
+
+=== PATCH /api/v2/channels/1/fav
+--- status: 200
+--- body:
+null
+
+=== PATCH /api/v2/channels/1/tags
+--- status: 400
+--- body:
+"EOF"
+
+=== PATCH /api/v2/channels/1/unfav
+--- status: 200
+--- body:
+null
+
+=== PATCH /api/v2/videos/1/fav
+--- status: 200
+--- body:
+null
+
+=== PATCH /api/v2/videos/1/unfav
+--- status: 200
+--- body:
+null
+
+=== POST /api/v2/admin/chapters/regenerate
+--- status: 200
+--- body:
+{
+  "enqueued": 0,
+  "recordings": 0,
+  "removedJobs": 0
+}
+
+=== POST /api/v2/analysis/1
+--- status: 500
+--- body:
+"recording id is 0"
+
+=== POST /api/v2/analysis/group
+--- status: 400
+--- body:
+"EOF"
+
+=== POST /api/v2/analysis/search/image
+--- status: 400
+--- body:
+"request Content-Type isn't multipart/form-data"
+
+=== POST /api/v2/auth/logout
+--- status: 200
+--- body:
+{
+  "message": "Logged out"
+}
+
+=== POST /api/v2/channels
+--- status: 200
+--- body:
+{
+  "channelId": 1,
+  "channelName": "golden_channel",
+  "createdAt": "\u003credacted\u003e",
+  "deleted": false,
+  "displayName": "Golden",
+  "fav": false,
+  "isOnline": false,
+  "isPaused": true,
+  "isRecording": false,
+  "isTerminating": false,
+  "minDuration": 10,
+  "minRecording": 0,
+  "preview": "golden_channel/.previews/live.jpg",
+  "recordings": null,
+  "recordingsCount": 0,
+  "recordingsSize": 0,
+  "skipStart": 0,
+  "tags": null,
+  "url": "https://example.com/live"
+}
+
+=== POST /api/v2/channels/1/merge
+--- status: 400
+--- body:
+"EOF"
+
+=== POST /api/v2/channels/1/pause
+--- status: 200
+--- body:
+null
+
+=== POST /api/v2/channels/1/resume
+--- status: 500
+--- body:
+"yt-dlp failed for URL https://example.com/live: exec: \"yt-dlp\": executable file not found in $PATH\nOutput: "
+
+=== POST /api/v2/jobs/1
+--- status: 500
+--- body:
+"recording id is 0"
+
+=== POST /api/v2/jobs/list
+--- status: 200
+--- body:
+{
+  "jobs": [],
+  "skip": 0,
+  "take": 10,
+  "totalCount": 0
+}
+
+=== POST /api/v2/jobs/pause
+--- status: 200
+--- body:
+null
+
+=== POST /api/v2/jobs/stop/1
+--- status: 200
+--- body:
+1
+
+=== POST /api/v2/recorder/pause
+--- status: 200
+--- body:
+null
+
+=== POST /api/v2/videos/1/720/convert
+--- status: 500
+--- body:
+"NOT NULL constraint failed: jobs.channel_id"
+
+=== POST /api/v2/videos/1/cut
+--- status: 400
+--- body:
+"EOF"
+
+=== POST /api/v2/videos/1/enhance
+--- status: 400
+--- body:
+"EOF"
+
+=== POST /api/v2/videos/1/estimate-enhancement
+--- status: 400
+--- body:
+"EOF"
+
+=== POST /api/v2/videos/1/preview
+--- status: 500
+--- body:
+"recording id is 0"
+
+=== POST /api/v2/videos/filter
+--- status: 200
+--- body:
+{
+  "skip": 0,
+  "take": 5,
+  "totalCount": 0,
+  "videos": []
+}
+
+=== POST /api/v2/videos/isupdating
+--- status: 200
+--- body:
+false
+
+=== POST /api/v2/videos/updateinfo
+--- status: 200
+--- body:
+null
+

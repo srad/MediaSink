@@ -41,7 +41,7 @@ func CreateChannel(name, displayName string, skipStart, minDuration uint, url st
 		log.Errorln(err)
 
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
-			return nil, fmt.Errorf("error creating record: %s", err)
+			return nil, fmt.Errorf("error creating record: %w", err)
 		}
 		return nil, err
 	}

@@ -7,6 +7,7 @@ import (
 	"io"
 	"sort"
 
+	// Registers the GIF/JPEG/PNG decoders with image.Decode for uploaded images.
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"

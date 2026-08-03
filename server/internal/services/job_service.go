@@ -4,9 +4,9 @@ import (
 	"fmt"
 
 	"github.com/srad/mediasink/server/internal/db"
-	"github.com/srad/mediasink/server/internal/util"
 	"github.com/srad/mediasink/server/internal/jobs"
 	"github.com/srad/mediasink/server/internal/models/responses"
+	"github.com/srad/mediasink/server/internal/util"
 )
 
 // StartJobProcessing initializes and starts all job processing workers
@@ -193,7 +193,7 @@ func EstimateEnhancementFileSize(recording *db.Recording, targetRes util.Resolut
 	currentPixels := uint64(recording.Width) * uint64(recording.Height)
 	targetPixels := uint64(targetWidth) * uint64(targetHeight)
 
-	var resolutionFactor float64 = 1.0
+	resolutionFactor := 1.0
 	if currentPixels > 0 {
 		resolutionFactor = float64(targetPixels) / float64(currentPixels)
 	}

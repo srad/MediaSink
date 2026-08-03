@@ -42,7 +42,7 @@ func TestAbsoluteChannelFilePath(t *testing.T) {
 func TestMakeRecordingFilename(t *testing.T) {
 	channelName := ChannelName("my_channel")
 	filePattern, _ := regexp.Compile(`^[a-z0-9_]+_\d\d\d\d_\d\d_\d\d_\d\d_\d\d_\d\d.mp4$`)
-	fact, _ := ChannelName(channelName).MakeRecordingFilename()
+	fact, _ := channelName.MakeRecordingFilename()
 
 	if !filePattern.MatchString(fact.String()) {
 		t.Errorf("MakeRecordingFilename() is %s but should match pattern %s", fact, filePattern.String())

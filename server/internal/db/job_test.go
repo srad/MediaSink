@@ -12,7 +12,6 @@ var (
 	_, filestring, _, _ = runtime.Caller(0)
 	basefolder          = filepath.Dir(filestring)
 	file                = filepath.Join(basefolder, "..", "assets", "test.mp4")
-	outputPath          = filepath.Join(basefolder, "..", "assets")
 	video               = util.Video{FilePath: file}
 )
 

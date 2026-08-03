@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -111,7 +113,9 @@ func NewFrameVectorWriter(recordingID RecordingID, dim int) (*FrameVectorWriter,
 		INSERT INTO frame_vectors(embedding, recording_id, frame_index, frame_timestamp)
 		VALUES (?, ?, ?, ?)`)
 	if err != nil {
-		tx.Rollback()
+		// Rollback error is intentionally discarded: we are already returning the
+		// Prepare failure, which is the actionable one.
+		_ = tx.Rollback()
 		return nil, err
 	}
 	return &FrameVectorWriter{recordingID: recordingID, tx: tx, stmt: stmt}, nil
@@ -135,7 +139,9 @@ func (w *FrameVectorWriter) Commit() error {
 	if w == nil {
 		return nil
 	}
-	w.stmt.Close()
+	// Statement-close error is intentionally discarded; Commit's result is the one
+	// that decides whether the write succeeded.
+	_ = w.stmt.Close()
 	return w.tx.Commit()
 }
 
@@ -144,8 +150,10 @@ func (w *FrameVectorWriter) Rollback() {
 	if w == nil {
 		return
 	}
-	w.stmt.Close()
-	w.tx.Rollback()
+	// Both errors are intentionally discarded: Rollback is itself the abort path and
+	// the caller has nothing further to do with a failure here.
+	_ = w.stmt.Close()
+	_ = w.tx.Rollback()
 }
 
 // DeleteFrameVectorsByRecordingID removes every stored frame vector for the
@@ -188,7 +196,8 @@ func QueryConsecutiveSimilarities(recordingID RecordingID) ([]float64, []float64
 	if err != nil {
 		return nil, nil, err
 	}
-	defer rows.Close()
+	// Close error is intentionally discarded; iteration errors are surfaced via rows.Err().
+	defer func() { _ = rows.Close() }()
 
 	var timestamps, similarities []float64
 	for rows.Next() {
@@ -222,7 +231,8 @@ func SearchSimilarFrames(queryVector []float32, k int) ([]FrameVectorResult, err
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	// Close error is intentionally discarded; iteration errors are surfaced via rows.Err().
+	defer func() { _ = rows.Close() }()
 	return scanVectorResults(rows)
 }
 
@@ -246,7 +256,8 @@ func SearchSimilarFramesByRecording(recordingID RecordingID, queryVector []float
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	// Close error is intentionally discarded; iteration errors are surfaced via rows.Err().
+	defer func() { _ = rows.Close() }()
 	return scanVectorResults(rows)
 }
 
@@ -313,7 +324,8 @@ func SearchSimilarRecordingsByVector(queryVector []float32, minSimilarity float6
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	// Close error is intentionally discarded; iteration errors are surfaced via rows.Err().
+	defer func() { _ = rows.Close() }()
 
 	var out []SimilarRecordingResult
 	for rows.Next() {
@@ -350,7 +362,8 @@ func ListRecordingIDsWithFrameVectors(limit int) ([]RecordingID, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	// Close error is intentionally discarded; iteration errors are surfaced via rows.Err().
+	defer func() { _ = rows.Close() }()
 
 	var out []RecordingID
 	for rows.Next() {
@@ -431,7 +444,14 @@ func QueryRecordingSimilarityEdges(minSimilarity float64, recordingIDs []Recordi
 				samples[recID] = append(samples[recID], floats)
 			}
 		}
-		rows.Close()
+		// Unlike the other cursors in this file, this loop previously dropped
+		// iteration errors entirely, silently yielding partial similarity data.
+		// Stay best-effort (consistent with the `continue` on query failure above)
+		// but make the failure visible.
+		if err := rows.Err(); err != nil {
+			log.Warnf("[QueryRecordingSimilarityEdges] Row iteration failed for recording %d: %s", recID, err)
+		}
+		_ = rows.Close()
 	}
 
 	// 3. Compute cosine similarity in memory

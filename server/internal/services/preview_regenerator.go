@@ -186,4 +186,3 @@ func RegenerateAllPreviews() error {
 func GetRegenerationProgress() RegenerationProgress {
 	return previewRegenerator.GetProgress()
 }
-

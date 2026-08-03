@@ -168,7 +168,12 @@ func migrate() {
 func dropStaleFrameVectors() {
 	if sqlDB, err := DB.DB(); err == nil {
 		var tableExists int
-		sqlDB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name='frame_vectors'`).Scan(&tableExists)
+		// If this fails we cannot tell whether the table is there; skipping is safer
+		// than assuming it is absent and silently leaving stale vectors in place.
+		if err := sqlDB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name='frame_vectors'`).Scan(&tableExists); err != nil {
+			log.Warnf("[dropStaleFrameVectors] Could not determine whether frame_vectors exists: %s", err)
+			return
+		}
 		if tableExists > 0 {
 			needsRebuild := false
 

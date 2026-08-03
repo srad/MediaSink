@@ -216,7 +216,7 @@ func ExtractFirstFrame(input, outputPathPoster string) error {
 	})
 
 	if err != nil {
-		return fmt.Errorf("error extracting frame '%s'", err)
+		return fmt.Errorf("error extracting frame '%w'", err)
 	}
 
 	return nil
@@ -491,7 +491,7 @@ func (video *Video) GetVideoInfo() (*FFProbeInfo, error) {
 	output := strings.TrimSpace(string(stdout))
 
 	if err != nil {
-		return nil, fmt.Errorf("error ffprobe: %s: %s", err, output)
+		return nil, fmt.Errorf("error ffprobe: %w: %s", err, output)
 	}
 
 	parsed := &JSONFFProbeInfo{}

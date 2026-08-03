@@ -244,7 +244,8 @@ func loadFrame(path string) (image.Image, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open image: %w", err)
 	}
-	defer file.Close()
+	// Read-only file; a Close error carries no data-loss risk.
+	defer func() { _ = file.Close() }()
 
 	img, err := jpeg.Decode(file)
 	if err != nil {
@@ -318,7 +319,7 @@ func detectHighlightsFromSimilarities(similarities []float64, timestamps []float
 	}
 
 	const (
-		highlightSmoothingWindow    = 5
+		highlightSmoothingWindow     = 5
 		highlightThresholdMultiplier = 2.0
 		highlightFallbackThreshold   = 0.5
 		highlightMergeGapSeconds     = 6.0

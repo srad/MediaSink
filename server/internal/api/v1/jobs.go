@@ -4,10 +4,10 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/srad/mediasink/server/internal/util"
 	"github.com/srad/mediasink/server/internal/models/requests"
 	"github.com/srad/mediasink/server/internal/models/responses"
 	"github.com/srad/mediasink/server/internal/services"
+	"github.com/srad/mediasink/server/internal/util"
 
 	"github.com/gin-gonic/gin"
 	"github.com/srad/mediasink/server/internal/app"
@@ -126,17 +126,17 @@ func JobsList(c *gin.Context) {
 		return
 	}
 
-	if jobs, totalCount, err := db.JobList(request.Skip, request.Take, request.States, request.SortOrder); err != nil {
+	jobs, totalCount, err := db.JobList(request.Skip, request.Take, request.States, request.SortOrder)
+	if err != nil {
 		appG.Error(http.StatusInternalServerError, err)
 		return
-	} else {
-		appG.Response(http.StatusOK, responses.JobsResponse{
-			Jobs:       jobs,
-			TotalCount: totalCount,
-			Skip:       request.Skip,
-			Take:       request.Take,
-		})
 	}
+	appG.Response(http.StatusOK, responses.JobsResponse{
+		Jobs:       jobs,
+		TotalCount: totalCount,
+		Skip:       request.Skip,
+		Take:       request.Take,
+	})
 }
 
 // PauseJobs godoc

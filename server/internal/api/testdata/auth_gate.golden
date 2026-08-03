@@ -1,0 +1,280 @@
+=== DELETE /api/v2/channels/1
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== DELETE /api/v2/jobs/1
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== DELETE /api/v2/videos/1
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== GET /api/v2/admin/import
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== GET /api/v2/admin/version
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== GET /api/v2/analysis/1
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== GET /api/v2/channels
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== GET /api/v2/channels/1
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== GET /api/v2/info/1
+--- status: 401
+--- body shape:
+"\u003cstring\u003e"
+
+=== GET /api/v2/info/disk
+--- status: 401
+--- body shape:
+"\u003cstring\u003e"
+
+=== GET /api/v2/jobs/worker
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== GET /api/v2/previews/regenerate
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== GET /api/v2/processes
+--- status: 401
+--- body shape:
+"\u003cstring\u003e"
+
+=== GET /api/v2/recorder
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== GET /api/v2/user/profile
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== GET /api/v2/videos
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== GET /api/v2/videos/1
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== GET /api/v2/videos/1/download
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== GET /api/v2/videos/1/preview/manifest
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== GET /api/v2/videos/bookmarks
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== GET /api/v2/videos/enhance/descriptions
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== GET /api/v2/videos/random/5
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== PATCH /api/v2/channels/1
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== PATCH /api/v2/channels/1/fav
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== PATCH /api/v2/channels/1/tags
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== PATCH /api/v2/channels/1/unfav
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== PATCH /api/v2/videos/1/fav
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== PATCH /api/v2/videos/1/unfav
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/admin/chapters/regenerate
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/admin/import
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/analysis/1
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/analysis/all
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/analysis/group
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/analysis/search/image
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/auth/logout
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/channels
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/channels/1/merge
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/channels/1/pause
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/channels/1/resume
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/channels/1/upload
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/jobs/1
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/jobs/list
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/jobs/pause
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/jobs/resume
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/jobs/stop/1
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/previews/regenerate
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/recorder/pause
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/recorder/resume
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/videos/1/720/convert
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/videos/1/cut
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/videos/1/enhance
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/videos/1/estimate-enhancement
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/videos/1/preview
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/videos/filter
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/videos/isupdating
+--- status: 401
+--- body:
+"authorization header is missing"
+
+=== POST /api/v2/videos/updateinfo
+--- status: 401
+--- body:
+"authorization header is missing"
+

@@ -192,7 +192,7 @@ func ExecSync(execArgs *ExecArgs) error {
 	// but still exited 0 finished its work, and reporting failure would make
 	// callers discard a good result.
 	if waitErr != nil && processes.wasInterrupted(pid) {
-		return fmt.Errorf("%w: %v", ErrInterrupted, waitErr)
+		return fmt.Errorf("%w: %w", ErrInterrupted, waitErr)
 	}
 
 	return waitErr

@@ -51,11 +51,11 @@ func (o Tags) Value() (driver.Value, error) {
 	return strings.ToLower(strings.Join(o, ",")), nil
 }
 
-func (tags *Tags) IsValid() error {
-	if tags == nil {
+func (o *Tags) IsValid() error {
+	if o == nil {
 		return nil
 	}
-	for _, tag := range *tags {
+	for _, tag := range *o {
 		if !rTags.MatchString(tag) {
 			return fmt.Errorf("invalid tag: %s", tag)
 		}

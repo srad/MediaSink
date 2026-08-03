@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/go-playground/validator/v10"
@@ -11,7 +12,8 @@ func (g *Gin) ValidateRequest(form interface{}) error {
 	validate := validator.New()
 	err := validate.Struct(form)
 	if err != nil {
-		if validationErrors, ok := err.(validator.ValidationErrors); ok {
+		var validationErrors validator.ValidationErrors
+		if errors.As(err, &validationErrors) {
 			var errMsg string
 			for i, fieldError := range validationErrors {
 				if i > 0 {

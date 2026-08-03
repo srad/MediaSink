@@ -32,9 +32,8 @@ func CreateUser(c *gin.Context) {
 	if err := services.CreateUser(auth); err != nil {
 		appG.Error(http.StatusInternalServerError, err)
 		return
-	} else {
-		appG.Response(http.StatusOK, nil)
 	}
+	appG.Response(http.StatusOK, nil)
 }
 
 // Login godoc

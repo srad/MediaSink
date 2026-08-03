@@ -134,4 +134,3 @@ func (s *SQLiteVecStore) ListRecordingIDs(_ context.Context, limit int) ([]db.Re
 func (s *SQLiteVecStore) QueryRecordingSimilarityEdges(_ context.Context, minSimilarity float64, recordingIDs []db.RecordingID, limit int) ([]db.RecordingSimilarityEdge, error) {
 	return db.QueryRecordingSimilarityEdges(minSimilarity, recordingIDs, limit)
 }
-

@@ -38,8 +38,8 @@ type FilterDescriptions struct {
 }
 
 type EnhancementDescriptions struct {
-	Presets     [7]PresetDescription  `json:"presets" extensions:"!x-nullable"`
-	CRFValues   [5]CRFDescription     `json:"crfValues" extensions:"!x-nullable"`
+	Presets     [7]PresetDescription     `json:"presets" extensions:"!x-nullable"`
+	CRFValues   [5]CRFDescription        `json:"crfValues" extensions:"!x-nullable"`
 	Resolutions [4]ResolutionDescription `json:"resolutions" extensions:"!x-nullable"`
-	Filters     FilterDescriptions    `json:"filters" extensions:"!x-nullable"`
+	Filters     FilterDescriptions       `json:"filters" extensions:"!x-nullable"`
 }

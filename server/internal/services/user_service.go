@@ -17,20 +17,17 @@ func CreateUser(auth requests.AuthenticationRequest) error {
 		return err
 	}
 
-	if passwordHash, err := bcrypt.GenerateFromPassword([]byte(auth.Password), bcrypt.DefaultCost); err != nil {
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(auth.Password), bcrypt.DefaultCost)
+	if err != nil {
 		return err
-	} else {
-		user := &db.User{
-			Username: auth.Username,
-			Password: string(passwordHash),
-		}
-
-		if err := db.CreateUser(user); err != nil {
-			return err
-		}
-
-		return nil
 	}
+
+	user := &db.User{
+		Username: auth.Username,
+		Password: string(passwordHash),
+	}
+
+	return db.CreateUser(user)
 }
 
 // AuthenticateUser Returns a JWT string if the authentication was successful.
@@ -57,6 +54,6 @@ func AuthenticateUser(auth requests.AuthenticationRequest) (string, error) {
 	return generateToken.SignedString([]byte(os.Getenv("SECRET")))
 }
 
-func GetUserByID(userId uint) (*db.User, error) {
-	return db.FindUserByID(userId)
+func GetUserByID(userID uint) (*db.User, error) {
+	return db.FindUserByID(userID)
 }

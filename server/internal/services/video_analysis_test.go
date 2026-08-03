@@ -286,7 +286,7 @@ func TestDetectHighlightsFromSimilarities_DropsShortBlips(t *testing.T) {
 
 // ----- FeatureExtractor interface --------------------------------------------
 
-func TestFeatureExtractorInterface_Signature(t *testing.T) {
+func TestFeatureExtractorInterface_Signature(_ *testing.T) {
 	// Compile-time check: the interface requires []float32 return.
 	var _ detectors.EmbeddingExtractor = (interface {
 		ExtractFeatures(image.Image) ([]float32, error)

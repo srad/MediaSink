@@ -133,7 +133,7 @@ func MarkChannelAsDeleted(channelID ChannelID) error {
 	if err := DB.Model(&Channel{}).
 		Where("channel_id = ?", channelID).
 		Update("deleted", true).Error; err != nil {
-		return fmt.Errorf("error marking channel as deleted: %s", err)
+		return fmt.Errorf("error marking channel as deleted: %w", err)
 	}
 
 	return nil
@@ -186,13 +186,13 @@ func NewRecording(channelID ChannelID, videoType string) (*Recording, string, er
 	filePath := channel.ChannelName.AbsoluteChannelFilePath(filename)
 
 	return &Recording{
-			ChannelID:     channel.ChannelID,
-			ChannelName:   channel.ChannelName,
-			Filename:      filename,
-			Bookmark:      false,
-			CreatedAt:     timestamp,
-			VideoType:     videoType,
-			Packets:       0,
+			ChannelID:    channel.ChannelID,
+			ChannelName:  channel.ChannelName,
+			Filename:     filename,
+			Bookmark:     false,
+			CreatedAt:    timestamp,
+			VideoType:    videoType,
+			Packets:      0,
 			Duration:     0,
 			Size:         0,
 			BitRate:      0,

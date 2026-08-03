@@ -9,9 +9,6 @@ import (
 )
 
 const (
-	winFont   = "C\\\\:/Windows/Fonts/DMMono-Regular.ttf"
-	linuxFont = "/usr/share/fonts/truetype/DMMono-Regular.ttf"
-
 	// Preview frame settings
 	FrameHeight = 224 // Maximum height for preview frames, width scaled proportionally
 )
@@ -22,12 +19,8 @@ var (
 	SlowJobThreadCount = max(1, runtime.NumCPU()/3)
 )
 
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
+// max was a hand-rolled shadow of the builtin added in Go 1.21; the builtin has
+// identical semantics for these int arguments.
 
 type Cfg struct {
 	DbFileName             string
@@ -71,4 +64,3 @@ func Read() Cfg {
 	})
 	return cached
 }
-

@@ -11,7 +11,7 @@ import (
 // The process registry used to be a bare map written by ExecSync and deleted
 // from by Interrupt, which produced `fatal error: concurrent map writes` — an
 // unrecoverable crash that gin.Recovery cannot catch. Run with -race.
-func TestProcessRegistryConcurrentAccess(t *testing.T) {
+func TestProcessRegistryConcurrentAccess(_ *testing.T) {
 	var wg sync.WaitGroup
 
 	// Stands in for the two job workers, both running ffmpeg via ExecSync.

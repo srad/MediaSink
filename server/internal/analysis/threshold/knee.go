@@ -54,7 +54,7 @@ func (m *kneeThresholdMethod) Calculate(scores []float64) (float64, error) {
 
 		// Distance from point (x0,y0) to line through (x1,y1) and (x2,y2)
 		numerator := math.Abs((y2-y1)*x0 - (x2-x1)*y0 + x2*y1 - y2*x1)
-		denominator := math.Sqrt(math.Pow(y2-y1, 2) + math.Pow(x2-x1, 2))
+		denominator := math.Sqrt((y2-y1)*(y2-y1) + (x2-x1)*(x2-x1))
 
 		if denominator == 0 {
 			continue

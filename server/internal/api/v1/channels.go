@@ -80,17 +80,18 @@ func GetProcesses(c *gin.Context) {
 func GetChannel(c *gin.Context) {
 	appG := app.Gin{C: c}
 
-	if id, err := strconv.ParseUint(c.Param("id"), 10, 32); err != nil {
-		appG.Error(http.StatusBadRequest, fmt.Errorf("invalid id type: %s", err))
+	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
+	if err != nil {
+		appG.Error(http.StatusBadRequest, fmt.Errorf("invalid id type: %w", err))
 		return
-	} else {
-		if response, err2 := services.GetChannel(uint(id)); err2 != nil {
-			appG.Error(http.StatusInternalServerError, err2)
-			return
-		} else {
-			appG.Response(http.StatusOK, response)
-		}
 	}
+
+	response, err := services.GetChannel(uint(id))
+	if err != nil {
+		appG.Error(http.StatusInternalServerError, err)
+		return
+	}
+	appG.Response(http.StatusOK, response)
 }
 
 // CreateChannel godoc
@@ -110,18 +111,18 @@ func CreateChannel(c *gin.Context) {
 	// Parse JSON
 	data := &requests.ChannelRequest{}
 	if err := c.BindJSON(&data); err != nil {
-		errReq := fmt.Errorf("error parsing request: %s", err)
+		errReq := fmt.Errorf("error parsing request: %w", err)
 		log.Errorln(errReq)
 		appG.Error(http.StatusBadRequest, errReq)
 		return
 	}
 
-	if newChannel, err := services.CreateChannel(data.ChannelName, data.DisplayName, data.SkipStart, data.MinDuration, data.Url, data.Fav, data.Tags, data.IsPaused); err != nil {
+	newChannel, err := services.CreateChannel(data.ChannelName, data.DisplayName, data.SkipStart, data.MinDuration, data.Url, data.Fav, data.Tags, data.IsPaused)
+	if err != nil {
 		appG.Error(http.StatusInternalServerError, err)
 		return
-	} else {
-		appG.Response(http.StatusOK, newChannel)
 	}
+	appG.Response(http.StatusOK, newChannel)
 }
 
 // UpdateChannel godoc
@@ -168,7 +169,7 @@ func UpdateChannel(c *gin.Context) {
 	}
 
 	if err := channel.Update(); err != nil {
-		message := fmt.Errorf("error creating record: %s", err)
+		message := fmt.Errorf("error creating record: %w", err)
 		log.Errorln(message)
 		appG.Error(http.StatusInternalServerError, message)
 		return
@@ -176,7 +177,7 @@ func UpdateChannel(c *gin.Context) {
 
 	if channel.IsPaused {
 		if err := services.TerminateProcess(channel.ChannelID); err != nil {
-			message := fmt.Errorf("error stopping stream: %s", err)
+			message := fmt.Errorf("error stopping stream: %w", err)
 			log.Errorln(message)
 			appG.Error(http.StatusInternalServerError, message)
 			return
@@ -375,7 +376,8 @@ func UploadChannel(c *gin.Context) {
 		appG.Error(http.StatusBadRequest, err)
 		return
 	}
-	defer file.Close()
+	// Uploaded multipart file is read-only here; Close error is not actionable.
+	defer func() { _ = file.Close() }()
 
 	recording, err := services.UploadRecording(db.ChannelID(id), file)
 	if err != nil {

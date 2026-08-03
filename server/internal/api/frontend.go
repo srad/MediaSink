@@ -25,7 +25,8 @@ func serveFrontend(router *gin.Engine, frontendFS embed.FS, version, commit, api
 		}
 		c.Header("Content-Type", "application/javascript; charset=utf-8")
 		c.Header("Cache-Control", "no-store")
-		fmt.Fprintf(c.Writer, `window.APP_APIURL = "/api/v2";
+		// Write error means the client went away mid-response; nothing to recover.
+		_, _ = fmt.Fprintf(c.Writer, `window.APP_APIURL = "/api/v2";
 window.APP_BASE = "";
 window.APP_NAME = "MediaSink";
 window.APP_SOCKETURL = "%s://%s/api/v2/ws";
@@ -37,7 +38,8 @@ window.APP_FILEURL = "/videos";
 	router.GET("/build.js", func(c *gin.Context) {
 		c.Header("Content-Type", "application/javascript; charset=utf-8")
 		c.Header("Cache-Control", "no-store")
-		fmt.Fprintf(c.Writer, `window.APP_BUILD = "%s";
+		// Write error means the client went away mid-response; nothing to recover.
+		_, _ = fmt.Fprintf(c.Writer, `window.APP_BUILD = "%s";
 window.APP_VERSION = "%s";
 window.APP_API_VERSION = "%s";
 `, commit, version, apiVersion)
@@ -52,7 +54,8 @@ window.APP_API_VERSION = "%s";
 		}
 
 		if f, err := distFS.Open(path); err == nil {
-			f.Close()
+			// Opened purely as an existence probe; Close error is not actionable.
+			_ = f.Close()
 			fileServer.ServeHTTP(c.Writer, c.Request)
 			return
 		}

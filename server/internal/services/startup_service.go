@@ -30,7 +30,11 @@ func StartUpJobs() {
 	if !StartImport() {
 		log.Infoln("[StartUpJobs] Import already running, skipping startup import")
 	}
-	go fixOrphanedFiles()
+	go func() {
+		if err := fixOrphanedFiles(); err != nil {
+			log.Errorf("[StartUpJobs] fixOrphanedFiles failed: %s", err)
+		}
+	}()
 	go enqueueUnanalyzedRecordings()
 }
 
@@ -43,7 +47,9 @@ func deleteOrphanedRecordings() error {
 	for _, recording := range recordings {
 		filePath := recording.ChannelName.AbsoluteChannelFilePath(recording.Filename)
 		if !util.FileExists(filePath) {
-			recording.DestroyRecording()
+			if err := recording.DestroyRecording(); err != nil {
+				log.Errorf("[DeleteOrphanedRecordings] Error destroying recording '%s': %s", recording.Filename, err)
+			}
 		}
 	}
 
@@ -59,7 +65,9 @@ func deleteChannels() error {
 	for _, channel := range channels {
 		if channel.Deleted {
 			log.Infof("[DeleteChannels] Deleting channel : %s", channel.ChannelName)
-			db.DestroyChannel(channel.ChannelID)
+			if err := db.DestroyChannel(channel.ChannelID); err != nil {
+				log.Errorf("[DeleteChannels] Error destroying channel '%s': %s", channel.ChannelName, err)
+			}
 		}
 	}
 
@@ -79,7 +87,9 @@ func fixOrphanedFiles() error {
 	}
 	for _, channel := range channels {
 		if !channel.FolderExists() {
-			db.DestroyChannel(channel.ChannelID)
+			if err := db.DestroyChannel(channel.ChannelID); err != nil {
+				log.Errorf("[FixOrphanedFiles] Error destroying channel '%s': %s", channel.ChannelName, err)
+			}
 		}
 	}
 
