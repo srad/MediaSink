@@ -34,7 +34,6 @@ MediaSink.Go is a Go-based web server for video management, stream recording, an
   - **internal/api/v1/**: Legacy handler implementations still mounted under the public `/api/v2` routes
   - **internal/api/router.go**: Route setup and middleware configuration for the shipped server
   - **internal/api/frontend.go**: Serves embedded frontend — `/env.js`, `/build.js`, and SPA catch-all
-- **server/internal/http/v2/**: Refactored v2 handler slice and dependencies; currently present in the repo but not wired as the active public router. It is one part of an **unfinished migration** that also covers `internal/http/middleware/`, `internal/service/*` and `internal/store/relational/`. The whole stack hangs off `initializeV2Dependencies()` in `app/wire_gen.go`, which nothing calls — no request reaches any of it. Treat it as work in progress, not as live code, and do not delete it during cleanup passes.
 - **server/internal/services/**: Business logic for core features
   - `recording_service.go`: Video information updates and metadata
   - `recorder_service.go`: Recording orchestration and lifecycle
@@ -45,7 +44,7 @@ MediaSink.Go is a Go-based web server for video management, stream recording, an
 - **server/internal/db/**: Data access layer using GORM ORM
   - Models for: channels, recordings, users, jobs, tags, settings
   - Database initialization and connection handling
-- **server/internal/store/**: Newer relational/vector store abstractions used by the refactored app slice
+- **server/internal/store/vector/**: sqlite-vec vector store for frame embeddings and similarity search
 - **server/internal/models/**: Data structures
   - **internal/models/requests/**: Request DTOs with validation tags
   - **internal/models/responses/**: Response DTOs
