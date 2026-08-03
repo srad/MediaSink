@@ -2,95 +2,45 @@ package middleware
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	log "github.com/sirupsen/logrus"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v4"
 	"github.com/srad/mediasink/server/internal/app"
 	"github.com/srad/mediasink/server/internal/services"
 )
 
+var (
+	errMissingAuthHeader = errors.New("authorization header is missing")
+	errInvalidTokenFmt   = errors.New("invalid token format")
+	errUserNotFound      = errors.New("user not found or invalid")
+)
+
 func CheckAuthorizationHeader(c *gin.Context) {
 	appG := app.Gin{C: c}
-	var authHeader = c.GetHeader("Authorization")
 
-	if authHeader == "" {
-		// Workaround for JWT over websockets. The bearer can also be sent as get parameter.
-		if getAuth, exists := c.GetQuery("Authorization"); exists && getAuth != "" {
-			authHeader = "Bearer " + getAuth
-			log.Debugln("Received authentication as get parameter. Likely from a socket.")
-		} else {
-			err := errors.New("authorization header is missing")
-			log.Errorln(err)
-			appG.Error(http.StatusUnauthorized, err)
-			return
-		}
-	}
-
-	authToken := strings.Split(authHeader, " ")
-	if len(authToken) != 2 || authToken[0] != "Bearer" {
-		appG.Error(http.StatusUnauthorized, errors.New("invalid token format"))
-		return
-	}
-
-	tokenString := authToken[1]
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-		return []byte(os.Getenv("SECRET")), nil
-	})
-
-	// What kind of error do we have here
+	tokenString, err := extractBearerToken(c)
 	if err != nil {
-		var ve *jwt.ValidationError
-		if errors.As(err, &ve) {
-			if ve.Errors&jwt.ValidationErrorMalformed != 0 {
-				log.Error("Malformed token")
-				appG.Error(http.StatusUnauthorized, errors.New("malformed token"))
-			} else if ve.Errors&(jwt.ValidationErrorExpired|jwt.ValidationErrorNotValidYet) != 0 {
-				// Token is either expired or not active yet
-				log.Warn("Token expired or not yet valid")
-				appG.Error(http.StatusUnauthorized, errors.New("token expired or not yet valid"))
-			} else {
-				log.Errorf("Couldn't handle this token: %v", err)
-				appG.Error(http.StatusUnauthorized, errors.New("couldn't handle this token"))
-			}
-		} else {
-			log.Errorf("JWT parsing error: %v", err)
-			appG.Error(http.StatusUnauthorized, errors.New("invalid token"))
-		}
+		log.Errorln(err)
+		appG.Error(http.StatusUnauthorized, err)
 		return
 	}
 
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		appG.Error(http.StatusUnauthorized, errors.New("invalid token"))
-		return
-	}
-
-	exp, ok := claims["exp"].(float64)
-	if !ok || float64(time.Now().Unix()) > exp {
-		appG.Error(http.StatusUnauthorized, errors.New("token expired or invalid"))
-		return
-	}
-
-	idFloat, ok := claims["id"].(float64)
-	if !ok {
-		appG.Error(http.StatusUnauthorized, errors.New("invalid token payload"))
-		return
-	}
-
-	id := uint(idFloat)
-	user, err := services.GetUserByID(id)
+	userID, err := parseToken(tokenString, os.Getenv("SECRET"))
 	if err != nil {
-		appG.Error(http.StatusUnauthorized, errors.New("user not found or invalid"))
+		// Render the bare sentinel, never the wrapped error: app.Gin.Error writes
+		// err.Error() as the response body, so wrapping would change the wire format.
+		// The wrapped detail goes to the log instead.
+		appG.Error(http.StatusUnauthorized, tokenErrorSentinel(err))
+		return
+	}
+
+	user, err := services.GetUserByID(userID)
+	if err != nil {
+		appG.Error(http.StatusUnauthorized, errUserNotFound)
 		return
 	}
 
@@ -98,3 +48,48 @@ func CheckAuthorizationHeader(c *gin.Context) {
 	c.Next()
 }
 
+// tokenErrorSentinel logs err at the level this path has always used and returns the
+// bare sentinel to render. The malformed/expired split matters: expired tokens are
+// routine (clients retry), malformed ones are not.
+func tokenErrorSentinel(err error) error {
+	switch {
+	case errors.Is(err, errMalformedToken):
+		log.Error("Malformed token")
+		return errMalformedToken
+	case errors.Is(err, errTokenExpired):
+		log.Warn("Token expired or not yet valid")
+		return errTokenExpired
+	case errors.Is(err, errTokenUnhandled):
+		log.Errorf("Couldn't handle this token: %v", err)
+		return errTokenUnhandled
+	case errors.Is(err, errTokenExpiredOrInvalid):
+		return errTokenExpiredOrInvalid
+	case errors.Is(err, errInvalidTokenPayload):
+		return errInvalidTokenPayload
+	default:
+		log.Errorf("JWT parsing error: %v", err)
+		return errInvalidToken
+	}
+}
+
+// extractBearerToken pulls the raw JWT out of the request.
+func extractBearerToken(c *gin.Context) (string, error) {
+	authHeader := c.GetHeader("Authorization")
+
+	if authHeader == "" {
+		// Workaround for JWT over websockets. The bearer can also be sent as get parameter.
+		getAuth, exists := c.GetQuery("Authorization")
+		if !exists || getAuth == "" {
+			return "", errMissingAuthHeader
+		}
+		log.Debugln("Received authentication as get parameter. Likely from a socket.")
+		authHeader = "Bearer " + getAuth
+	}
+
+	authToken := strings.Split(authHeader, " ")
+	if len(authToken) != 2 || authToken[0] != "Bearer" {
+		return "", errInvalidTokenFmt
+	}
+
+	return authToken[1], nil
+}

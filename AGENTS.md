@@ -53,6 +53,8 @@ MediaSink.Go is a Go-based web server for video management, stream recording, an
   - **internal/analysis/threshold/**: Adaptive threshold strategies
   - **internal/analysis/smoothing/**: Similarity smoothing methods
 - **server/internal/middleware/**: HTTP middleware (authentication, authorization)
+  - `token.go`: `parseToken` — pure, unit-tested JWT validation. Its sentinel errors carry the **exact** strings sent to clients (`app.Gin.Error` writes `err.Error()` as the response body), so the middleware renders the bare sentinel and logs the wrapped detail. Change one and you change the API.
+  - `authentication_middleware.go`: bearer-token extraction (with the websocket query-param fallback), user lookup, and error rendering
 - **server/internal/jobs/**: Background job executor and worker pool
   - **internal/jobs/handlers/**: Per-job-type handler implementations
 - **server/internal/util/**: Utility functions (FFmpeg cmd, video probing, string/sys helpers)
