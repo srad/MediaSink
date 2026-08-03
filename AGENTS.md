@@ -2,6 +2,8 @@
 
 This file provides guidance to coding agents working with code in this repository.
 
+**Current work in progress, open todos, and decisions already rejected are tracked in [`ROADMAP.md`](./ROADMAP.md). Read it before starting work and update it when a phase completes.** This file covers how the system works; `ROADMAP.md` covers what is done and what is left.
+
 JavaScript package-manager rule: use `npm` only in this repository. Do not introduce or recommend `pnpm`.
 
 # Agent Instructions
@@ -200,8 +202,9 @@ The `Dockerfile` uses a multi-stage build:
 
 ### Authentication
 - JWT-based authentication
-- `SECRET` environment variable required (checked in `server/main.go` init)
-- Middleware: `middleware.CheckAuthorizationHeader`
+- `SECRET` environment variable required; startup fails without it (checked in `validateEnvironment` in `server/app/app.go`, not in `main.go`)
+- Middleware: `middleware.CheckAuthorizationHeader` handles transport (bearer extraction, user lookup, error rendering); `middleware.parseToken` in `token.go` does the JWT validation and is unit-tested
+- `SECRET` is currently read via `os.Getenv` on every authenticated request; moving it into `Cfg` is tracked in `ROADMAP.md` (Phase 2a)
 
 ### Services & Background Processing
 - Lifecycle is coordinated by `app.App`; `server/main.go` no longer assembles the server directly.
