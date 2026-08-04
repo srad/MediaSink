@@ -9,7 +9,7 @@ works or how to run it:
 - Build/run/test commands and conventions: `AGENTS.md`
 - Installation and user-facing setup: `README.md`
 
-Last verified: 2026-08-04, at commit `92b14e8` plus the uncommitted phase 4-5 tree.
+Last verified: 2026-08-04, at commit `105e8a8`.
 
 ## Status symbols
 
@@ -165,7 +165,7 @@ result is the wrong design.
     sentinel moved to services.ErrUsernameTaken.
 ```
 
-## Phase 4 - Foundation (`UNCOMMITTED`)
+## Phase 4 - Foundation (`105e8a8`)
 
 Objective: the rules, and a concrete database handle to build stores on.
 
@@ -206,7 +206,7 @@ Objective: the rules, and a concrete database handle to build stores on.
 
 Gate: met. Builds, goldens byte-identical, lint 0, swagger byte-identical.
 
-## Phase 5 - Users and settings (`UNCOMMITTED`)
+## Phase 5 - Users and settings (`105e8a8`)
 
 Objective: redo what `152ac5a`/`dbd019c` did, in the shape ARCHITECTURE.md defines. This
 is the pattern-setting slice; every later phase copies its structure.
