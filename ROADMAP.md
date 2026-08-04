@@ -11,6 +11,9 @@ works or how to run it:
 
 Last verified: 2026-08-04, at commit `105e8a8`.
 
+**Phases 6-9 are blocked pending a re-scope.** See "Blocker found 2026-08-04: active
+record" below. Read it before planning any further slice.
+
 ## Status symbols
 
 ```
@@ -263,12 +266,97 @@ Two risks to retire before converting the other 57 handlers:
 
 Gate: goldens byte-identical, swagger byte-identical, docker-test.sh green.
 
-## Phase 6 - Jobs
+## Blocker found 2026-08-04: active record
+
+An attempt at phase 6 was started and reverted. It is not executable as scoped, and
+neither is any later phase, until the entity methods move.
+
+`internal/db` has **23 methods on non-store types that reach the database**, across six
+files:
+
+```
+channel.go          Channel.Update
+channel_id.go       ChannelID.TagChannel, .FavChannel, .UnFavChannel, .PauseChannel
+job.go              Job.CreateJob, Job.Completed, Job.updateStatus, Job.UpdateInfo,
+                    Job.UpdateProgress, Job.Activate, Job.Deactivate, Channel.Jobs
+recording.go        Recording.DestroyRecording, Recording.UpdateInfo, Recording.Save,
+                    RecordingID.FindRecordingByID, ChannelID.FindJobs
+video_analysis.go   VideoAnalysisResult.UpdateStatus, .UpdateError, .SaveResults
+video_previews.go   VideoPreview.CreateVideoPreview, .UpdateVideoPreview
+```
+
+Plus the indirect ones that persist through something that does - `Job.Cancel`,
+`Job.Error`, `Recording.DestroyPreviews`, `Recording.DestroyPreview` and the four
+`Recording.Enqueue*Job`.
+
+**The reference has none of these**, and shows the target shape for each - see
+`ARCHITECTURE.md` section 3a. In short: an id-receiver method becomes a store method
+taking the id (`ChannelID.FavChannel()` -> `ChannelStorer.FavChannel(ctx, id)`); an
+enqueue method becomes a `job.Registerer` method taking the recording; and work spanning
+aggregates becomes a service holding several stores. Single-aggregate cascades stay on
+the store - the reference keeps `DestroyChannelRecordings` there.
+
+**Why it blocks the phase plan.** A method on an entity has no store - the receiver is a
+row - so it reaches the package global. It cannot be given one without ceasing to be an
+entity method. Therefore every caller of one, and every function that calls *them*, can
+only obtain a store by constructing it inline or taking it as a parameter. That is the
+procedural shape the whole refactor exists to remove, and it propagates outward along the
+call graph.
+
+The phase 6 attempt hit it twice within an hour:
+
+```
+db.DestroyChannelRecordings (channel.go:55) cancels every job of a channel. It is a
+free function in db with no store, calling a job cancel that was becoming a store
+method. The only way through without restructuring was
+NewJobStore(DB).Cancel(context.Background(), id) at the call site.
+
+Recording.Enqueue*Job x4 create jobs. Same problem, same non-answer.
+```
+
+The "interim bridge, deleted in phase N" device used to justify both is the anti-pattern
+wearing a constructor - see ARCHITECTURE.md section 3. Do not reach for it again.
+
+**Why phases 4 and 5 did not hit this.** `User` and `Setting` are plain structs with no
+methods at all. The pilot slice was unrepresentative of the remaining aggregates, which is
+why the pattern looked like it would generalise unchanged.
+
+```
+[x] ARCHITECTURE.md section 3a: entities are data, persistence lives on stores,
+    with the three transformations and the reference's target shape for each.
+
+[ ] Re-scope phases 6-9 so each moves its aggregate's entity methods into its
+    store in the same slice, following the three transformations in
+    ARCHITECTURE.md section 3a. Until that is planned, phase 6 is blocked.
+
+[ ] Introduce the job enqueuer. The reference's job.Registerer is the missing
+    piece: it owns the job store and the queue, exposes EnqueuePreviewJobs,
+    EnqueueCuttingJob, EnqueueConversionJob taking the recording as a parameter,
+    and is injected into the services that enqueue. It also holds the worker
+    state - ctx, cancel, wg, isProcessing - which is what replaces the six
+    package vars in internal/jobs. Design it before phase 6 restarts, because
+    both the jobs slice and the recordings slice depend on it.
+
+[ ] Decide the order. Jobs are reachable from recordings (Recording.Enqueue*) and
+    channels (DestroyChannelRecordings), so "jobs first" may be the wrong end to
+    start from. Sequencing by who calls whom, rather than by aggregate size, is
+    the open question - and the enqueuer above may make it moot, since it inverts
+    the dependency.
+```
+
+Gate for the whole refactor, new:
+
+```
+database-touching methods on non-store types in db       23  ->  0
+```
+
+## Phase 6 - Jobs (blocked, see above)
 
 Objective: the job engine off global state - the only code that runs continuously against
 the database.
 
-Findings already established by reading and running the tree, before any code moves:
+Findings already established by reading and running the tree, before any code moves.
+These stand and are worth keeping whatever the re-scoped order turns out to be:
 
 ```
 [ ] handlers.HandlerDependencies.DB is dead - assigned at construction, never
@@ -281,12 +369,26 @@ Findings already established by reading and running the tree, before any code mo
 [ ] EmitJobProgress stores "NaN" when total is 0 (no division guard).
 [ ] Three functions call util.Interrupt on a job pid: updateStatus, DeleteJob,
     PurgeJobsByTask. Inject the seam per ARCHITECTURE.md section 6.
-[ ] internal/db/job.go broadcasts websocket events at :446, :484, :498. The
-    broadcast moves up to the service; internal/db must import no ws.
-[ ] internal/jobs holds package state in types.go: ctxJobs, cancelJobs,
-    processing, processingMutex. All become fields.
+[ ] internal/db/job.go broadcasts websocket events at :450, :488, :502. All three
+    are inside the enqueue family, so the ws import cannot go until that family
+    moves. Re-targeted from phase 6 to whichever slice takes the enqueue paths.
+[ ] internal/jobs holds 6 package-level mutable names: sleepBetweenRounds,
+    ctxJobs, cancelJobs, processing, processingMutex (types.go) and
+    analyzeFrameHandler (executor.go). All become fields on a Pool struct.
+[ ] Making sleepBetweenRounds a field is what makes the worker loop testable at
+    all - it is only untestable today because the interval is a package constant.
 [ ] services/job_service.go has four pass-through wrappers whose own comments
-    call them backward-compatibility shims. Delete them.
+    call them backward-compatibility shims. Delete them. What is left after that
+    is two enhancement helpers called from api/v1/videos.go, neither touching a
+    job store - so there is no JobService to build for the read paths.
+[ ] services imports internal/jobs in exactly two files, and both go: the
+    wrappers, and video_analysis.go's init() registration. Target: 0.
+[ ] UnmarshalJobArg[T] looks pure but calls job.Error on a malformed payload, so
+    it needs a store. Easy to miss.
+[ ] db.DB outside internal/db goes 17 -> 14 in this slice, not 17 -> 11: only 6
+    of the 17 are non-test and this slice owns 3 of them.
+[ ] Of the 7 job routes the goldens run 5 authenticated; POST /jobs/resume and
+    DELETE /jobs/:id are in the skip map and get the 401 case only.
 ```
 
 Gate: `-race` clean on internal/jobs and internal/db.

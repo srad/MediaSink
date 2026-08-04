@@ -124,6 +124,92 @@ func (s *UserService) CreateUser(ctx context.Context, auth requests.Authenticati
 func CreateUser(store *db.Store, auth requests.AuthenticationRequest) error
 ```
 
+**Constructing a dependency at the call site is the same defect.** It looks better because
+a constructor is involved, but it still reaches for a global, still binds the caller to a
+concrete type, and still leaves nothing to substitute in a test:
+
+```go
+// Also wrong - a "temporary bridge" is the procedural shape wearing a constructor
+if err := db.NewJobStore(db.DB).Cancel(context.Background(), id); err != nil {
+```
+
+The giveaway is the invented `context.Background()`: code that has to make up a context
+has no caller to inherit one from, which means it is not wired into anything.
+
+---
+
+## 3a. Entities are data; persistence lives on stores
+
+**No method on a gorm model may touch the database.** The receiver is a row, not a
+repository - it holds no connection, so such a method can only reach a package global.
+It cannot be given a store without ceasing to be an entity method, which means every
+caller of one, and every function calling *them*, is forced into the shape section 3
+forbids. The defect propagates outward along the call graph. This is the rule that makes
+the rest of this document achievable.
+
+`~/src/MediaSink.Go` branch `refactor/idiomatic-go` has **zero** persistence methods on
+entities. What it keeps on them is exactly the pure set - `channel.FolderExists()`,
+`channel.jsonPath()`, `channel.QueryStreamURL()`, `recording.AbsoluteChannelFilepath()`,
+`recording.DataFolder()`. Computed, filesystem, subprocess: fine. Database: never.
+
+There are three transformations, and the reference shows the target of each.
+
+**1. A method that reads or writes rows becomes a store method taking the id.**
+
+```go
+// here, today
+func (channelId ChannelID) FavChannel() error
+func (recordingID RecordingID) FindRecordingByID() (*Recording, error)
+
+// reference, database.ChannelStorer / RecordingStorer
+FavChannel(ctx context.Context, channelId ChannelID) error
+GetChannelByID(ctx context.Context, id ChannelID) (*Channel, error)
+```
+
+The id moves from receiver to parameter. Reads count as much as writes.
+
+**2. A method that enqueues work becomes an enqueuer holding the job store.**
+
+```go
+// here, today - a recording creating its own jobs
+func (recording *Recording) EnqueueCuttingJob(args *util.CutArgs) (*Job, error)
+
+// reference, job.Registerer - the recording is a parameter
+EnqueueCuttingJob(ctx context.Context, recording *database.Recording, args helpers.CutArgs) (*database.Job, error)
+EnqueueConversionJob(ctx context.Context, recording *database.Recording, mediaType string) (*database.Job, error)
+```
+
+The reference puts these on a `job.Registerer` that owns the job store and the queue, and
+injects it into the services that need to enqueue. Services depend on `job.Registerer`;
+nothing depends on a recording being able to enqueue itself.
+
+**3. Work spanning aggregates becomes a service holding several stores.**
+
+```go
+// reference, services/channel_service.go
+type channelService struct {
+	registry         job.Registerer
+	channelStore     database.ChannelStorer
+	recordingStore   database.RecordingStorer
+	streamingService StreamingServicer
+}
+```
+
+Deleting a channel touches channels, recordings and jobs, so it is a service method over
+three dependencies - not a free function in `internal/db` reaching for a global, which is
+what `DestroyChannelRecordings` is here today.
+
+Note what the reference does *not* do: `DestroyChannelRecordings` stays a `ChannelStorer`
+method, because it is one aggregate cascading within the database. Only the orchestration
+above it moves to the service. Do not push single-aggregate work up a layer.
+
+**The background engine holds its own state.** The reference's `registry` keeps `ctx`,
+`cancel`, `wg`, `isProcessing`, `jobStore` and `queue` as fields, exposing
+`Start(parent, numWorkers)`, `Stop()` and `IsProcessing()`. No package-level worker state
+anywhere - see section 7.
+
+`ROADMAP.md` records which of these remain here and which phase owns each.
+
 This applies to stores, services, config values, loggers and clocks alike.
 
 `ctx` is the single exception: it is per-call state, so it goes in every signature that
@@ -327,7 +413,7 @@ exported builder the server does.
 
 ## 12. Checks
 
-These are greps, not opinions. `ROADMAP.md` records the current number for each and the
+These are greps and one short script, not opinions. `ROADMAP.md` records the current number for each and the
 phase that drives it to zero.
 
 ```sh
@@ -349,4 +435,30 @@ grep -rn 'db\.DB\b' server/internal --include='*.go' | grep -v '/internal/db/'
 
 # No global vector store.
 grep -rn 'vector\.SetDefault\|vector\.Default()' server --include='*.go' | grep -v vendor/
+
+# No type other than a store touches the database. Reports every method whose receiver
+# is not a *Store or the Handle and whose body reaches the connection - see section 3a.
+#
+# Deliberately a denylist (exclude stores), not an allowlist of entity names. An earlier
+# version enumerated the seven model structs and silently missed six methods on ChannelID
+# and RecordingID, because "RecordingID" is not "Recording". Never enumerate here.
+python3 - <<'EOF'
+import re, glob
+pat = re.compile(r'^func \(\w+ \*?([A-Z]\w*)\) (\w+)')
+for f in sorted(glob.glob('server/internal/db/*.go')):
+    if f.endswith('_test.go'): continue
+    lines = open(f).read().split('\n'); i = 0
+    while i < len(lines):
+        m = pat.match(lines[i])
+        if m:
+            recv = m.group(1)
+            j = i + 1; body = []
+            while j < len(lines) and lines[j] != '}':
+                body.append(lines[j]); j += 1
+            if not (recv.endswith('Store') or recv == 'Handle'):
+                if re.search(r'\bDB\b|\.gorm\b|BeginTx', '\n'.join(body)):
+                    print(f"{f}:{i+1} ({recv}).{m.group(2)}")
+            i = j
+        i += 1
+EOF
 ```
