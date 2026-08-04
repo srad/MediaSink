@@ -22,7 +22,7 @@ func TestOpen_UnwritablePathReturnsAnError(t *testing.T) {
 	// connection fails at open time rather than at first query.
 	cfg := config.Cfg{DbFileName: filepath.Join(t.TempDir(), "no", "such", "dir", "x.db")}
 
-	store, err := Open(cfg)
+	store, err := Open(t.Context(), cfg)
 	if err == nil {
 		t.Fatal("Open() on an unwritable path returned no error; it used to panic, it must not now succeed")
 	}
@@ -46,7 +46,7 @@ func TestOpen_UnreachableServerReturnsAnError(t *testing.T) {
 		DBName:     "nowhere",
 	}
 
-	store, err := Open(cfg)
+	store, err := Open(t.Context(), cfg)
 	if err == nil {
 		t.Fatal("Open() against an unreachable server returned no error")
 	}
@@ -63,7 +63,7 @@ func TestOpen_UnreachableServerReturnsAnError(t *testing.T) {
 func TestOpen_GoodPathMigratesEverySchema(t *testing.T) {
 	cfg := config.Cfg{DbFileName: filepath.Join(t.TempDir(), "good.db")}
 
-	store, err := Open(cfg)
+	store, err := Open(t.Context(), cfg)
 	if err != nil {
 		t.Fatalf("Open() on a writable path: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestOpen_GoodPathMigratesEverySchema(t *testing.T) {
 func TestOpen_StillAssignsTheGlobalHandle(t *testing.T) {
 	DB = nil
 
-	store, err := Open(config.Cfg{DbFileName: filepath.Join(t.TempDir(), "global.db")})
+	store, err := Open(t.Context(), config.Cfg{DbFileName: filepath.Join(t.TempDir(), "global.db")})
 	if err != nil {
 		t.Fatalf("Open(): %v", err)
 	}
@@ -151,7 +151,7 @@ func TestMigrate_ErrorNamesTheFailingTable(t *testing.T) {
 		t.Fatalf("create blocking view: %v", err)
 	}
 
-	err = NewStoreFrom(handle).Migrate()
+	err = NewHandleFrom(handle).Migrate(t.Context())
 	if err == nil {
 		t.Fatal("Migrate() succeeded even though the users table could not be created")
 	}
@@ -165,7 +165,7 @@ func TestMigrate_ErrorNamesTheFailingTable(t *testing.T) {
 // catch a column dropped from that slice - the migration would simply stop removing
 // it and every test would still pass.
 func TestMigrate_DropsEveryDeprecatedPreviewColumn(t *testing.T) {
-	store, err := Open(config.Cfg{DbFileName: filepath.Join(t.TempDir(), "columns.db")})
+	store, err := Open(t.Context(), config.Cfg{DbFileName: filepath.Join(t.TempDir(), "columns.db")})
 	if err != nil {
 		t.Fatalf("Open(): %v", err)
 	}
@@ -191,7 +191,7 @@ func TestMigrate_DropsEveryDeprecatedPreviewColumn(t *testing.T) {
 
 	// Migrating again must remove them, and must still succeed on a schema that is
 	// already up to date.
-	if err := store.Migrate(); err != nil {
+	if err := store.Migrate(t.Context()); err != nil {
 		t.Fatalf("second Migrate(): %v", err)
 	}
 
@@ -216,13 +216,41 @@ func TestDeprecatedRecordingColumns(t *testing.T) {
 	}
 }
 
-func TestStoreBeginTx_RollbackDiscardsTheWrite(t *testing.T) {
-	store, err := Open(config.Cfg{DbFileName: filepath.Join(t.TempDir(), "tx.db")})
+// Close releases the pool. Until it existed, app.Shutdown stopped the workers and the
+// HTTP server but left the database connection open for the life of the process.
+func TestHandleClose(t *testing.T) {
+	handle, err := Open(t.Context(), config.Cfg{DbFileName: filepath.Join(t.TempDir(), "close.db")})
 	if err != nil {
 		t.Fatalf("Open(): %v", err)
 	}
 
-	tx := store.BeginTx()
+	// Works before the close.
+	if err := handle.Gorm().Exec(`SELECT 1`).Error; err != nil {
+		t.Fatalf("query before Close: %v", err)
+	}
+
+	if err := handle.Close(); err != nil {
+		t.Fatalf("Close(): %v", err)
+	}
+
+	// And fails after it, which is what proves the pool actually shut rather than
+	// Close silently doing nothing.
+	if err := handle.Gorm().Exec(`SELECT 1`).Error; err == nil {
+		t.Error("a query succeeded after Close(); the connection pool is still open")
+	}
+}
+
+// These two cover the free BeginTx, which is what production actually calls -
+// recording.go:251,284,327 and channel_id.go:121,150. They used to exercise
+// Store.BeginTx, which had no callers outside these tests and has been deleted.
+// Open assigns the package global, so the free form reaches this database.
+func TestBeginTx_RollbackDiscardsTheWrite(t *testing.T) {
+	store, err := Open(t.Context(), config.Cfg{DbFileName: filepath.Join(t.TempDir(), "tx.db")})
+	if err != nil {
+		t.Fatalf("Open(): %v", err)
+	}
+
+	tx := BeginTx()
 	if tx.Error != nil {
 		t.Fatalf("BeginTx(): %v", tx.Error)
 	}
@@ -242,13 +270,13 @@ func TestStoreBeginTx_RollbackDiscardsTheWrite(t *testing.T) {
 	}
 }
 
-func TestStoreBeginTx_CommitPersistsTheWrite(t *testing.T) {
-	store, err := Open(config.Cfg{DbFileName: filepath.Join(t.TempDir(), "tx.db")})
+func TestBeginTx_CommitPersistsTheWrite(t *testing.T) {
+	store, err := Open(t.Context(), config.Cfg{DbFileName: filepath.Join(t.TempDir(), "tx.db")})
 	if err != nil {
 		t.Fatalf("Open(): %v", err)
 	}
 
-	tx := store.BeginTx()
+	tx := BeginTx()
 	if tx.Error != nil {
 		t.Fatalf("BeginTx(): %v", tx.Error)
 	}
@@ -308,12 +336,12 @@ func TestConfigurePool(t *testing.T) {
 }
 
 // Migrate seeds settings and reads the embedding model. Both used to go through the
-// package-level DB, which is invisible while Open is the only caller — it assigns DB
-// to the same handle. NewStoreFrom makes it visible: a store built over one database
-// would have written its settings into another.
+// package-level handle, which is invisible while Open is the only caller — it assigns
+// that global to the same connection. Migrating a separately opened connection makes it
+// visible: settings would be written into the wrong database.
 func TestMigrate_WritesToItsOwnHandleNotTheGlobal(t *testing.T) {
 	// The global points at a database that must stay untouched.
-	other, err := Open(config.Cfg{DbFileName: filepath.Join(t.TempDir(), "other.db")})
+	other, err := Open(t.Context(), config.Cfg{DbFileName: filepath.Join(t.TempDir(), "other.db")})
 	if err != nil {
 		t.Fatalf("open the decoy database: %v", err)
 	}
@@ -329,7 +357,7 @@ func TestMigrate_WritesToItsOwnHandleNotTheGlobal(t *testing.T) {
 		t.Fatalf("open the target database: %v", err)
 	}
 
-	if err := NewStoreFrom(target).Migrate(); err != nil {
+	if err := NewHandleFrom(target).Migrate(t.Context()); err != nil {
 		t.Fatalf("Migrate() on the target: %v", err)
 	}
 
@@ -372,7 +400,7 @@ func TestOpen_PropagatesMigrationFailure(t *testing.T) {
 		t.Fatalf("close fixture handle: %v", err)
 	}
 
-	store, err := Open(config.Cfg{DbFileName: path})
+	store, err := Open(t.Context(), config.Cfg{DbFileName: path})
 	if err == nil {
 		t.Fatal("Open() returned no error although Migrate could not create users")
 	}

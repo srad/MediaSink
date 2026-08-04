@@ -1,7 +1,9 @@
 package db
 
 import (
+	"context"
 	"errors"
+	"fmt"
 
 	log "github.com/sirupsen/logrus"
 	"gorm.io/gorm"
@@ -28,33 +30,39 @@ const (
 	legacyEmbeddingModel = "mobilenet_v3_large"
 )
 
-// SettingRepo is the settings aggregate. Obtained from Store.Settings(), so it always
-// carries the handle its store was built with. That matters more here than elsewhere:
-// Migrate reads and seeds settings while running against a database that is not
-// necessarily the one the package global points at.
-type SettingRepo struct {
+// SettingStore is the settings aggregate. It always carries the connection it was built
+// with, which matters more here than elsewhere: Migrate reads and seeds settings while
+// running against a database that is not necessarily the one the package global points
+// at.
+type SettingStore struct {
 	gorm *gorm.DB
+}
+
+func NewSettingStore(conn *gorm.DB) *SettingStore {
+	return &SettingStore{gorm: conn}
 }
 
 // EmbeddingModel returns the model that produced the stored frame vectors.
 // A missing row means the database predates the setting, so it reports the
 // legacy model rather than an error — callers use this to decide whether the
 // stored vectors are still comparable with the active model's output.
-func (r SettingRepo) EmbeddingModel() (string, error) {
+func (s *SettingStore) EmbeddingModel(ctx context.Context) (string, error) {
 	sett := Setting{}
-	err := r.gorm.Table("settings").First(&sett, &Setting{SettingKey: EmbeddingModelSetting}).Error
+	err := s.gorm.WithContext(ctx).
+		Table("settings").
+		First(&sett, &Setting{SettingKey: EmbeddingModelSetting}).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return legacyEmbeddingModel, nil
 	}
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("read the %s setting: %w", EmbeddingModelSetting, err)
 	}
 	return sett.SettingValue, nil
 }
 
 // SetEmbeddingModel records the model that produced the stored frame vectors.
-func (r SettingRepo) SetEmbeddingModel(modelName string) error {
-	return r.save(&Setting{
+func (s *SettingStore) SetEmbeddingModel(ctx context.Context, modelName string) error {
+	return s.save(ctx, &Setting{
 		SettingKey:   EmbeddingModelSetting,
 		SettingValue: modelName,
 		SettingType:  "string",
@@ -62,18 +70,21 @@ func (r SettingRepo) SetEmbeddingModel(modelName string) error {
 }
 
 // init seeds the rows every install needs.
-func (r SettingRepo) init() error {
-	return r.gorm.FirstOrCreate(
-		&Setting{SettingKey: ReqInterval, SettingValue: "15", SettingType: "int"}).Error
+func (s *SettingStore) init(ctx context.Context) error {
+	if err := s.gorm.WithContext(ctx).FirstOrCreate(
+		&Setting{SettingKey: ReqInterval, SettingValue: "15", SettingType: "int"}).Error; err != nil {
+		return fmt.Errorf("seed the %s setting: %w", ReqInterval, err)
+	}
+	return nil
 }
 
 // save upserts: SettingKey is the primary key, so an existing row is updated rather
 // than duplicated.
-func (r SettingRepo) save(setting *Setting) error {
-	result := r.gorm.Save(setting)
+func (s *SettingStore) save(ctx context.Context, setting *Setting) error {
+	result := s.gorm.WithContext(ctx).Save(setting)
 	if result.Error != nil {
 		log.Errorf("[Save] Error saving setting: %s", result.Error)
-		return result.Error
+		return fmt.Errorf("save setting %s: %w", setting.SettingKey, result.Error)
 	}
 
 	if result.RowsAffected > 0 {

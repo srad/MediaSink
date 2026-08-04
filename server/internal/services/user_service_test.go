@@ -1,31 +1,80 @@
 package services
 
 import (
+	"context"
 	"errors"
-	"path/filepath"
 	"testing"
 
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/srad/mediasink/server/config"
 	"github.com/srad/mediasink/server/internal/db"
 	"github.com/srad/mediasink/server/internal/models/requests"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 const testSecret = "user-service-test-secret"
 
-// userStore opens a throwaway database and returns the store the functions under test
-// are handed. Note that nothing here assigns the package-level handle: these tests
-// reach the database only through the value they pass in, which is the point of the
-// slice.
-func userStore(t *testing.T) *db.Store {
-	t.Helper()
+// fakeUserStore is a hand-written double for the three-method interface UserService
+// declares. No SQLite: the store's own behaviour is covered by internal/db's tests, and
+// repeating it here would only make these slower.
+type fakeUserStore struct {
+	byName map[string]*db.User
+	nextID uint
 
-	store, err := db.Open(config.Cfg{DbFileName: filepath.Join(t.TempDir(), "user_service.db")})
-	if err != nil {
-		t.Fatalf("open store: %v", err)
+	existsErr error
+	createErr error
+	findErr   error
+}
+
+func newFakeUserStore() *fakeUserStore {
+	return &fakeUserStore{byName: map[string]*db.User{}, nextID: 1}
+}
+
+func (f *fakeUserStore) Exists(_ context.Context, name string) (bool, error) {
+	if f.existsErr != nil {
+		return false, f.existsErr
 	}
-	return store
+	_, ok := f.byName[name]
+	return ok, nil
+}
+
+func (f *fakeUserStore) Create(_ context.Context, u *db.User) error {
+	if f.createErr != nil {
+		return f.createErr
+	}
+	u.UserID = f.nextID
+	f.nextID++
+	f.byName[u.Username] = u
+	return nil
+}
+
+func (f *fakeUserStore) ByUsername(_ context.Context, name string) (*db.User, error) {
+	if f.findErr != nil {
+		return nil, f.findErr
+	}
+	u, ok := f.byName[name]
+	if !ok {
+		return nil, gorm.ErrRecordNotFound
+	}
+	return u, nil
+}
+
+func (f *fakeUserStore) ByID(_ context.Context, id uint) (*db.User, error) {
+	if f.findErr != nil {
+		return nil, f.findErr
+	}
+	for _, u := range f.byName {
+		if u.UserID == id {
+			return u, nil
+		}
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
+func newService(t *testing.T) (*UserService, *fakeUserStore) {
+	t.Helper()
+	store := newFakeUserStore()
+	return NewUserService(store, testSecret), store
 }
 
 func creds(username, password string) requests.AuthenticationRequest {
@@ -33,17 +82,16 @@ func creds(username, password string) requests.AuthenticationRequest {
 }
 
 // The message is the response body verbatim: app.Gin.Error JSON-encodes err.Error(),
-// and internal/api/testdata/public_auth.golden pins the same bytes. It used to come
-// from the store's username-existence check; if the wording drifts here, that golden
-// fails.
+// and internal/api/testdata/public_auth.golden pins the same bytes. If the wording
+// drifts here, that golden fails.
 func TestCreateUserRejectsATakenUsername(t *testing.T) {
-	store := userStore(t)
+	svc, _ := newService(t)
 
-	if err := CreateUser(store, creds("taken@example.com", "first-password")); err != nil {
+	if err := svc.CreateUser(t.Context(), creds("taken@example.com", "first-password")); err != nil {
 		t.Fatalf("first CreateUser: %v", err)
 	}
 
-	err := CreateUser(store, creds("taken@example.com", "second-password"))
+	err := svc.CreateUser(t.Context(), creds("taken@example.com", "second-password"))
 	if !errors.Is(err, ErrUsernameTaken) {
 		t.Fatalf("CreateUser on a taken username = %v, want ErrUsernameTaken", err)
 	}
@@ -53,16 +101,31 @@ func TestCreateUserRejectsATakenUsername(t *testing.T) {
 	}
 }
 
-func TestCreateUserStoresABcryptHashNotThePlaintext(t *testing.T) {
-	store := userStore(t)
+// A database failure must not be reported as "name taken". That distinction is the
+// whole reason Exists answers (bool, error).
+func TestCreateUserPropagatesAStoreFailure(t *testing.T) {
+	svc, store := newService(t)
+	store.existsErr = errors.New("database unavailable")
 
-	if err := CreateUser(store, creds("hashed@example.com", "plaintext-password")); err != nil {
+	err := svc.CreateUser(t.Context(), creds("someone@example.com", "password"))
+	if err == nil {
+		t.Fatal("CreateUser succeeded despite the store failing")
+	}
+	if errors.Is(err, ErrUsernameTaken) {
+		t.Error("a store failure was reported as a taken username")
+	}
+}
+
+func TestCreateUserStoresABcryptHashNotThePlaintext(t *testing.T) {
+	svc, store := newService(t)
+
+	if err := svc.CreateUser(t.Context(), creds("hashed@example.com", "plaintext-password")); err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
 
-	user, err := store.Users().ByUsername("hashed@example.com")
-	if err != nil {
-		t.Fatalf("ByUsername: %v", err)
+	user := store.byName["hashed@example.com"]
+	if user == nil {
+		t.Fatal("CreateUser did not reach the store")
 	}
 	if user.Password == "plaintext-password" {
 		t.Fatal("the password was stored in plaintext")
@@ -72,20 +135,17 @@ func TestCreateUserStoresABcryptHashNotThePlaintext(t *testing.T) {
 	}
 }
 
-func TestAuthenticateUserReturnsATokenBoundToTheUserAndSecret(t *testing.T) {
-	store := userStore(t)
+func TestAuthenticateReturnsATokenBoundToTheUserAndSecret(t *testing.T) {
+	svc, store := newService(t)
 
-	if err := CreateUser(store, creds("login@example.com", "good-password")); err != nil {
+	if err := svc.CreateUser(t.Context(), creds("login@example.com", "good-password")); err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
-	seeded, err := store.Users().ByUsername("login@example.com")
-	if err != nil {
-		t.Fatalf("ByUsername: %v", err)
-	}
+	seeded := store.byName["login@example.com"]
 
-	tokenString, err := AuthenticateUser(store, creds("login@example.com", "good-password"), testSecret)
+	tokenString, err := svc.Authenticate(t.Context(), creds("login@example.com", "good-password"))
 	if err != nil {
-		t.Fatalf("AuthenticateUser: %v", err)
+		t.Fatalf("Authenticate: %v", err)
 	}
 
 	claims := jwt.MapClaims{}
@@ -98,9 +158,9 @@ func TestAuthenticateUserReturnsATokenBoundToTheUserAndSecret(t *testing.T) {
 		t.Errorf("token id claim = %v, want %d", claims["id"], seeded.UserID)
 	}
 
-	// The secret is a parameter, so a token signed with one must not verify under
-	// another. This is the unit-level half of what docker-test.sh proves by restarting
-	// the server under a different SECRET.
+	// The secret is a field on the service, so a token signed by one service must not
+	// verify under another. This is the unit-level half of what docker-test.sh proves
+	// by restarting the server under a different SECRET.
 	if _, err = jwt.Parse(tokenString, func(*jwt.Token) (any, error) {
 		return []byte("a-different-secret"), nil
 	}); err == nil {
@@ -108,10 +168,10 @@ func TestAuthenticateUserReturnsATokenBoundToTheUserAndSecret(t *testing.T) {
 	}
 }
 
-func TestAuthenticateUserRejectsBadCredentials(t *testing.T) {
-	store := userStore(t)
+func TestAuthenticateRejectsBadCredentials(t *testing.T) {
+	svc, _ := newService(t)
 
-	if err := CreateUser(store, creds("someone@example.com", "good-password")); err != nil {
+	if err := svc.CreateUser(t.Context(), creds("someone@example.com", "good-password")); err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
 
@@ -134,9 +194,9 @@ func TestAuthenticateUserRejectsBadCredentials(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			token, err := AuthenticateUser(store, test.auth, testSecret)
+			token, err := svc.Authenticate(t.Context(), test.auth)
 			if err == nil {
-				t.Fatalf("AuthenticateUser succeeded, returning %q", token)
+				t.Fatalf("Authenticate succeeded, returning %q", token)
 			}
 			// public_auth.golden pins both of these strings as response bodies.
 			if err.Error() != test.wantErr {
@@ -149,42 +209,23 @@ func TestAuthenticateUserRejectsBadCredentials(t *testing.T) {
 	}
 }
 
-func TestGetUserByID(t *testing.T) {
-	store := userStore(t)
+func TestByID(t *testing.T) {
+	svc, store := newService(t)
 
-	if err := CreateUser(store, creds("byid@example.com", "password")); err != nil {
+	if err := svc.CreateUser(t.Context(), creds("byid@example.com", "password")); err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
-	seeded, err := store.Users().ByUsername("byid@example.com")
-	if err != nil {
-		t.Fatalf("ByUsername: %v", err)
-	}
+	seeded := store.byName["byid@example.com"]
 
-	got, err := GetUserByID(store, seeded.UserID)
+	got, err := svc.ByID(t.Context(), seeded.UserID)
 	if err != nil {
-		t.Fatalf("GetUserByID: %v", err)
+		t.Fatalf("ByID: %v", err)
 	}
 	if got.Username != "byid@example.com" {
-		t.Errorf("GetUserByID = %+v, want %q", got, "byid@example.com")
+		t.Errorf("ByID = %+v, want %q", got, "byid@example.com")
 	}
 
-	if _, err = GetUserByID(store, seeded.UserID+1000); err == nil {
-		t.Error("GetUserByID succeeded for an id that does not exist")
-	}
-}
-
-// Every function here must read and write the store it is handed. db.Open still assigns
-// the package global until phase 2b.6, so one that reached for it instead would pass
-// the tests above while using the most recently opened database.
-func TestUserServiceUsesTheStoreItIsGivenNotTheGlobal(t *testing.T) {
-	first := userStore(t)
-	second := userStore(t) // db.Open reassigns the global to this one.
-
-	if err := CreateUser(first, creds("scoped@example.com", "password")); err != nil {
-		t.Fatalf("CreateUser against the first store: %v", err)
-	}
-
-	if _, err := AuthenticateUser(second, creds("scoped@example.com", "password"), testSecret); err == nil {
-		t.Error("a user created through the first store authenticated against the second")
+	if _, err = svc.ByID(t.Context(), seeded.UserID+1000); err == nil {
+		t.Error("ByID succeeded for an id that does not exist")
 	}
 }

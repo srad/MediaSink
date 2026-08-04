@@ -15,6 +15,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"embed"
 	"encoding/json"
 	"flag"
@@ -107,14 +108,15 @@ func TestMain(m *testing.M) {
 	defer streamSrv.Close()
 	testStreamURL = streamSrv.URL + "/live"
 
-	store, err := db.Open(cfg)
+	handle, err := db.Open(context.Background(), cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "open database: %v\n", err)
 		os.Exit(1)
 	}
-
 	var frontendFS embed.FS // zero value: no embedded frontend needed for API routes
-	testRouter = Setup(store, cfg, testVersion, testCommit, testAPIVersion, frontendFS)
+	// The same builder app.Run uses, so the goldens exercise the graph the server
+	// actually serves rather than a second hand-assembled copy of it.
+	testRouter = Setup(BuildHandlers(handle, cfg), cfg, testVersion, testCommit, testAPIVersion, frontendFS)
 
 	testToken = seedUserAndLogin()
 

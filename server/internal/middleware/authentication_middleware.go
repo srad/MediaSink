@@ -9,7 +9,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/srad/mediasink/server/internal/app"
-	"github.com/srad/mediasink/server/internal/db"
 	"github.com/srad/mediasink/server/internal/services"
 )
 
@@ -19,40 +18,49 @@ var (
 	errUserNotFound      = errors.New("user not found or invalid")
 )
 
-// RequireAuth returns the bearer-token gate, closing over the store and the JWT secret.
-// Both are captured once at router construction. The secret used to be read from the
-// process environment on every single authenticated request, and the user lookup used
-// to reach a package-level database handle; neither is true now, which is what makes
-// this package testable without mutating global state.
-func RequireAuth(store *db.Store, secret string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		appG := app.Gin{C: c}
+// AuthMiddleware is the bearer-token gate. The service and the JWT secret are held, not
+// passed per request: the secret used to be read from the process environment on every
+// authenticated request, and the user lookup used to reach a package-level database
+// handle. Neither is true now, which is what makes this package testable without
+// mutating global state.
+type AuthMiddleware struct {
+	users     *services.UserService
+	jwtSecret string
+}
 
-		tokenString, err := extractBearerToken(c)
-		if err != nil {
-			log.Errorln(err)
-			appG.Error(http.StatusUnauthorized, err)
-			return
-		}
+func NewAuthMiddleware(users *services.UserService, jwtSecret string) *AuthMiddleware {
+	return &AuthMiddleware{users: users, jwtSecret: jwtSecret}
+}
 
-		userID, err := parseToken(tokenString, secret)
-		if err != nil {
-			// Render the bare sentinel, never the wrapped error: app.Gin.Error writes
-			// err.Error() as the response body, so wrapping would change the wire format.
-			// The wrapped detail goes to the log instead.
-			appG.Error(http.StatusUnauthorized, tokenErrorSentinel(err))
-			return
-		}
+// Handle satisfies gin.HandlerFunc directly, so the router mounts it as `gate.Handle`
+// with no closure to build.
+func (m *AuthMiddleware) Handle(c *gin.Context) {
+	appG := app.Gin{C: c}
 
-		user, err := services.GetUserByID(store, userID)
-		if err != nil {
-			appG.Error(http.StatusUnauthorized, errUserNotFound)
-			return
-		}
-
-		c.Set("currentUser", user)
-		c.Next()
+	tokenString, err := extractBearerToken(c)
+	if err != nil {
+		log.Errorln(err)
+		appG.Error(http.StatusUnauthorized, err)
+		return
 	}
+
+	userID, err := parseToken(tokenString, m.jwtSecret)
+	if err != nil {
+		// Render the bare sentinel, never the wrapped error: app.Gin.Error writes
+		// err.Error() as the response body, so wrapping would change the wire format.
+		// The wrapped detail goes to the log instead.
+		appG.Error(http.StatusUnauthorized, tokenErrorSentinel(err))
+		return
+	}
+
+	user, err := m.users.ByID(c.Request.Context(), userID)
+	if err != nil {
+		appG.Error(http.StatusUnauthorized, errUserNotFound)
+		return
+	}
+
+	c.Set("currentUser", user)
+	c.Next()
 }
 
 // tokenErrorSentinel logs err at the level this path has always used and returns the

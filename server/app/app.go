@@ -30,7 +30,7 @@ type App struct {
 	frontendFS embed.FS
 	metadata   Metadata
 	cfg        config.Cfg
-	store      *db.Store
+	handle     *db.Handle
 	server     *http.Server
 }
 
@@ -43,7 +43,7 @@ func InitializeApp(frontendFS embed.FS, metadata Metadata, cfg config.Cfg) (*App
 		return nil, err
 	}
 
-	store, err := db.Open(cfg)
+	handle, err := db.Open(context.Background(), cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -62,18 +62,19 @@ func InitializeApp(frontendFS embed.FS, metadata Metadata, cfg config.Cfg) (*App
 		frontendFS: frontendFS,
 		metadata:   metadata,
 		cfg:        cfg,
-		store:      store,
+		handle:     handle,
 	}, nil
 }
 
 func (a *App) Run(ctx context.Context) error {
-	services.StartUpJobs(a.store)
+	services.StartUpJobs(db.NewSettingStore(a.handle.Gorm()))
 	services.StartRecorder()
 	services.StartJobProcessing()
 
 	gin.SetMode(gin.ReleaseMode)
 
-	handler := legacyapi.Setup(a.store, a.cfg, a.metadata.Version, a.metadata.Commit, a.metadata.APIVersion, a.frontendFS)
+	handlers := legacyapi.BuildHandlers(a.handle, a.cfg)
+	handler := legacyapi.Setup(handlers, a.cfg, a.metadata.Version, a.metadata.Commit, a.metadata.APIVersion, a.frontendFS)
 	engine, ok := handler.(*gin.Engine)
 	if !ok {
 		return fmt.Errorf("unexpected router type %T", handler)
@@ -116,6 +117,14 @@ func (a *App) Shutdown(ctx context.Context) error {
 
 	services.StopJobProcessing()
 	services.StopRecorder()
+
+	// Closed last: the workers above may still be finishing a write when Shutdown is
+	// called. Until this landed the connection pool was simply left open.
+	if a.handle != nil {
+		if err := a.handle.Close(); err != nil {
+			shutdownErr = errors.Join(shutdownErr, err)
+		}
+	}
 
 	return shutdownErr
 }

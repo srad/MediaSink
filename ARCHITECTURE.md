@@ -332,7 +332,9 @@ phase that drives it to zero.
 
 ```sh
 # A store or service must never be a parameter - only New* constructors may match.
-grep -rnE 'func [A-Za-z]+\([^)]*\*(db\.)?[A-Za-z]*(Store|Service)\b' server/internal \
+# [^)]* keeps the match inside the parameter list, so a constructor's (*Store, error)
+# return does not count; the qualifier is any package, not just db.
+grep -rnE 'func [A-Za-z]+\([^)]*\*([a-z]+\.)?[A-Za-z]*(Store|Service)\b' server/internal \
   --include='*.go' | grep -v 'func New' | grep -v '_test.go'
 
 # Every exported store method takes a ctx.

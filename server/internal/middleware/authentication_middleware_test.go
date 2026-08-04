@@ -11,20 +11,21 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/srad/mediasink/server/config"
 	"github.com/srad/mediasink/server/internal/db"
+	"github.com/srad/mediasink/server/internal/services"
 )
 
 const routerSecret = "router-supplied-secret"
 
-// gateFor builds a gin engine with RequireAuth in front of a trivial handler, so the
-// tests exercise the middleware exactly as the router mounts it.
+// gateFor builds a gin engine with the middleware in front of a trivial handler, so the
+// tests exercise it exactly as the router mounts it - as a method value.
 //
-// The rejection paths all fail before the user lookup, so they pass a nil store: if one
+// The rejection paths all fail before the user lookup, so they pass a nil service: if one
 // of them ever reaches the database, the nil dereference makes that obvious rather than
 // letting it quietly succeed against whatever handle happened to be open.
-func gateFor(store *db.Store, secret string) *gin.Engine {
+func gateFor(users *services.UserService, secret string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	engine := gin.New()
-	engine.GET("/guarded", RequireAuth(store, secret), func(c *gin.Context) {
+	engine.GET("/guarded", NewAuthMiddleware(users, secret).Handle, func(c *gin.Context) {
 		c.String(http.StatusOK, "reached the handler")
 	})
 	return engine
@@ -105,9 +106,9 @@ func TestRequireAuthRejects(t *testing.T) {
 // package-level handle. That is only possible because db.Open takes a config value and
 // returns a store the gate is handed directly.
 func TestRequireAuthAcceptsTokenSignedWithTheRouterSecret(t *testing.T) {
-	store, userID := seedUser(t)
+	users, userID := seedUser(t)
 
-	recorder := callGuarded(gateFor(store, routerSecret), "Bearer "+signed(t, routerSecret, jwt.MapClaims{
+	recorder := callGuarded(gateFor(users, routerSecret), "Bearer "+signed(t, routerSecret, jwt.MapClaims{
 		"id":  float64(userID),
 		"exp": float64(time.Now().Add(time.Hour).Unix()),
 	}))
@@ -126,9 +127,9 @@ func TestRequireAuthAcceptsTokenSignedWithTheRouterSecret(t *testing.T) {
 func TestRequireAuthIgnoresTheSecretEnvironmentVariable(t *testing.T) {
 	t.Setenv("SECRET", "garbage-that-must-not-be-used")
 
-	store, userID := seedUser(t)
+	users, userID := seedUser(t)
 
-	recorder := callGuarded(gateFor(store, routerSecret), "Bearer "+signed(t, routerSecret, jwt.MapClaims{
+	recorder := callGuarded(gateFor(users, routerSecret), "Bearer "+signed(t, routerSecret, jwt.MapClaims{
 		"id":  float64(userID),
 		"exp": float64(time.Now().Add(time.Hour).Unix()),
 	}))
@@ -139,20 +140,21 @@ func TestRequireAuthIgnoresTheSecretEnvironmentVariable(t *testing.T) {
 	}
 }
 
-// seedUser initialises a throwaway database and returns the store plus the ID of one
+// seedUser initialises a throwaway database and returns a service over it plus the ID of one
 // user. A temp file rather than :memory: because that is what db.Open's migrations are
 // proven against in the API golden suite.
-func seedUser(t *testing.T) (*db.Store, uint) {
+func seedUser(t *testing.T) (*services.UserService, uint) {
 	t.Helper()
 
-	store, err := db.Open(config.Cfg{DbFileName: filepath.Join(t.TempDir(), "middleware.db")})
+	handle, err := db.Open(t.Context(), config.Cfg{DbFileName: filepath.Join(t.TempDir(), "middleware.db")})
 	if err != nil {
 		t.Fatalf("open database: %v", err)
 	}
+	users := db.NewUserStore(handle.Gorm())
 
 	user := &db.User{Username: "gate@example.com", Password: "irrelevant-for-this-test"}
-	if err := store.Users().Create(user); err != nil {
+	if err := users.Create(t.Context(), user); err != nil {
 		t.Fatalf("seed user: %v", err)
 	}
-	return store, user.UserID
+	return services.NewUserService(users, routerSecret), user.UserID
 }

@@ -36,7 +36,8 @@ MediaSink.Go is a Go-based web server for video management, stream recording, an
   - **docker-entrypoint.sh**: Server-container entrypoint used by the root Dockerfile
   - **internal/api/**: Active public HTTP layer
   - **internal/api/v1/**: Legacy handler implementations still mounted under the public `/api/v2` routes
-  - **internal/api/router.go**: Route setup and middleware configuration for the shipped server
+  - **internal/api/router.go**: Route setup and middleware configuration for the shipped server. `Setup` takes a constructed `api.Handlers`
+  - **internal/api/handlers.go**: `api.Handlers` and `api.BuildHandlers`, which wire stores into services into handlers. Both `app.Run` and the golden tests call it, so they exercise the same graph
   - **internal/api/frontend.go**: Serves embedded frontend — `/env.js`, `/build.js`, and SPA catch-all
 - **server/internal/services/**: Business logic for core features
   - `recording_service.go`: Video information updates and metadata
@@ -153,8 +154,8 @@ cd cli && cargo test --locked
 
 `server/internal/api/golden_test.go` boots the real router against a temporary SQLite
 database and snapshots the status code and response body of **every route** in
-`router.go` into `server/internal/api/testdata/*.golden` (106 cases: auth-gate,
-version-gate, and authenticated responses).
+`router.go` into `server/internal/api/testdata/*.golden` (110 cases: auth-gate,
+version-gate, authenticated, and public signup/login responses).
 
 **These files are the API contract.** A diff in them means client-visible behaviour
 changed. During a refactor that is a bug, not an expected result. Only change them when
@@ -232,20 +233,22 @@ The `Dockerfile` uses a multi-stage build:
 ### Authentication
 - JWT-based authentication
 - `SECRET` environment variable required; startup fails without it (checked in `validateEnvironment` in `server/app/app.go`, not in `main.go`)
-- Middleware: `middleware.RequireAuth(secret)` returns the gate and handles transport (bearer extraction, user lookup, error rendering); `middleware.parseToken` in `token.go` does the JWT validation and is unit-tested. The secret is captured once at router construction, never read per request
+- Middleware: `middleware.AuthMiddleware` holds the `*services.UserService` and the JWT secret; its `Handle` method is the gate and does transport only (bearer extraction, user lookup, error rendering). It is mounted as a method value (`h.Gate.Handle`), so there is no closure per request. `middleware.parseToken` in `token.go` does the JWT validation and is unit-tested
+- The secret is a constructor field on both `services.UserService` (which signs tokens) and `AuthMiddleware` (which verifies them) — never a per-call parameter and never read from the environment per request
 
 ### Services & Background Processing
 - Lifecycle is coordinated by `app.App`; `server/main.go` no longer assembles the server directly.
-- **Startup**: `services.StartUpJobs()` - recovery from crashes, integrity checks
+- **Startup**: `services.StartUpJobs(settingStore)` - recovery from crashes, integrity checks
 - **Recording**: `services.StartRecorder()` - manages active recordings
 - **Job Processing**: `services.StartJobProcessing()` - async background tasks
 - All services gracefully shut down on SIGTERM/SIGINT
 
 ### Database
-- Opened inside `app.InitializeApp()` via `db.Open(cfg) (*db.Store, error)`, which takes the `config.Cfg` built at the composition root and returns errors rather than panicking. `app.App` holds the `*db.Store`
-- `db.Store` and its `Users()`/`Settings()` accessors are a superseded design and are being replaced by per-aggregate stores (`db.NewUserStore(gorm)`) held as constructor-injected fields — see `ARCHITECTURE.md`. Do not add methods to `db.Store` or pass it as a function parameter
-- The package-level `db.DB` still exists for the functions that have not moved yet, and `Open` assigns it. Do not add callers to it — see `ROADMAP.md`
-- Test fixtures that build their own handle use `db.NewStoreFrom(handle)`; production code goes through `Open` so pool configuration and migration are not skipped
+- Opened inside `app.InitializeApp()` via `db.Open(ctx, cfg) (*db.Handle, error)`, which takes the `config.Cfg` built at the composition root and returns errors rather than panicking. `app.App` holds the `*db.Handle`; `app.Shutdown` closes it
+- `db.Handle` owns the connection and is the only type that opens, migrates or closes one. Everything else is a per-aggregate store built over `handle.Gorm()` — `db.NewUserStore(...)`, `db.NewSettingStore(...)` — held as a constructor-injected field. Never pass a store or a service as a function parameter; see `ARCHITECTURE.md`
+- Store methods take `ctx context.Context` first and pass it to gorm with `WithContext(ctx)`
+- Converted aggregates so far: users, settings. The rest still use free functions over the package-level `db.DB`, which `Open` assigns. Do not add callers to it — see `ROADMAP.md`
+- Test fixtures that build their own connection use `db.NewHandleFrom(conn)`; production code goes through `Open` so pool configuration and migration are not skipped
 - The shipped runtime currently initializes `internal/store/vector.SQLiteVecStore` and should be treated as SQLite/sqlite-vec-first
 - The lower `internal/db` layer still contains MySQL/PostgreSQL adapter support, but that is not the primary v2 runtime path
 - SQLite mode auto-registers `sqlite-vec` for vec0 virtual table support

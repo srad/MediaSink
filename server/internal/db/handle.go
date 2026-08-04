@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -17,36 +18,24 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-// Store owns the database handle. It replaces the package-level `DB` global: every
-// consumer is handed a *Store rather than reaching for package state.
+// Handle owns the database connection. Stores are built over it - see
+// ARCHITECTURE.md - and it is the only type in this package that knows how to open,
+// migrate or close a connection.
 //
-// Consumers reach an aggregate through a per-aggregate repository rather than through
-// methods hung directly off Store, which would otherwise grow to roughly 95 of them.
-// Users and Settings landed in phase 2b.2; Channels, Recordings, Jobs and Vectors
-// follow as each aggregate migrates off the global (see ROADMAP.md, phase 2b). Until
-// the last of them, `Open` still assigns `DB` so the unconverted functions in this
-// package keep working.
-type Store struct {
+// It is a concrete type rather than an interface because nothing substitutes it; a
+// consumer that ever needs to would declare the interface itself.
+type Handle struct {
 	gorm *gorm.DB
 }
 
-// Users is the user aggregate. See UserRepo.
-func (s *Store) Users() UserRepo { return UserRepo{gorm: s.gorm} }
-
-// Settings is the settings aggregate. See SettingRepo.
-func (s *Store) Settings() SettingRepo { return SettingRepo{gorm: s.gorm} }
-
-// Open connects, configures the pool and migrates. It replaces Init, which panicked
-// on every failure path and so could not be exercised by a test.
-func Open(cfg config.Cfg) (*Store, error) {
+// Open connects, configures the pool and migrates.
+func Open(ctx context.Context, cfg config.Cfg) (*Handle, error) {
 	gormLogger := logger.New(
 		log.New(),
 		logger.Config{
-			//SlowThreshold:             time.Second,  // Slow SQL threshold
 			LogLevel:                  logger.Warn, // Log level
 			IgnoreRecordNotFoundError: true,        // Ignore ErrRecordNotFound error for logger
-			//ParameterizedQueries:      true,         // Don't include params in the SQL log
-			Colorful: true, // Disable color
+			Colorful:                  true,
 		},
 	)
 
@@ -57,34 +46,49 @@ func Open(cfg config.Cfg) (*Store, error) {
 		DisableForeignKeyConstraintWhenMigrating: false, // Enable foreign key constraints for data integrity
 	}
 
-	handle, err := gorm.Open(dialectorFor(cfg), gormCfg)
+	conn, err := gorm.Open(dialectorFor(cfg), gormCfg)
 	if err != nil {
 		return nil, fmt.Errorf("connect database (adapter %q): %w", cfg.DBAdapter, err)
 	}
 
-	sqlDB, err := handle.DB()
+	sqlDB, err := conn.DB()
 	if err != nil {
 		return nil, fmt.Errorf("obtain sql.DB handle: %w", err)
 	}
 	configurePool(cfg, sqlDB)
 
-	store := &Store{gorm: handle}
+	handle := &Handle{gorm: conn}
 
 	// Interim, removed with the last of the unconverted functions in this package.
-	DB = handle
+	DB = conn
 
-	if err := store.Migrate(); err != nil {
+	if err := handle.Migrate(ctx); err != nil {
 		return nil, err
 	}
 
-	return store, nil
+	return handle, nil
 }
 
-// NewStoreFrom wraps a handle that is already open. Its purpose is test fixtures,
-// which build their own in-memory database and then need a Store over it; production
-// code goes through Open so that pool configuration and migration are not skipped.
-func NewStoreFrom(handle *gorm.DB) *Store {
-	return &Store{gorm: handle}
+// NewHandleFrom wraps a connection that is already open. Its purpose is test fixtures,
+// which build their own in-memory database; production code goes through Open so that
+// pool configuration and migration are not skipped.
+func NewHandleFrom(conn *gorm.DB) *Handle {
+	return &Handle{gorm: conn}
+}
+
+// Gorm exposes the connection for the stores built over this handle.
+func (h *Handle) Gorm() *gorm.DB { return h.gorm }
+
+// Close releases the connection pool.
+func (h *Handle) Close() error {
+	sqlDB, err := h.gorm.DB()
+	if err != nil {
+		return fmt.Errorf("obtain sql.DB handle: %w", err)
+	}
+	if err := sqlDB.Close(); err != nil {
+		return fmt.Errorf("close database: %w", err)
+	}
+	return nil
 }
 
 // dialectorFor picks the driver. Split out of Open so the choice is testable without
@@ -137,12 +141,6 @@ func configurePool(cfg config.Cfg, sqlDB *sql.DB) {
 	}
 }
 
-// BeginTx starts a new transaction with default isolation level.
-// All database operations for multi-step processes should use this.
-func (s *Store) BeginTx() *gorm.DB {
-	return s.gorm.Begin(&sql.TxOptions{Isolation: sql.LevelReadCommitted})
-}
-
 // migrationTargets is the schema in dependency order: parent tables first, so the
 // foreign key constraints AutoMigrate emits always have something to point at.
 func migrationTargets() []struct {
@@ -167,36 +165,39 @@ func migrationTargets() []struct {
 // is best-effort: an install that never had them is not an error.
 var deprecatedRecordingColumns = []string{"preview_stripe", "preview_video", "preview_cover"}
 
-// Migrate brings the schema up to date. Where the old migrate() panicked, this
-// returns.
+// Migrate brings the schema up to date.
 //
 // It stops at the first AutoMigrate failure rather than collecting every error:
 // the targets are ordered parent-first, so once Channel fails, Recording and Job
 // fail too for a reason that is not their own, and joining those would bury the
 // one error that matters under cascade noise.
-func (s *Store) Migrate() error {
+func (h *Handle) Migrate(ctx context.Context) error {
+	conn := h.gorm.WithContext(ctx)
+
 	for _, target := range migrationTargets() {
-		if err := s.gorm.AutoMigrate(target.model); err != nil {
+		if err := conn.AutoMigrate(target.model); err != nil {
 			return fmt.Errorf("migrate %s: %w", target.name, err)
 		}
 	}
 
 	for _, column := range deprecatedRecordingColumns {
-		if !s.gorm.Migrator().HasColumn(&Recording{}, column) {
+		if !conn.Migrator().HasColumn(&Recording{}, column) {
 			continue
 		}
-		if err := s.gorm.Migrator().DropColumn(&Recording{}, column); err != nil {
+		if err := conn.Migrator().DropColumn(&Recording{}, column); err != nil {
 			log.Warnf("[Migrate] Error dropping %s column: %s", column, err)
 		} else {
 			log.Infof("[Migrate] Dropped deprecated %s column", column)
 		}
 	}
 
-	if err := s.Settings().init(); err != nil {
+	// Scoped to this handle's connection, never the package global: migration may be
+	// running against a database that is not the one DB points at.
+	if err := NewSettingStore(h.gorm).init(ctx); err != nil {
 		return fmt.Errorf("initialise settings: %w", err)
 	}
 
-	s.dropStaleFrameVectors()
+	h.dropStaleFrameVectors(ctx)
 
 	return nil
 }
@@ -208,8 +209,8 @@ func (s *Store) Migrate() error {
 //
 // Every failure here is a warning rather than an error: being unable to tell whether
 // the table is stale is not a reason to refuse to boot.
-func (s *Store) dropStaleFrameVectors() {
-	sqlDB, err := s.gorm.DB()
+func (h *Handle) dropStaleFrameVectors(ctx context.Context) {
+	sqlDB, err := h.gorm.DB()
 	if err != nil {
 		log.Warnf("[dropStaleFrameVectors] Could not obtain the sql.DB handle: %s", err)
 		return
@@ -218,7 +219,7 @@ func (s *Store) dropStaleFrameVectors() {
 	var tableExists int
 	// If this fails we cannot tell whether the table is there; skipping is safer
 	// than assuming it is absent and silently leaving stale vectors in place.
-	if err := sqlDB.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE name='frame_vectors'`).Scan(&tableExists); err != nil {
+	if err := sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM sqlite_master WHERE name='frame_vectors'`).Scan(&tableExists); err != nil {
 		log.Warnf("[dropStaleFrameVectors] Could not determine whether frame_vectors exists: %s", err)
 		return
 	}
@@ -231,7 +232,7 @@ func (s *Store) dropStaleFrameVectors() {
 	// Older iterations used vec0 auxiliary columns (+recording_id, +frame_index),
 	// which cannot be used in KNN WHERE constraints.
 	var tableSQL sql.NullString
-	if err := sqlDB.QueryRow(`SELECT sql FROM sqlite_master WHERE name='frame_vectors'`).Scan(&tableSQL); err == nil && tableSQL.Valid {
+	if err := sqlDB.QueryRowContext(ctx, `SELECT sql FROM sqlite_master WHERE name='frame_vectors'`).Scan(&tableSQL); err == nil && tableSQL.Valid {
 		schema := strings.ToLower(tableSQL.String)
 		if strings.Contains(schema, "+recording_id") || strings.Contains(schema, "+frame_index") || strings.Contains(schema, "+frame_timestamp") {
 			needsRebuild = true
@@ -240,7 +241,7 @@ func (s *Store) dropStaleFrameVectors() {
 
 	// Ensure frame_index exists for consecutive similarity queries.
 	if !needsRebuild {
-		if _, colErr := sqlDB.Exec(`SELECT frame_index FROM frame_vectors LIMIT 0`); colErr != nil {
+		if _, colErr := sqlDB.ExecContext(ctx, `SELECT frame_index FROM frame_vectors LIMIT 0`); colErr != nil {
 			needsRebuild = true
 		}
 	}
@@ -251,7 +252,7 @@ func (s *Store) dropStaleFrameVectors() {
 	// be silently compared against each other and rank as noise.
 	reason := "schema update"
 	if !needsRebuild {
-		storedModel, modelErr := s.Settings().EmbeddingModel()
+		storedModel, modelErr := NewSettingStore(h.gorm).EmbeddingModel(ctx)
 		if modelErr != nil {
 			log.Warnf("[Migrate] Could not read the stored embedding model: %v", modelErr)
 		} else if storedModel != onnx.DefaultModelName {
@@ -266,7 +267,7 @@ func (s *Store) dropStaleFrameVectors() {
 		return
 	}
 
-	if _, dropErr := sqlDB.Exec(`DROP TABLE IF EXISTS frame_vectors`); dropErr != nil {
+	if _, dropErr := sqlDB.ExecContext(ctx, `DROP TABLE IF EXISTS frame_vectors`); dropErr != nil {
 		log.Warnf("[Migrate] Could not drop frame_vectors for %s: %v", reason, dropErr)
 	} else {
 		log.Infof("[Migrate] Dropped frame_vectors for %s (will be rebuilt on next analysis)", reason)

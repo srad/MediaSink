@@ -9,7 +9,7 @@ works or how to run it:
 - Build/run/test commands and conventions: `AGENTS.md`
 - Installation and user-facing setup: `README.md`
 
-Last verified: 2026-08-04, at commit `7a696f6`.
+Last verified: 2026-08-04, at commit `92b14e8` plus the uncommitted phase 4-5 tree.
 
 ## Status symbols
 
@@ -32,7 +32,7 @@ constructor-injected structs, as specified in `ARCHITECTURE.md`. Every phase mus
 pass tests and lint, and leave the golden HTTP tests byte-identical unless an API change
 is intended.
 
-Measured at `7a696f6`: coverage 40.8%, lint 0 issues, 110 golden route cases.
+Measured after phase 5: coverage 40.9%, lint 0 issues, 110 golden route cases.
 
 ## Phase numbering was reset on 2026-08-04
 
@@ -165,48 +165,87 @@ result is the wrong design.
     sentinel moved to services.ErrUsernameTaken.
 ```
 
-## Phase 4 - Foundation
+## Phase 4 - Foundation (`UNCOMMITTED`)
 
 Objective: the rules, and a concrete database handle to build stores on.
 
 ```
 [x] ARCHITECTURE.md, with a pointer from AGENTS.md.
 
-[ ] db.Open returns a concrete *db.Handle wrapping the gorm connection:
+[x] db.Open returns a concrete *db.Handle wrapping the gorm connection:
 
         type Handle struct{ gorm *gorm.DB }
-        func Open(cfg config.Cfg) (*Handle, error)
+        func Open(ctx context.Context, cfg config.Cfg) (*Handle, error)
         func (h *Handle) Gorm() *gorm.DB
-        func (h *Handle) Migrate() error
-        func (h *Handle) Ping() error
+        func (h *Handle) Migrate(ctx context.Context) error
         func (h *Handle) Close() error
 
     Named Handle, not DB: the global being deleted is `var DB *gorm.DB` at
     internal/db/db.go:13, so `type DB` would collide with it for the whole of
     phases 4-9 while both exist.
 
-    No connection interface. "Return concrete types" is the same rule that
-    settles the interface question in ARCHITECTURE.md; if something later needs
-    to substitute the connection, that consumer declares the interface.
-    internal/store/vector needs the raw *sql.DB and reaches it via Gorm().DB().
+    Open and Migrate take a ctx per ARCHITECTURE.md section 4. The store-method
+    gate only inspects *XStore receivers, so it would not have caught the
+    omission; the rule still applies.
+
+[x] No Ping(). The reference has one, but nothing here would call it - there is
+    no health endpoint and no readiness probe - so it would have been dead code
+    on arrival. Add it when something needs it.
+
+[x] Close() fixes a real leak: app.Shutdown stopped the workers and the HTTP
+    server but never closed the connection pool. Now wired in, closed last
+    because the workers may still be finishing a write.
+
+[x] Deleted Store.BeginTx. It had no production callers - every real transaction
+    goes through the free db.BeginTx() (recording.go:251,284,327 and
+    channel_id.go:121,150) - and was reached only by its own two tests. Those
+    two now cover the free function production actually uses.
+
+[x] store_test.go split into handle_test.go; 13 tests moved or retargeted.
 ```
 
-Gate: builds, goldens byte-identical, lint 0.
+Gate: met. Builds, goldens byte-identical, lint 0, swagger byte-identical.
 
-## Phase 5 - Users and settings
+## Phase 5 - Users and settings (`UNCOMMITTED`)
 
 Objective: redo what `152ac5a`/`dbd019c` did, in the shape ARCHITECTURE.md defines. This
 is the pattern-setting slice; every later phase copies its structure.
 
 ```
-[ ] internal/db: UserStore and SettingStore, concrete, ctx on every method.
-[ ] internal/services: UserService holding its own narrow userStore interface.
-[ ] internal/api/v1: AuthHandler{users, jwtSecret} with CreateUser/Login/Logout
-    as methods.
-[ ] internal/middleware: AuthMiddleware{users, jwtSecret}.
-[ ] internal/api/router.go takes constructed handlers; app/app.go constructs them.
-[ ] Delete db.Store.Users() and db.Store.Settings().
+[x] internal/db: UserStore and SettingStore, concrete, ctx on every method.
+[x] internal/services: UserService holding its own narrow userStore interface,
+    with var _ userStore = (*db.UserStore)(nil) under it.
+[x] internal/api/v1: AuthHandler{users} with CreateUser/Login/Logout as methods.
+[x] internal/middleware: AuthMiddleware{users, jwtSecret}, mounted as the method
+    value gate.Handle - no closure per request.
+[x] internal/api/router.go takes api.Handlers; app/app.go builds them.
+[x] Deleted db.Store, NewStoreFrom, UserRepo and SettingRepo entirely. Nothing
+    outside internal/db named them by the end.
+
+[x] The JWT secret stopped being a per-call parameter. It was threaded as
+    AuthenticateUser(store, auth, secret) - the same defect as the store. The
+    service signs tokens so it holds it; the middleware verifies them so it
+    holds it; AuthHandler needs it not at all.
+
+[x] StartUpJobs and enqueueUnanalyzedRecordings take *db.SettingStore rather
+    than the deleted *db.Store. Still parameters, so the gate still counts them;
+    they convert with the jobs and recordings slices.
+
+[x] api.Handlers + api.BuildHandlers live in internal/api, not app/. app imports
+    internal/api and golden_test.go is package api, so a builder in app would be
+    an import cycle for the test. One builder, used by both app.Run and TestMain,
+    so the goldens exercise the graph the server actually serves.
+
+[x] Proved swag handles methods before converting anything: one handler, swag
+    init, docs/ byte-identical. It is not enough to check swagger.json - docs.go
+    and swagger.yaml are generated too.
+
+[x] Service tests rewritten against a hand-written fake of the 4-method consumer
+    interface; no SQLite above the store layer.
 ```
+
+Gate: met. All four goldens byte-identical, swagger byte-identical, lint 0,
+docker-test.sh green including the boot, signup, login and secret rotation.
 
 Two risks to retire before converting the other 57 handlers:
 
@@ -449,12 +488,14 @@ Greps, not opinions. `ARCHITECTURE.md` section 12 lists the commands; the number
 are the current readings, measured at `7a696f6`.
 
 ```
-a store or service passed as a function parameter      9  ->  0   (phases 5-10)
+a store or service passed as a function parameter      2  ->  0   (phases 6-10)
+    Was 9 before phase 5. The 2 left are startup_service.go:17 and :156, both
+    taking *db.SettingStore; they convert with the jobs and recordings slices.
     router.go:37, api/v1/auth.go x2, services/user_service.go x3,
     services/startup_service.go x2, middleware/authentication_middleware.go:27
 
-exported store methods missing ctx                     n/a ->  0   (phases 5-9)
-    no *XStore types exist yet; the gate starts reading in phase 5
+exported store methods missing ctx                      0            (holds)
+    reads 0 with UserStore and SettingStore converted; must stay 0
 
 internal/db importing internal/ws                      1  ->  0   (phase 6)
 

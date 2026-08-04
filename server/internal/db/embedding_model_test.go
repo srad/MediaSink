@@ -56,11 +56,11 @@ func TestDropStaleFrameVectors_ModelChanged(t *testing.T) {
 	}
 	setupEmbeddingModelDB(t)
 
-	if err := NewStoreFrom(DB).Settings().SetEmbeddingModel("some_other_model"); err != nil {
+	if err := NewSettingStore(DB).SetEmbeddingModel(t.Context(), "some_other_model"); err != nil {
 		t.Fatalf("SetEmbeddingModel: %v", err)
 	}
 
-	NewStoreFrom(DB).dropStaleFrameVectors()
+	NewHandleFrom(DB).dropStaleFrameVectors(t.Context())
 
 	if frameVectorsExists(t) {
 		t.Error("frame_vectors survived an embedding model change")
@@ -75,7 +75,7 @@ func TestDropStaleFrameVectors_MissingSetting(t *testing.T) {
 	}
 	setupEmbeddingModelDB(t)
 
-	NewStoreFrom(DB).dropStaleFrameVectors()
+	NewHandleFrom(DB).dropStaleFrameVectors(t.Context())
 
 	if frameVectorsExists(t) {
 		t.Error("frame_vectors survived with no recorded embedding model")
@@ -90,11 +90,11 @@ func TestDropStaleFrameVectors_ModelUnchanged(t *testing.T) {
 	}
 	setupEmbeddingModelDB(t)
 
-	if err := NewStoreFrom(DB).Settings().SetEmbeddingModel(onnx.DefaultModelName); err != nil {
+	if err := NewSettingStore(DB).SetEmbeddingModel(t.Context(), onnx.DefaultModelName); err != nil {
 		t.Fatalf("SetEmbeddingModel: %v", err)
 	}
 
-	NewStoreFrom(DB).dropStaleFrameVectors()
+	NewHandleFrom(DB).dropStaleFrameVectors(t.Context())
 
 	if !frameVectorsExists(t) {
 		t.Error("frame_vectors was dropped even though the model is unchanged")
@@ -109,9 +109,9 @@ func TestEmbeddingModel_RoundTrip(t *testing.T) {
 	if err := DB.AutoMigrate(&Setting{}); err != nil {
 		t.Fatalf("AutoMigrate(Setting): %v", err)
 	}
-	settings := NewStoreFrom(DB).Settings()
+	settings := NewSettingStore(DB)
 
-	got, err := settings.EmbeddingModel()
+	got, err := settings.EmbeddingModel(t.Context())
 	if err != nil {
 		t.Fatalf("EmbeddingModel on empty settings: %v", err)
 	}
@@ -119,10 +119,10 @@ func TestEmbeddingModel_RoundTrip(t *testing.T) {
 		t.Errorf("missing setting: got %q, want %q", got, legacyEmbeddingModel)
 	}
 
-	if err := settings.SetEmbeddingModel(onnx.DefaultModelName); err != nil {
+	if err := settings.SetEmbeddingModel(t.Context(), onnx.DefaultModelName); err != nil {
 		t.Fatalf("SetEmbeddingModel: %v", err)
 	}
-	if got, err = settings.EmbeddingModel(); err != nil {
+	if got, err = settings.EmbeddingModel(t.Context()); err != nil {
 		t.Fatalf("EmbeddingModel: %v", err)
 	}
 	if got != onnx.DefaultModelName {
