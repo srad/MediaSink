@@ -4,6 +4,8 @@ This file provides guidance to coding agents working with code in this repositor
 
 **Current work in progress, open todos, and decisions already rejected are tracked in [`ROADMAP.md`](./ROADMAP.md). Read it before starting work and update it when a phase completes.** This file covers how the system works; `ROADMAP.md` covers what is done and what is left.
 
+**How Go code in this repository must be structured is defined in [`ARCHITECTURE.md`](./ARCHITECTURE.md) — layering, consumer-declared interfaces, constructor injection, `context.Context`, naming. Read it before writing or reviewing any Go change.** Parts of the tree do not satisfy it yet; `ROADMAP.md` names the phase that fixes each.
+
 JavaScript package-manager rule: use `npm` only in this repository. Do not introduce or recommend `pnpm`.
 
 # Agent Instructions
@@ -241,7 +243,8 @@ The `Dockerfile` uses a multi-stage build:
 
 ### Database
 - Opened inside `app.InitializeApp()` via `db.Open(cfg) (*db.Store, error)`, which takes the `config.Cfg` built at the composition root and returns errors rather than panicking. `app.App` holds the `*db.Store`
-- `db.Store` is being threaded to its consumers a slice at a time; the package-level `db.DB` still exists for the functions that have not moved yet, and `Open` assigns it. Do not add callers to it — see `ROADMAP.md` (Phase 2b)
+- `db.Store` and its `Users()`/`Settings()` accessors are a superseded design and are being replaced by per-aggregate stores (`db.NewUserStore(gorm)`) held as constructor-injected fields — see `ARCHITECTURE.md`. Do not add methods to `db.Store` or pass it as a function parameter
+- The package-level `db.DB` still exists for the functions that have not moved yet, and `Open` assigns it. Do not add callers to it — see `ROADMAP.md`
 - Test fixtures that build their own handle use `db.NewStoreFrom(handle)`; production code goes through `Open` so pool configuration and migration are not skipped
 - The shipped runtime currently initializes `internal/store/vector.SQLiteVecStore` and should be treated as SQLite/sqlite-vec-first
 - The lower `internal/db` layer still contains MySQL/PostgreSQL adapter support, but that is not the primary v2 runtime path

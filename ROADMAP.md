@@ -5,10 +5,11 @@ Status tracking for MediaSink, so work in progress survives across sessions.
 This file records *what is done and what is left*. It does not explain how the system
 works or how to run it:
 
-- Architecture, build/run/test commands, and conventions: `AGENTS.md`
+- How Go code must be structured, and the rules a change is held to: `ARCHITECTURE.md`
+- Build/run/test commands and conventions: `AGENTS.md`
 - Installation and user-facing setup: `README.md`
 
-Last verified: 2026-08-04, at commit `dbd019c`.
+Last verified: 2026-08-04, at commit `7a696f6`.
 
 ## Status symbols
 
@@ -26,26 +27,48 @@ Lines without a box are context, not tasks.
 
 # Server: refactor to idiomatic Go
 
-Converts the Go server from package-level mutable state and free functions to injected
-dependencies. Runs in phases; every phase must build, pass tests and lint, and leave
-the golden HTTP tests byte-identical unless an API change is intended.
+Converts the Go server from package-level mutable state and free functions to
+constructor-injected structs, as specified in `ARCHITECTURE.md`. Every phase must build,
+pass tests and lint, and leave the golden HTTP tests byte-identical unless an API change
+is intended.
 
-Measured after slice 2b.2: coverage 40.8%, lint 0 issues, 110 golden route cases.
-(After 2b.1: 40.5%, 106 cases. At `f2929a2`, end of Phase 2a: 40.2%. At `fd95907`,
-before Phase 2a: 39.8%.)
+Measured at `7a696f6`: coverage 40.8%, lint 0 issues, 110 golden route cases.
+
+## Phase numbering was reset on 2026-08-04
+
+The original plan split the work by layer: inject the database everywhere (2b), then turn
+services into structs (3), then handlers (4). That order is unworkable. A free function
+can only receive a dependency as an argument, so injecting first forces every call site
+to pass a store per call, and the later phases would delete every parameter the earlier
+one added.
+
+Phases are now one per aggregate, each finishing store, service, handler and wiring
+together. Nothing needs a temporary parameter, because by the time a service calls its
+store the service is already a struct holding it.
+
+Mapping from the old numbering, so nothing looks dropped:
+
+```
+old 0, 1, 2a  ->  new 0, 1, 2, unchanged and still done
+old 2b        ->  new 3, marked partial and superseded
+old 3         ->  absorbed into every slice from 5 on (services become structs)
+old 4         ->  absorbed into every slice from 5 on (handlers become structs),
+                  except the composition root itself, which is new 10
+old 5         ->  new 11
+old 6         ->  new 12
+```
 
 ## Phase 0 - Safety net and tooling (`712c7eb`)
 
 ```
 [x] Golden HTTP tests: boot the real router, snapshot status and body per route.
 
-[~] Route coverage. 110 cases across 4 golden files (public_auth.golden and its 4
-    signup/login cases were added in 2b.2), but not everything:
+[~] Route coverage. 110 cases across 4 golden files, but not everything:
     [ ] /api/v2/ws has no golden coverage at all. A websocket upgrade cannot be
         driven through httptest's recorder. Needs a different harness.
     59 routes are registered in router.go against 56 auth-gate cases. The
     difference is /ws plus the two public auth routes, which public_auth.golden
-    now covers directly.
+    covers directly.
     9 routes appear only in the auth-gate golden, not the authenticated one: six
     that would start background work inside the test process (import, recorder
     resume, analyze all, previews regenerate, jobs resume, channel upload) and
@@ -61,9 +84,7 @@ before Phase 2a: 39.8%.)
     forever, dropped ONNX Destroy errors leaking native memory, and a missing
     rows.Err() check that produced silently partial similarity data.
 
-[x] test.sh fixes: the no-test counter reported 1 package instead of 23, and
-    coverage now uses -coverpkg so integration-style tests credit the packages
-    they actually drive. Superseded in Phase 2a: test.sh was deleted in favour of
+[x] test.sh fixes, later superseded: test.sh was deleted in favour of
     docker-test.sh, which can boot the server.
 ```
 
@@ -83,246 +104,210 @@ before Phase 2a: 39.8%.)
     preserved. 20 test cases added; parseToken at 90.9%.
 ```
 
-## Phase 2a - Config becomes a value, not a global (`f2929a2`, partial)
-
-Objective: read `Cfg` once at the composition root and pass it down, so services and
-middleware stop reaching for global state.
-
-The earlier count of "18 config.Read() call sites" was wrong: two of those grep hits
-are comments, so there were 16.
+## Phase 2 - Config becomes a value, not a global (`f2929a2`)
 
 ```
-[~] Thread Cfg from the composition root. 5 of the 16 config.Read() calls are gone
-    (main/app, router, info x2, db.Init). The other 11 are deferred, because
-    converting them is the same work later phases already own:
-    [ ] 8 sites in internal/db hang off seven path methods on ChannelName and
-        RecordingID - GORM column types with about 49 external callers. Re-signing
-        them is the active-record migration itself. Owner: Phase 2b.
-    [ ] 3 sites are free functions in internal/services, each atop a call chain
-        reaching back to handlers and startup. Owner: Phase 3.
+[x] Cfg is read once at the composition root and passed to constructors. This is
+    exactly the shape ARCHITECTURE.md requires of everything else, so it needs no
+    rework and keeps its tick.
 
-[x] Folded in all 9 os.Getenv calls that bypassed config: SECRET x3, DB_ADAPTER x3,
-    ONNXRUNTIME_LIB, and the two duplicated DSN lines in db/db.go. Also the two
-    LOG_LEVEL reads in main.go, which the count of 9 had excluded as bootstrap.
-    The JWT secret is now captured once at router construction rather than read
-    from the environment on every authenticated request.
+[x] Folded in all 9 os.Getenv calls that bypassed config, plus the two LOG_LEVEL
+    reads in main.go. The JWT secret is captured once at router construction
+    rather than read from the environment on every authenticated request.
 
 [x] mustEnv is deleted. config.Parse(getenv) is pure and returns an error naming
-    every missing variable at once; config.Load() caches it. Note the remaining
-    panic: the config.Read() shim that serves the 11 deferred call sites still
-    calls log.Panicf, and goes away with the last of them in Phase 3.
-```
+    every missing variable at once; config.Load() caches it.
 
-Also landed in this phase, found by running the suite in a provisioned container
-for the first time:
+[~] 11 config.Read() call sites remain, each inside code that has not been
+    converted yet. They go with their aggregate:
+    [ ] 8 in internal/db, on ChannelName and RecordingID path methods -> phase 8
+    [ ] 3 in internal/services free functions                        -> phases 6-9
+    The config.Read() shim still calls log.Panicf; it goes with the last of them.
 
-```
 [x] Fixed an environment-dependent golden. authenticated.golden pinned the string
-    `exec: "yt-dlp": executable file not found in $PATH` for
-    POST /channels/:id/resume, which is only true on a host WITHOUT yt-dlp.
-    Anywhere it was installed the binary really ran against example.com over the
-    network and the golden failed - so the suite passed by accident of a missing
-    dependency and could never have run in CI. The seeded channel now points at a
-    test-local httptest.Server, and redactSubprocessError normalises the failure
-    tail the same way testTmpDir is redacted. Still pinned: the 500 status and
-    that the message names the URL. Not a Phase 2a regression; it predates the
-    phase and is unchanged in git history.
+    `exec: "yt-dlp": executable file not found in $PATH`, which is only true on a
+    host WITHOUT yt-dlp, so the suite passed by accident of a missing dependency
+    and could never have run in CI. The seeded channel now points at a test-local
+    httptest.Server.
 
 [x] Added test.Dockerfile and docker-test.sh: the Go suite plus a real boot smoke
     test (signup, login, authenticated route, restart under a different SECRET to
-    prove the JWT is bound to config, and the missing-config abort). Deleted
-    test.sh, which could not do any of that.
+    prove the JWT is bound to config, and the missing-config abort).
 ```
 
-Gate: met. Goldens byte-identical apart from the two deliberate lines above,
-swagger.json byte-identical, lint 0 issues,
-`internal/middleware` now has a test suite that supplies its own secret and database
-without mutating process environment. `grep -rn 'os.Getenv' server --include='*.go'`
-outside `config/` and tests returns only a comment.
+## Phase 3 - Kill the global DB handle (`152ac5a`, `dbd019c`, superseded)
 
-## Phase 2b - Kill the global DB handle (in progress)
-
-Objective: replace `var DB *gorm.DB` with a concrete store passed to its consumers.
-This is the keystone and the largest phase.
-
-Re-measured at `ca8a758`. The earlier counts were the seed, not the work: methods like
-Job.Cancel and Recording.DestroyRecording never name DB, they persist through
-something that does, so they move too.
+Objective was to replace `var DB *gorm.DB` with an injected store. It landed, and the
+result is the wrong design.
 
 ```
-141   functions/methods in internal/db (non-test)
- 74   name DB directly - the previously recorded figure, correct but only the seed
- 95   in the transitive closure - the actual unit of work
- 32   methods on domain types - previously recorded as 23, which undercounts by 9
+[~] Landed, but procedurally. db.Store was introduced and threaded to consumers
+    as a per-call function parameter:
+
+        func CreateUser(store *db.Store, auth requests.AuthenticationRequest) error
+        func RequireAuth(store *db.Store, secret string) gin.HandlerFunc
+
+    Five things wrong with it, all fixed by ARCHITECTURE.md:
+    [ ] the dependency is a parameter rather than a field on a struct
+    [ ] db.Store is a god object - Users(), Settings(), Jobs() on one type hands
+        the auth code the job and video tables as well
+    [ ] no interfaces, so nothing above the store is testable without real SQLite
+    [ ] no context.Context anywhere in the server
+    [ ] side effects hard-wired: three functions call util.Interrupt directly
+
+    Superseded by phases 4-10. Both commits stay in history; the code is
+    refactored forward, not reverted. Do not copy this pattern.
+
+[x] Worth keeping from those commits, and carried forward unchanged:
+    db.Open returns errors instead of panicking; Migrate names the failing table;
+    public_auth.golden and its 4 signup/login cases; 17 tests across db,
+    services and middleware; ExistsUsername answering (bool, error) with the
+    sentinel moved to services.ErrUsernameTaken.
 ```
 
-The 9 that were missed: Job.Cancel, Job.Error, Recording.DestroyRecording,
-Recording.DestroyPreviews, Recording.DestroyPreview, and the four
-Recording.Enqueue{Analysis,Conversion,Cutting,PreviewFrames}Job.
+## Phase 4 - Foundation
 
-Closure per file, which sets the slice sizes:
+Objective: the rules, and a concrete database handle to build stores on.
 
 ```
-job.go 26   recording.go 19   channel_id.go 11   frame_vectors.go 9   channel.go 7
-setting.go 5   video_analysis.go 5   user.go 4   db.go 4   video_previews.go 4
+[x] ARCHITECTURE.md, with a pointer from AGENTS.md.
+
+[ ] db.Open returns a concrete *db.Handle wrapping the gorm connection:
+
+        type Handle struct{ gorm *gorm.DB }
+        func Open(cfg config.Cfg) (*Handle, error)
+        func (h *Handle) Gorm() *gorm.DB
+        func (h *Handle) Migrate() error
+        func (h *Handle) Ping() error
+        func (h *Handle) Close() error
+
+    Named Handle, not DB: the global being deleted is `var DB *gorm.DB` at
+    internal/db/db.go:13, so `type DB` would collide with it for the whole of
+    phases 4-9 while both exist.
+
+    No connection interface. "Return concrete types" is the same rule that
+    settles the interface question in ARCHITECTURE.md; if something later needs
+    to substitute the connection, that consumer declares the interface.
+    internal/store/vector needs the raw *sql.DB and reaches it via Gorm().DB().
 ```
 
-Outside internal/db there are 70 free-function call sites in non-test code. Method
-call sites are not grep-countable - `.Save(`, `.Update(`, `.Error(` collide with gorm
-and with `error`; a first attempt returned 283 with false positives in files that
-touch no database. Deleting the method makes the compiler enumerate them exactly.
+Gate: builds, goldens byte-identical, lint 0.
 
-Handlers must become closures. Nothing in the chain router -> handler -> service -> db
-carries a value, and the gate forbids wrapping, so `func GetChannels(c *gin.Context)`
-becomes `func GetChannels(s *db.Store) gin.HandlerFunc`. Precedent already in the tree:
-`v1.GetVersion(version, commit)` at api/v1/admin.go:92. Verified this does not move
-swagger - GetVersion carries a full annotation block and /admin/version is present in
-docs/swagger.json.
+## Phase 5 - Users and settings
 
-Lint constrains the sequencing: revive's default rule set is active with only
-`exported` and `package-comments` excluded, so `unused-parameter` fires. Never add a
-store parameter in a commit whose body does not yet use it.
-
-Slices, each landing separately with green goldens:
+Objective: redo what `152ac5a`/`dbd019c` did, in the shape ARCHITECTURE.md defines. This
+is the pattern-setting slice; every later phase copies its structure.
 
 ```
-[x] 2b.1 Foundation (`152ac5a`) (db.go, 4). db.Open(cfg) (*db.Store, error) replaces db.Init;
-    the seven AutoMigrate panics and InitSettings' log.Panicf now return. Migrate
-    stops at the first failure naming the table rather than joining, because the
-    targets are ordered parent-first and a cascade would bury the real error.
-    app.App holds the store. Also converted three db.Init callers, not the two
-    planned: app/app.go:45, api/golden_test.go:105, and
-    middleware/authentication_middleware_test.go:143.
-    Fixed while here: Migrate reached InitSettings and GetEmbeddingModel through
-    the package global, so NewStoreFrom(h).Migrate() seeded settings into whatever
-    DB pointed at rather than h. Invisible while Open was the only caller. Both are
-    now store-scoped; regression test proven against the reverted fix via
-    go test -overlay.
-    13 tests in internal/db/store_test.go.
-
-[x] 2b.2 Users and settings (`dbd019c`) (user.go 4, setting.go 6). The pilot.
-    Sets the two patterns the rest of 2b reuses: per-aggregate repositories off
-    Store (store.Users(), store.Settings()) rather than ~95 flat methods, and
-    handler closures - func CreateUser(*db.Store) gin.HandlerFunc.
-    setting.go held 6 functions, not the 5 counted at ca8a758: 2b.1 had since
-    split InitSettings into a Store method and added Store.EmbeddingModel.
-    ExistsUsername -> UserRepo.Exists (bool, error). The "username already
-    exists" sentinel moved up to services.ErrUsernameTaken, so the 500 and the
-    body are unchanged; Phase 6 still owns the 409.
-    Deleted db.GetValue - zero callers. It was the only reader of
-    Setting.SettingType, which is now written but never read; the column stays
-    because dropping a persisted one is a migration, not a refactor.
-    Verified: AutoMigrate really does emit the UNIQUE constraint on
-    User.Username, so the schema backstops Exists. Nothing had asserted that.
-    Reached one hop further than planned: enqueueUnanalyzedRecordings also takes
-    the store, since it is where the SetEmbeddingModel call actually lives.
-
-[ ] 2b.3 Jobs (job.go 26). Plus jobs/lifecycle.go:47 and jobs/executor.go:25.
-    Reuse the existing seam: handlers.NewHandlerDependencies takes a raw *gorm.DB
-    at jobs/handlers/dependencies.go:15; change it to *db.Store and the six job
-    handlers follow. Four generic functions in job.go stay free functions - Go has
-    no generic methods. CreateJob[T] at :372 collides with (job *Job) CreateJob()
-    at :75 once the receiver is gone; rename the method to JobRepo.Create.
-
-[ ] 2b.4 Recordings (recording.go 19, video_analysis.go 5, video_previews.go 4).
-    Plus services/video_analysis.go:194. Delete the init() at
-    services/video_analysis.go:22 - it registers AnalyzeVideoFramesWithJob into a
-    func(*db.Job) error field at package-init time, when no store exists; register
-    from app.InitializeApp instead. Collapse the duplicate FindRecordingByID
-    (function form at videos.go:440, method form at :94, :124, :195, :332, :468).
-
-[ ] 2b.5 Channels (channel.go 7, channel_id.go 11). Plus
-    services/startup_service.go:141 and recorder_service.go. 12 routes in the
-    /channels group. api/v1/channels.go reaches db only for types; those
-    db.ChannelID(id) conversions stay. channel.go:147 is the 8th deferred
-    config.Read() and lands here.
-
-[ ] 2b.6 Frame vectors (frame_vectors.go 9). store/vector/store.go is a pure
-    adapter: 8 one-to-one delegations plus the reach-through at :72 and :76.
-    NewSQLiteVecStore gains the store. Then delete var DB and convert the 11 lines
-    in services/chapter_regeneration_test.go. vector.SetDefault stays - Phase 3.
-
-[ ] 2b.7 Path methods and the 7 remaining deferred config.Read() calls. 49
-    external callers; extract a Paths value from cfg rather than hanging it off
-    Store, since these are filesystem concerns. No overlap with 2b.1-2b.6, so it
-    can ship as its own commit or as Phase 2c without blocking the gate.
+[ ] internal/db: UserStore and SettingStore, concrete, ctx on every method.
+[ ] internal/services: UserService holding its own narrow userStore interface.
+[ ] internal/api/v1: AuthHandler{users, jwtSecret} with CreateUser/Login/Logout
+    as methods.
+[ ] internal/middleware: AuthMiddleware{users, jwtSecret}.
+[ ] internal/api/router.go takes constructed handlers; app/app.go constructs them.
+[ ] Delete db.Store.Users() and db.Store.Settings().
 ```
 
-Gate, arithmetic rather than judgement. All three commands run today:
+Two risks to retire before converting the other 57 handlers:
 
 ```
-grep -rn 'db\.DB\b' server/internal --include='*.go' | grep -v '/internal/db/' | wc -l
-    17 at ca8a758 (6 non-test + 11 in chapter_regeneration_test.go)  ->  0
-    Still 17 after 2b.2, which touches none of those sites.
+[ ] The golden harness must build the object graph. golden_test.go:111 calls
+    Setup(store, cfg, ...). Once handlers are structs, TestMain has to assemble
+    stores, services and handlers - a second composition root that must not drift
+    from app/app.go. Extract one exported builder used by both.
 
-grep -rn 'func (\w* \*\?\(Recording\|Channel\|Job\|Setting\|VideoPreview\|VideoAnalysisResult\|ChannelID\|RecordingID\)) ' \
-     server/internal/db --include='*.go' | wc -l
-    47 at ca8a758  ->  46 after 2b.2  ->  15 after 2b.6  ->  11 after 2b.7
-
-Both greps are textual, so keep the deleted names out of prose too: a comment
-naming db.DB or a converted function inflates the count and reads as a leftover.
+[ ] Prove swagger survives handlers becoming methods BEFORE converting all 58.
+    Convert exactly one, run swag init, confirm docs/swagger.json is
+    byte-identical. swag parses comments above methods as well as functions, but
+    this is unverified here - the reference branch commits no generated docs.
 ```
 
-47 - 32 = 15 cross-checks the 32: the survivors are exactly the methods that do no
-persistence. Scope the first grep to server/internal as written; widening it to
-server picks up two hits inside vendored gorm.
+Gate: goldens byte-identical, swagger byte-identical, docker-test.sh green.
 
-## Phase 3 - Services become injected structs
+## Phase 6 - Jobs
 
-Objective: convert free functions to constructor-injected structs and move mutable
-package state into fields.
+Objective: the job engine off global state - the only code that runs continuously against
+the database.
 
-```
-[ ] Convert the 49 exported functions in internal/services to methods on injected
-    structs.
-
-[ ] Move 9 clusters of mutable package state into struct fields. Riskiest single
-    item: streaming_service.go holds live recording state in three package maps
-    plus two mutexes. Move it alone, with -race.
-
-[ ] Fix a known bug: a detector factory caches on first call and thereafter
-    ignores its detectorType argument. Corrected 2026-08-03 - this was filed
-    against the wrong function. CreateSceneDetector (factory.go:42) has zero
-    callers and should just be deleted. The live instances are
-    CreateEmbeddingExtractor (factory.go:67), called from
-    services/visual_similarity.go:51 and services/video_analysis.go:64, and
-    CreateHighlightDetector (factory.go:98). Harmless today only because one
-    detector type exists. The package has no test file at all; add the test that
-    would have caught it.
-
-[ ] Remove four pass-through wrappers in services/job_service.go that exist only
-    for "backward compatibility" with an earlier half-finished extraction.
-```
-
-Gate: `-race` clean on services and jobs; no `vector.Default()` or `vector.SetDefault`
-remaining.
-
-## Phase 4 - Handlers become structs, and a composition root
-
-Objective: group the 58 handlers in `internal/api/v1` into structs holding their
-services, and wire everything in one place.
+Findings already established by reading and running the tree, before any code moves:
 
 ```
-[ ] Group the 58 handlers into per-resource structs.
+[ ] handlers.HandlerDependencies.DB is dead - assigned at construction, never
+    read by any handler. conversion_test.go already passes nil for it. The
+    roadmap previously called this the seam to reuse; it is not one.
+[ ] Job.Cancel and GetNextJobTask[T] have zero callers. Delete, do not convert.
+[ ] db.DeleteJob does not delete. It sets status=canceled and keeps the row.
+[ ] JobList with an empty status slice matches nothing, not everything - and
+    authenticated.golden posts exactly that.
+[ ] EmitJobProgress stores "NaN" when total is 0 (no division guard).
+[ ] Three functions call util.Interrupt on a job pid: updateStatus, DeleteJob,
+    PurgeJobsByTask. Inject the seam per ARCHITECTURE.md section 6.
+[ ] internal/db/job.go broadcasts websocket events at :446, :484, :498. The
+    broadcast moves up to the service; internal/db must import no ws.
+[ ] internal/jobs holds package state in types.go: ctxJobs, cancelJobs,
+    processing, processingMutex. All become fields.
+[ ] services/job_service.go has four pass-through wrappers whose own comments
+    call them backward-compatibility shims. Delete them.
+```
 
-[ ] Add internal/httperr with a typed error and a single renderer. Keep today's
-    bare-string wire format in this phase; changing it belongs to Phase 6.
+Gate: `-race` clean on internal/jobs and internal/db.
 
+## Phase 7 - Recordings
+
+```
+[ ] recording.go, video_analysis.go, video_previews.go into stores.
+[ ] Collapse the duplicate FindRecordingByID (function form at videos.go:440,
+    method form at :94, :124, :195, :332, :468).
+[ ] services/video_analysis.go registers a job handler from init() at :22.
+    Register from the composition root instead.
+[ ] The Recording.Enqueue*Job family moves here with recording.go.
+```
+
+## Phase 8 - Channels
+
+```
+[ ] channel.go and channel_id.go into stores; 12 routes in the /channels group.
+[ ] services/startup_service.go and recorder_service.go.
+[ ] The 8 deferred config.Read() calls on ChannelName and RecordingID path
+    methods land here. Extract a Paths value from cfg rather than hanging it off
+    a store - these are filesystem concerns, not persistence.
+```
+
+## Phase 9 - Frame vectors and video analysis
+
+```
+[ ] frame_vectors.go into a store. store/vector/store.go is a pure adapter:
+    8 one-to-one delegations plus the reach-through at :72 and :76.
+[ ] Delete the second global: vector.defaultStore behind SetDefault/Default,
+    with lazy init at store.go:63. 7 call sites - app/app.go:52,
+    api/v1/similarity.go:203, services/visual_similarity.go x3,
+    services/startup_service.go:166, services/video_analysis.go:54. All seven
+    currently pass context.Background(); real ctx replaces it.
+[ ] Delete var DB. Convert the 11 db.DB lines in
+    services/chapter_regeneration_test.go.
+```
+
+Gate: `grep -rn 'db\.DB\b' server/internal | grep -v '/internal/db/'` returns 0.
+
+## Phase 10 - Composition root
+
+```
+[ ] Roughly 45 lines of plain constructor calls in app/. No DI framework.
+[ ] Delete db.Store entirely.
 [ ] Take the goroutine out of the router constructor. Setup() currently runs
     `go ws.WsListen()`, so merely building a router starts background work.
-
 [ ] Return *gin.Engine from Setup instead of http.Handler, which app.go
     immediately type-asserts back.
-
-[ ] Write the composition root: roughly 45 lines of plain constructor calls. No
-    DI library.
+[ ] Add internal/httperr with a typed error and a single renderer. Keep today's
+    bare-string wire format; changing it is phase 12.
+[ ] Fix a known bug: CreateEmbeddingExtractor (factory.go:67) and
+    CreateHighlightDetector (factory.go:98) cache on first call and thereafter
+    ignore their detectorType argument. Harmless today only because one detector
+    type exists. The package has no test file at all. CreateSceneDetector
+    (factory.go:42) has zero callers and should just be deleted.
 ```
 
-Gate: goldens byte-identical; swagger unchanged.
-
-## Phase 5 - Break up `internal/util` and `internal/models`
-
-Objective: replace grab-bag packages with named ones.
+## Phase 11 - Break up internal/util and internal/models
 
 ```
 [ ] Split util: video.go (771 lines) to internal/media, sys.go (408) to
@@ -341,7 +326,7 @@ Objective: replace grab-bag packages with named ones.
     nothing else.
 ```
 
-## Phase 6 - API redesign
+## Phase 12 - API redesign
 
 Objective: fix the API defects listed below. Deliberately last, because it is the only
 phase that reaches outside Go.
@@ -370,14 +355,11 @@ Postponed on purpose. Each names the phase that owns it.
     Currently excluded in server/.golangci.yml.
 
 [>] Rename ChannelRequest.Url to URL. The JSON tag keeps the wire name, but every
-    Go usage moves. Owner: Phase 6. Excluded in server/.golangci.yml.
+    Go usage moves. Owner: Phase 12. Excluded in server/.golangci.yml.
 
 [>] revive's exported (22 findings) and package-comments (34) rules. Both are
     missing-documentation churn, not correctness. Owner: after the substantive
     findings are gone; drop both exclusions together.
-
-[>] Promote internal/store/vector to internal/vector. Owner: Phase 5, batched
-    with the other package moves to avoid isolated import churn.
 ```
 
 # Rejected
@@ -393,10 +375,22 @@ Recorded so they are not reopened without new information.
     runtime. That moves wiring errors from compile time to startup, which is a
     regression against what the code already gives you. A hand-written
     composition root keeps compile-time checking and adds no dependency.
+    Re-examined 2026-08-04 when the phase-3 design was rejected: the wiring tool
+    was never the problem. The code had no constructors to wire.
 
 [-] Finishing the v2 migration instead of deleting it. A parallel tree that only
     goes live at the very end never goes live; this repo has two abandoned
     attempts as evidence. The live code is refactored in place instead.
+
+[-] Declaring store interfaces in internal/db next to their implementations, as
+    ~/src/MediaSink.Go branch refactor/idiomatic-go does. Google's style guide
+    puts the interface in the consumer, listing only the methods it uses. A
+    store-side interface would make the job equivalent roughly 20 methods, and
+    every test fake would have to implement all 20 to exercise one. See
+    ARCHITECTURE.md section 2.
+
+[-] Adding testify. Not vendored, and this repo vendors all dependencies. Fakes
+    of two-to-three-method consumer interfaces are short enough by hand.
 
 [-] Keeping safeJoinPath. It was a path-traversal guard that was written but
     never wired to any call site. Deleted with the reasoning recorded at its old
@@ -408,7 +402,7 @@ Recorded so they are not reopened without new information.
 
 # Known defects, not yet fixed
 
-Found while auditing. All are client-visible, so they are grouped into Phase 6 rather
+Found while auditing. All are client-visible, so they are grouped into Phase 12 rather
 than fixed piecemeal.
 
 ```
@@ -419,15 +413,22 @@ than fixed piecemeal.
     fix will show as a reviewable diff.
 
 [~] A duplicate signup returns 500 where 409 is correct. The signature half is
-    done in 2b.2: UserRepo.Exists answers (bool, error), so "name taken" and
-    "database unavailable" are now distinguishable, and the sentinel lives in
+    done: UserStore.Exists answers (bool, error), so "name taken" and "database
+    unavailable" are distinguishable, and the sentinel lives in
     services.ErrUsernameTaken. The status code is unchanged and still wrong.
-    Now pinned by internal/api/testdata/public_auth.golden, so the Phase 6
-    change to 409 will show as a reviewable diff. Owner: Phase 6.
+    Pinned by internal/api/testdata/public_auth.golden, so the change to 409 will
+    show as a reviewable diff. Owner: Phase 12.
 
 [ ] The websocket auth workaround passes the bearer token as a URL query
     parameter, which leaks it into access logs and browser history. It is a
     deliberate, documented workaround; changing it is an API change.
+
+[ ] EmitJobProgress stores the string "NaN" when total is 0 - no division guard
+    at jobs/handlers/progress.go:17. Reachable from preview.go:107. Owner:
+    Phase 6, pinned by test first.
+
+[ ] db.DeleteJob does not delete; it cancels. The name has already misled once.
+    Renaming it is wire-visible (the route is DELETE /jobs/:id). Owner: Phase 12.
 ```
 
 # In-code TODOs
@@ -438,6 +439,29 @@ than fixed piecemeal.
 [ ] server/internal/jobs/handlers/cutting.go:136 - ffmpeg gives no obvious
     progress information for cutting and merging; recheck.
 [ ] frontend/src/components/VideoEditor.vue:69 - check if needed.
+```
+
+---
+
+# Architectural gates
+
+Greps, not opinions. `ARCHITECTURE.md` section 12 lists the commands; the numbers below
+are the current readings, measured at `7a696f6`.
+
+```
+a store or service passed as a function parameter      9  ->  0   (phases 5-10)
+    router.go:37, api/v1/auth.go x2, services/user_service.go x3,
+    services/startup_service.go x2, middleware/authentication_middleware.go:27
+
+exported store methods missing ctx                     n/a ->  0   (phases 5-9)
+    no *XStore types exist yet; the gate starts reading in phase 5
+
+internal/db importing internal/ws                      1  ->  0   (phase 6)
+
+db.DB referenced outside internal/db                  17  ->  0   (phase 9)
+    6 non-test plus 11 in services/chapter_regeneration_test.go
+
+vector.SetDefault / vector.Default() call sites         7  ->  0   (phase 9)
 ```
 
 ---
@@ -504,3 +528,5 @@ config present at `mobile/analysis_options.yaml`.
 - When a phase completes, record its commit SHA in the heading and check its boxes.
 - Use `[~]` honestly. If a phase lands with a gap, name the gap rather than marking it
   `[x]`.
+- Architecture rules belong in `ARCHITECTURE.md`, not here. This file records status and
+  the current reading of each gate.
